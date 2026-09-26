@@ -17,10 +17,14 @@ BOARD_DIMENSIONS = {b["id"]: tuple(b["resolution"]) for b in BOARDS}
 BOARD_DISPLAY_TYPE = {b["id"]: b.get("display_type", "spectra6") for b in BOARDS}
 
 # Optional hardware per board ("speaker", "microphone", "climate_sensor"),
-# consumed by scripts/features.py to accept or reject build-time features.
+# consumed by scripts/features.py to accept or reject build-time features. Kept in
+# boards/capabilities.json, not boards.json, because the web app bundles boards.json.
 # scripts/check_capabilities.py keeps this in sync with the board headers
 # (BOARD_HAL_HAS_*) and the sensor selects in components/board_hal/Kconfig.
-BOARD_CAPABILITIES = {b["id"]: tuple(b.get("capabilities", [])) for b in BOARDS}
+with open(_BOARDS_JSON.with_name("capabilities.json"), encoding="utf-8") as _f:
+    _CAPABILITIES = json.load(_f)
+
+BOARD_CAPABILITIES = {b["id"]: tuple(_CAPABILITIES.get(b["id"], [])) for b in BOARDS}
 
 # ESP-IDF target chip per board. All boards are ESP32-S3 except the M5Paper,
 # which is a plain ESP32 (ESP32-D0WDQ6-V3). Used to pass -DIDF_TARGET to

@@ -1,5 +1,7 @@
 # Scale Mode: Cover vs. Fit
 
+> **Build option:** compiled in only with `python build.py --with facecrop`; without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
+
 Controls how an image whose aspect ratio doesn't match the display's is resized: cropped to fill
 the screen (default), or shown in full with letterbox bars.
 

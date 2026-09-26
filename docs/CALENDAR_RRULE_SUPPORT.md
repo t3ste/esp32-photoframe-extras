@@ -1,5 +1,7 @@
 # Calendar RRULE support (Agenda Mode)
 
+> **Build option:** compiled in only with `python build.py --with agenda`; without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
+
 Which recurring-event (`RRULE`) values this fork's ICS parser (`main/calendar_ics.c`,
 `parse_rrule()`/`expand_rrule()`) understands, and why the rest are rejected. An event whose
 `RRULE` isn't fully supported is **skipped entirely** (fail-closed) rather than shown once as if

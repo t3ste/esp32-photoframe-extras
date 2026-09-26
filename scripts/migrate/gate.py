@@ -44,13 +44,18 @@ KEYWORDS = {
     "FEATURE_CLIMATE": r"climate|humidity|shtc|sht[34]|temperature",
     "FEATURE_ALARMCLOCK": r"alarm",
     "FEATURE_VOICE_STOP": r"kws|voice|mic_|microphone|keyword",
-    "FEATURE_BATTERY_HISTORY": r"battery_history|batt_hist",
-    "FEATURE_DISPLAY_HISTORY": r"history_manager|display_history|no_repeat",
-    "FEATURE_HTTPS": r"https_|https_cert|esp_https_server|httpd_ssl",
-    "FEATURE_OFFLINE_HOTSPOT": r"hotspot|offline_mode",
-    "FEATURE_ERROR_BANNER": r"error_overlay|internet_health|record_internet|error_banner",
+    "FEATURE_BATTERY_HISTORY": r"battery_history|batt_hist|batteryhistory",
+    "FEATURE_DISPLAY_HISTORY": r"history_manager|display_history|no_repeat|displayhistory|"
+    r"historyreset|/api/history|resethistory",
+    "FEATURE_HTTPS": r"https_|https_cert|esp_https_server|httpd_ssl|httpsenabled|enable https",
+    "FEATURE_OFFLINE_HOTSPOT": r"hotspot|offline_mode|offlinemode",
+    "FEATURE_ERROR_BANNER": r"error_overlay|internet_health|record_internet|error_banner|"
+    r"erroroverlay|error overlay",
+    "FEATURE_WIFI_RESILIENCE": r"wifi_?(perf|ext|reprov|tx_?power|coldboot)|"
+    r"wifi(performance|extended|reprovision|txpower)",
     "FEATURE_OTA_CHANNEL": r"ota_channel|prerelease|variant_switch|ota_set_options|"
-    r"ota_get_options|ota_options",
+    r"ota_get_options|ota_options|otacheck|ota_check",
+    "FORK_EXIF": r"exif",
     "FEATURE_FACECROP": r"facecrop|face_crop|crop_variant|organize_crop|"
     r"resolve_display_variant|render_variant|\bcover\b",
 }
@@ -117,7 +122,20 @@ def diff_hunks(base_lines, fork_lines):
     return hunks
 
 
+VOTE = "majority"
+
+
 def propose(lines):
+    if VOTE == "first":
+        for line in lines:
+            best, count = None, 0
+            for tag, pattern in KEYWORDS.items():
+                n = len(re.findall(pattern, line.lower()))
+                if n > count:
+                    best, count = tag, n
+            if best:
+                return best, {best: count}
+        return None, {}
     votes = {}
     text = [l.lower() for l in lines]
     for tag, pattern in KEYWORDS.items():
@@ -146,7 +164,8 @@ def build(base_lines, fork_lines, overrides, default=None, remap=None):
     """Return (hunk list, per-hunk tags list-of-(block_lines, tag))."""
     raw = diff_hunks(base_lines, fork_lines)
     hunks = [
-        Hunk(i, base_lines[a1:a2], fork_lines[b1:b2]) for i, (a1, a2, b1, b2) in enumerate(raw)
+        Hunk(i, base_lines[a1:a2], fork_lines[b1:b2])
+        for i, (a1, a2, b1, b2) in enumerate(raw)
     ]
     plan = []
     for hunk in hunks:
@@ -158,14 +177,16 @@ def build(base_lines, fork_lines, overrides, default=None, remap=None):
             if tag is None:
                 proposed, _ = propose(block if hunk.kind != "delete" else hunk.base)
                 tag = (remap or {}).get(proposed, proposed) if proposed else default
+            # HUNK.BLOCK:FIRST-LAST (HUNK:FIRST-LAST is short for block 0)
+            names = f"{hunk.index}[.]{n}" + (f"|{hunk.index}" if n == 0 else "")
             ranges = sorted(
                 (int(m.group(1)), int(m.group(2)), value)
                 for key, value in overrides.items()
-                for m in [re.fullmatch(rf"{hunk.index}[.]{n}:(\d+)-(\d+)", key)]
+                for m in [re.fullmatch(rf"(?:{names}):(\d+)-(\d+)", key)]
                 if m
             )
             last_of_replace = hunk.kind == "replace" and n == len(hunk.blocks) - 1
-            if not ranges or hunk.kind == "delete" or last_of_replace:
+            if not ranges or hunk.kind == "delete":
                 blocks.append((block, tag, proposed is not None))
                 continue
             # line-range overrides split one block into segments with own tags
@@ -177,6 +198,10 @@ def build(base_lines, fork_lines, overrides, default=None, remap=None):
                 position = last + 1
             if position <= len(block):
                 blocks.append((block[position - 1 :], tag, False))
+            elif last_of_replace:
+                # ranges cover the whole block: an empty part with the block's own
+                # tag still has to stand in for the upstream lines
+                blocks.append(([], tag, False))
         plan.append((hunk, blocks))
     return raw, plan
 
@@ -184,9 +209,15 @@ def build(base_lines, fork_lines, overrides, default=None, remap=None):
 def normalize_fork(text):
     """The old fork gated the alarm clock with CONFIG_ALARM_CLOCK_ENABLED; the
     same switch is FEATURE_ALARMCLOCK here."""
-    text = re.sub(r"#ifdef\s+CONFIG_ALARM_CLOCK_ENABLED", "#if FEATURE_ALARMCLOCK", text)
-    text = re.sub(r"#ifndef\s+CONFIG_ALARM_CLOCK_ENABLED", "#if !FEATURE_ALARMCLOCK", text)
-    text = re.sub(r"defined\(\s*CONFIG_ALARM_CLOCK_ENABLED\s*\)", "FEATURE_ALARMCLOCK", text)
+    text = re.sub(
+        r"#ifdef\s+CONFIG_ALARM_CLOCK_ENABLED", "#if FEATURE_ALARMCLOCK", text
+    )
+    text = re.sub(
+        r"#ifndef\s+CONFIG_ALARM_CLOCK_ENABLED", "#if !FEATURE_ALARMCLOCK", text
+    )
+    text = re.sub(
+        r"defined\(\s*CONFIG_ALARM_CLOCK_ENABLED\s*\)", "FEATURE_ALARMCLOCK", text
+    )
     return re.sub(r"\bCONFIG_ALARM_CLOCK_ENABLED\b", "FEATURE_ALARMCLOCK", text)
 
 
@@ -230,7 +261,9 @@ def compose(base_lines, raw, plan):
         position = a2
         if hunk.kind == "replace":
             merged = merge_adjacent(blocks)
-            for block, tag, _ in merged[:-1]:  # extra lines in front of the replaced part
+            for block, tag, _ in merged[
+                :-1
+            ]:  # extra lines in front of the replaced part
                 if tag == "drop":
                     continue
                 if tag == "always":
@@ -298,7 +331,9 @@ def evaluate(lines, value):
     for line in lines:
         stripped = line.strip()
         match = re.match(r"#if (.*)$", stripped)
-        expression = re.sub(r"\s*(//.*|/[*].*[*]/)\s*$", "", match.group(1)) if match else ""
+        expression = (
+            re.sub(r"\s*(//.*|/[*].*[*]/)\s*$", "", match.group(1)) if match else ""
+        )
         if match and is_gate(expression):
             stack.append(["gate", truth_value(expression, value)])
             continue
@@ -379,6 +414,58 @@ def check(base_lines, raw, plan, composed):
         raise SystemExit(1)
 
 
+DIRECTIVE = re.compile(r"^(\s*)#(if\b.*|else\b.*|endif\b.*)$")
+WRAPPED = re.compile(
+    r"^(\s*)(?:<!--\s*|//\s*|/[*]\s*)#(if\b.*?|else\b.*?|endif\b.*?)\s*(?:-->|[*]/)?\s*$"
+)
+
+
+def wrap_directives(lines, flavor):
+    """Turn `#if X` lines into comments a web file can carry: an HTML comment in a
+    template or html file, // in scripts, /* */ in styles. The Vite plugin
+    (webapp/feature-directives.js) removes them again at build time."""
+    if flavor == "c":
+        return lines
+    out, region = [], "html" if flavor == "html" else "script"
+    for line in lines:
+        stripped = line.strip()
+        if flavor == "vue":
+            if stripped.startswith("<template") and not line.startswith(" "):
+                region = "html"
+            elif stripped.startswith("<script") and not line.startswith(" "):
+                region = "script"
+            elif stripped.startswith("<style") and not line.startswith(" "):
+                region = "style"
+        match = DIRECTIVE.match(line.rstrip("\n"))
+        if match and (is_directive_text(match.group(2))):
+            indent, body = match.group(1), match.group(2)
+            if region == "html":
+                line = f"{indent}<!-- #{body} -->\n"
+            elif region == "style":
+                line = f"{indent}/* #{body} */\n"
+            else:
+                line = f"{indent}// #{body}\n"
+        out.append(line)
+    return out
+
+
+def is_directive_text(body):
+    if body.startswith("if"):
+        return is_gate(body[2:].strip())
+    return body in ("else", "endif")
+
+
+def unwrap_directives(lines):
+    """Inverse of wrap_directives, for the equivalence check."""
+    out = []
+    for line in lines:
+        match = WRAPPED.match(line.rstrip("\n"))
+        if match:
+            line = f"{match.group(1)}#{match.group(2)}\n"
+        out.append(line)
+    return out
+
+
 def to_config_style(lines):
     """FEATURE_X -> defined(CONFIG_FEATURE_X) in the directives (for components,
     which cannot include main/feature_config.h)."""
@@ -413,15 +500,22 @@ def add_feature_include(lines):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("command", choices=["analyze", "apply", "show"])
-    parser.add_argument("--hunk", action="append", default=[], help="for show: HUNK or HUNK.BLOCK")
+    parser.add_argument(
+        "--hunk", action="append", default=[], help="for show: HUNK or HUNK.BLOCK"
+    )
     parser.add_argument("file", help="path relative to the repository root")
     parser.add_argument("--map")
     parser.add_argument("--default", help="tag for blocks without a keyword proposal")
+    parser.add_argument("--vote", choices=["majority", "first"], default="majority")
     parser.add_argument(
         "--remap",
         help="FROM=TO,FROM=TO: replace proposed tags (e.g. FEATURE_OVERLAYS=FORK_IMAGE_PIPELINE)",
     )
-    parser.add_argument("--only", choices=["unresolved", "mixed", "cross"], help="analyze: list only these blocks")
+    parser.add_argument(
+        "--only",
+        choices=["unresolved", "mixed", "cross"],
+        help="analyze: list only these blocks",
+    )
     parser.add_argument(
         "--style",
         choices=["macro", "config"],
@@ -429,22 +523,37 @@ def main():
         help="macro: #if FEATURE_X (main/, needs feature_config.h); config: "
         "#if defined(CONFIG_FEATURE_X) (components/).",
     )
+    parser.add_argument(
+        "--flavor",
+        choices=["auto", "c", "vue", "js", "html"],
+        default="auto",
+        help="comment style of the directives (auto: from the file extension)",
+    )
     parser.add_argument("--base")
     parser.add_argument("--fork", default="fork-import")
     args = parser.parse_args()
 
-    base_ref = args.base or subprocess.run(
-        ["git", "rev-list", "--max-parents=0", "HEAD"],
-        cwd=ROOT, capture_output=True, text=True,
-    ).stdout.split()[0]
+    base_ref = (
+        args.base
+        or subprocess.run(
+            ["git", "rev-list", "--max-parents=0", "HEAD"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        ).stdout.split()[0]
+    )
     base = git_show(base_ref, args.file)
     fork = git_show(args.fork, args.file)
     fork = normalize_fork(fork) if fork is not None else None
     if base is None or fork is None:
         sys.exit(f"{args.file} must exist in both {base_ref[:7]} and {args.fork}")
     base_lines, fork_lines = base.splitlines(True), fork.splitlines(True)
+    global VOTE
+    VOTE = args.vote
     overrides = load_map(args.map)
-    remap = dict(pair.split("=") for pair in args.remap.split(",")) if args.remap else None
+    remap = (
+        dict(pair.split("=") for pair in args.remap.split(",")) if args.remap else None
+    )
     raw, plan = build(base_lines, fork_lines, overrides, args.default, remap)
 
     if args.command == "show":
@@ -452,7 +561,9 @@ def main():
             for hunk, blocks in plan:
                 for n, (block, tag, auto) in enumerate(blocks):
                     label = f"{hunk.index}.{n}" if len(blocks) > 1 else f"{hunk.index}"
-                    if wanted in (label, str(hunk.index)) and (wanted == label or "." not in wanted):
+                    if wanted in (label, str(hunk.index)) and (
+                        wanted == label or "." not in wanted
+                    ):
                         print(f"--- {label} ({hunk.kind}, tag {tag})")
                         if hunk.base:
                             print("".join("- " + l for l in hunk.base), end="")
@@ -488,7 +599,11 @@ def main():
                     continue
                 if args.only == "mixed" and not (mixed and auto):
                     continue
-                extra = "  votes=" + ",".join(f"{k[8:]}:{v}" for k, v in votes.items()) if mixed else ""
+                extra = (
+                    "  votes=" + ",".join(f"{k[8:]}:{v}" for k, v in votes.items())
+                    if mixed
+                    else ""
+                )
                 print(f"{label:>6} {hunk.kind:<7} {size:<9} {shown:<26} {first}{extra}")
         print(f"\n{len(plan)} hunks, {unresolved} without a proposal")
         return 1 if unresolved else 0
@@ -497,7 +612,14 @@ def main():
         sys.exit("unresolved hunks: run `analyze` and add them to the map")
     composed = compose(base_lines, raw, plan)
     check(base_lines, raw, plan, composed)
-    if args.style == "config":
+    flavor = args.flavor
+    if flavor == "auto":
+        flavor = {".vue": "vue", ".js": "js", ".html": "html"}.get(
+            Path(args.file).suffix, "c"
+        )
+    if flavor != "c":
+        composed = wrap_directives(composed, flavor)
+    elif args.style == "config":
         composed = to_config_style(composed)
     else:
         composed = add_feature_include(composed)

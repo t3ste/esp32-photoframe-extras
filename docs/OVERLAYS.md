@@ -1,5 +1,7 @@
 # Weather + Headline Overlays
 
+> **Build option:** compiled in only with `python build.py --with overlays`; without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
+
 An on-device alternative to the companion
 [esp32-photoframe-server](https://github.com/aitjcize/esp32-photoframe-server)'s weather overlay
 and smart collage — no separate server required. Two independently toggleable overlays, drawn as a

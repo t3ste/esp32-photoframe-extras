@@ -11,24 +11,24 @@ python build.py --board seeedstudio_xiao_ee02 --all-features --without https
 python build.py --board seeedstudio_xiao_ee02 --list-features
 ```
 
-| Option (`--with ...`) | What it adds | Needs |
-| --- | --- | --- |
-| `telegram` | Telegram bot photo rotation, remote commands, orientation pairing | - |
-| `overlays` | Weather and headline overlays, captions, low-battery badge | - |
-| `agenda` | Agenda mode: ToDo and calendars A-E, 7-day grid, colour profiles | - |
-| `chimes` | Beep feedback for firmware events | speaker |
-| `climate` | Temperature/humidity readout, badges and history | temperature/humidity sensor |
-| `alarmclock` | Bedside alarm clock with schedule and button UI | speaker |
-| `voice-stop` | Stop a ringing alarm with a spoken word | `alarmclock`, speaker, microphone |
-| `battery-history` | Battery history chart and days-remaining estimate | - |
-| `display-history` | No-repeat random rotation | - |
-| `https` | HTTPS web UI on port 443 | - |
-| `offline-hotspot` | Offline mode and on-demand hotspot (hold BOOT for 3 s) | - |
-| `error-banner` | On-display error banner for WiFi and internet failures | - |
-| `ota-channel` | OTA release channel (stable/pre-release) and firmware variant choice | - |
-| `wifi-resilience` | WiFi options: credential-wipe safety, extended retry, battery TX cap, performance mode | - |
-| `facecrop` | Face-aware crop sidecars and Cover/Fit image variants | - |
-| `fixes` | General bug fixes and robustness improvements | - |
+| Option (`--with ...`) | What it adds | Needs | Details |
+| --- | --- | --- | --- |
+| `telegram` | Telegram bot photo rotation, remote commands, orientation pairing | - | [TELEGRAM.md](TELEGRAM.md) |
+| `overlays` | Weather and headline overlays, captions, low-battery badge | - | [OVERLAYS.md](OVERLAYS.md) |
+| `agenda` | Agenda mode: ToDo and calendars A-E, 7-day grid, colour profiles | - | [CALENDAR_RRULE_SUPPORT.md](CALENDAR_RRULE_SUPPORT.md) |
+| `chimes` | Beep feedback for firmware events | speaker | [CHIMES_CLIMATE_OVERHEAD.md](CHIMES_CLIMATE_OVERHEAD.md) |
+| `climate` | Temperature/humidity readout, badges and history | temperature/humidity sensor | [CHIMES_CLIMATE_OVERHEAD.md](CHIMES_CLIMATE_OVERHEAD.md) |
+| `alarmclock` | Bedside alarm clock with schedule and button UI | speaker | [ALARMCLOCK_USER_GUIDE.md](ALARMCLOCK_USER_GUIDE.md) |
+| `voice-stop` | Stop a ringing alarm with a spoken word | `alarmclock`, speaker, microphone | [ALARMCLOCK_USER_GUIDE.md](ALARMCLOCK_USER_GUIDE.md) |
+| `battery-history` | Battery history chart and days-remaining estimate | - | |
+| `display-history` | No-repeat random rotation | - | |
+| `https` | HTTPS web UI on port 443 | - | |
+| `offline-hotspot` | Offline mode and on-demand hotspot (hold BOOT for 3 s) | - | |
+| `error-banner` | On-display error banner for WiFi and internet failures | - | |
+| `ota-channel` | OTA release channel (stable/pre-release) and firmware variant choice | - | |
+| `wifi-resilience` | WiFi options: cold-boot retries instead of an early credential wipe, option to keep the credentials, battery TX cap, performance mode | - | |
+| `facecrop` | Face-aware crop sidecars and Cover/Fit image variants | - | [FACE_CROP.md](FACE_CROP.md), [SCALE_MODE.md](SCALE_MODE.md) |
+| `fixes` | General bug fixes and robustness improvements | - | |
 
 Which optional hardware each board has:
 

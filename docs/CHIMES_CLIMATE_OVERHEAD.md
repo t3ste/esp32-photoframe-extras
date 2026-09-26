@@ -1,5 +1,7 @@
 # Chimes/Climate Flash Overhead
 
+> **Build option:** compiled in only with `python build.py --with chimes` / `--with climate`; without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
+
 Measured via `idf.py size-files` (reads the linker `.map` file), comparing
 `waveshare_photopainter_73` (has speaker + SHTC3 climate sensor) against
 `seeedstudio_xiao_ee02` (has neither).

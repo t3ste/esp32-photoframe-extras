@@ -1,5 +1,7 @@
 # Face-aware crop metadata (process-cli)
 
+> **Build option:** compiled in only with `python build.py --with facecrop`; without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
+
 An opt-in `process-cli` feature: detect faces in a source photo, compute a crop rectangle that
 keeps large faces fully visible for a given display's aspect ratio, and save that as a small
 versioned JSON file next to the processed image. Off by default - existing `photoframe-process`

@@ -204,6 +204,11 @@ def _unsupported(name, board, excluded):
     return None
 
 
+def is_supported(name, board):
+    """True if feature 'name' can be built for 'board'."""
+    return _unsupported(normalize(name), board, ()) is None
+
+
 def resolve(board, requested=(), excluded=(), all_features=False):
     """Decide which features get built.
 

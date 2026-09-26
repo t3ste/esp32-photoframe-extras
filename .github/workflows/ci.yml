@@ -86,3 +86,6 @@ jobs:
 
       - name: Check board capability and feature tables
         run: python scripts/check_capabilities.py
+
+      - name: Static cross-reference check of the feature guards
+        run: python scripts/migrate/xref.py

@@ -1,5 +1,7 @@
 # Telegram Bot Integration
 
+> **Build option:** compiled in only with `python build.py --with telegram`; without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
+
 A rotation mode that receives images directly via the [Telegram Bot API](https://core.telegram.org/bots/api),
 independent of the existing SD-card and URL-fetch rotation modes. Unlike the companion
 [esp32-photoframe-server](https://github.com/aitjcize/esp32-photoframe-server)'s Telegram source

@@ -1,5 +1,7 @@
 # Alarm Clock - user guide
 
+> **Build option:** compiled in only with `python build.py --with alarmclock` (and `--with voice-stop` for the spoken stop word`; without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
+
 The frame can act as a bedside alarm clock: at the set time it rings a melody
 on its speaker. You stop it with the KEY button, with a spoken **stop word**, or
 from the Web UI.
