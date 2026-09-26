@@ -19,6 +19,39 @@ FetchContent_MakeAvailable(googletest)
 # Enable testing
 enable_testing()
 
+# There is no board on the host: skip the hardware checks of main/feature_config.h.
+# (stubs/sdkconfig.h is empty, so every optional feature is off unless a target
+# defines its CONFIG_* symbols - see FORK_FEATURE_DEFS below.)
+add_compile_definitions(FEATURE_CONFIG_NO_HW_CHECK)
+
+# Every optional feature switched on, as `build.py --all-features` builds it. The fork
+# tests below compile the feature modules and the shared image pipeline with it; the
+# plain tests above stay on the upstream code.
+set(FORK_FEATURE_DEFS
+  CONFIG_FEATURE_TELEGRAM
+  CONFIG_FEATURE_OVERLAYS
+  CONFIG_FEATURE_AGENDA
+  CONFIG_FEATURE_CHIMES
+  CONFIG_FEATURE_CLIMATE
+  CONFIG_FEATURE_ALARMCLOCK
+  CONFIG_FEATURE_VOICE_STOP
+  CONFIG_FEATURE_BATTERY_HISTORY
+  CONFIG_FEATURE_DISPLAY_HISTORY
+  CONFIG_FEATURE_HTTPS
+  CONFIG_FEATURE_OFFLINE_HOTSPOT
+  CONFIG_FEATURE_ERROR_BANNER
+  CONFIG_FEATURE_OTA_CHANNEL
+  CONFIG_FEATURE_WIFI_RESILIENCE
+  CONFIG_FEATURE_FACECROP
+  CONFIG_FORK_FIXES
+  CONFIG_FORK_HTTP_FETCH
+  CONFIG_FORK_WEATHER
+  CONFIG_FORK_CLIMATE_CORE
+  CONFIG_FORK_EXIF
+  CONFIG_FORK_AUDIO_HAL
+  CONFIG_FORK_IMAGE_PIPELINE
+)
+
 # Cron engine tests
 add_executable(
   cron_test
@@ -96,12 +129,195 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# Microphone level maths (RMS/peak in dBFS, text bar) behind the console level test
+# (voice-stop feature)
+add_executable(
+  mic_level_test
+  test_mic_level.cpp
+  test_mic_detect.cpp
+  ../main/mic_level.c
+  ../main/mic_detect.c
+)
+
+target_compile_definitions(
+  mic_level_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_link_libraries(
+  mic_level_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  mic_level_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# Ring pattern of the alarm (notes / pauses / when the microphone must ignore the room)
+# (alarmclock feature)
+add_executable(
+  alarm_pattern_test
+  test_alarm_pattern.cpp
+  ../main/alarm_pattern.c
+)
+
+target_compile_definitions(
+  alarm_pattern_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_link_libraries(
+  alarm_pattern_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  alarm_pattern_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/board_hal/include
+)
+
+# Stop-word (keyword) recognition: MFCC + DTW template matching, tested on
+# text-to-speech samples (host_tests/data/kws) (voice-stop feature)
+add_executable(
+  kws_test
+  test_kws.cpp
+  ../main/kws.c
+  ../main/alarm_pattern.c
+)
+
+target_compile_definitions(
+  kws_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  KWS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/kws"
+)
+
+target_link_libraries(
+  kws_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  kws_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# Headline/RSS extraction (pure parsing logic split out of headlines.c's
+# network-calling headlines_fetch(), specifically so it's host-testable
+# without a real HTTP stack) (overlays feature)
+add_executable(
+  headlines_test
+  test_headlines.cpp
+  ../main/headlines.c
+  stubs/fake_http_fetch.c
+  stubs/fake_image_processor_sanitize.c
+)
+
+target_compile_definitions(
+  headlines_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_link_libraries(
+  headlines_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  headlines_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# ToDo (todo.txt) parsing (pure parsing logic split out of todo.c's
+# network-calling todo_fetch(), specifically so it's host-testable without
+# a real HTTP stack) - same shape as headlines_test above (agenda feature)
+add_executable(
+  todo_test
+  test_todo.cpp
+  ../main/todo.c
+  stubs/fake_http_fetch.c
+  stubs/fake_image_processor_sanitize.c
+)
+
+target_compile_definitions(
+  todo_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_link_libraries(
+  todo_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  todo_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# Calendar (ICS/iCalendar) parsing (pure parsing logic split out of
+# calendar_ics.c's network-calling calendar_ics_fetch(), specifically so
+# it's host-testable without a real HTTP stack) - same shape as
+# headlines_test/todo_test above (agenda feature)
+add_executable(
+  calendar_ics_test
+  test_calendar_ics.cpp
+  ../main/calendar_ics.c
+  stubs/fake_http_fetch.c
+  stubs/fake_image_processor_sanitize.c
+)
+
+target_compile_definitions(
+  calendar_ics_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_link_libraries(
+  calendar_ics_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  calendar_ics_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Discover tests
 include(GoogleTest)
 gtest_discover_tests(cron_test)
 gtest_discover_tests(wake_schedule_test)
 gtest_discover_tests(http_auth_test)
 gtest_discover_tests(network_backoff_test)
+gtest_discover_tests(mic_level_test)
+gtest_discover_tests(alarm_pattern_test)
+gtest_discover_tests(kws_test)
+gtest_discover_tests(headlines_test)
+gtest_discover_tests(todo_test)
+gtest_discover_tests(calendar_ics_test)
 
 # On-device image pipeline characterization tests (host build of
 # main/image_processor.c against ESP-IDF stubs + system libpng)
@@ -169,3 +385,52 @@ target_link_libraries(
 )
 
 gtest_discover_tests(display_flow_test)
+
+# The same two characterization tests once more, on the optional image pipeline
+# (CONFIG_FORK_IMAGE_PIPELINE: caption/overlay drawing, streaming JPEG decode, ...).
+# The plain variants above prove the upstream behaviour is untouched.
+foreach(test_name image_pipeline display_flow)
+  set(fork_target ${test_name}_fork_test)
+  set(fork_sources
+    test_${test_name}.cpp
+    ../main/image_processor.c
+    stubs/esp_stubs.c
+    stubs/fake_display_manager.c
+    stubs/fake_config_manager.c
+    stubs/fake_processing_settings.c
+    stubs/fork_stubs.c
+    ../components/epaper_src/Fonts/font24.c
+  )
+  if(test_name STREQUAL display_flow)
+    list(APPEND fork_sources ../main/display_flow.c stubs/fake_storage.c)
+  endif()
+
+  add_executable(${fork_target} ${fork_sources})
+
+  target_compile_definitions(
+    ${fork_target}
+    PRIVATE
+    ${FORK_FEATURE_DEFS}
+  )
+  if(test_name STREQUAL display_flow)
+    target_compile_definitions(${fork_target} PRIVATE FS_MOUNT_POINT="pf_storage_fork")
+  endif()
+
+  target_include_directories(
+    ${fork_target}
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+    ${CMAKE_CURRENT_SOURCE_DIR}/../main
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+  )
+
+  target_link_libraries(
+    ${fork_target}
+    GTest::gtest_main
+    PNG::PNG
+    m
+  )
+
+  gtest_discover_tests(${fork_target} TEST_SUFFIX " (fork)")
+endforeach()

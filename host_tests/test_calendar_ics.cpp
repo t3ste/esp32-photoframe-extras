@@ -281,12 +281,12 @@ TEST_F(CalendarIcs, DailyRruleExpandsAcrossWideThirtyDayWindow)
     time_t window_start = make_utc(2024, 1, 15, 0, 0, 0);
     time_t window_end = window_start + 30 * 86400;  // 30-day expansion window
     ics_event_list_t out = parse(ics, window_start, window_end);
-    // ICS_MAX_EVENTS caps the list at 24, so a genuinely daily event across
-    // 30 days hits that cap rather than reaching all 30 - the point of this
-    // test is that it reaches the cap (not silently stopping at ~8).
-    EXPECT_EQ(out.count, 24);
+    // ICS_MAX_EVENTS (48) is above the 30 daily occurrences of the window, so all
+    // of them must come through - the point of this test is that the expansion
+    // does not silently stop at ~8.
+    EXPECT_EQ(out.count, 30);
     EXPECT_EQ(out.events[0].start, make_utc(2024, 1, 15, 9, 0, 0));
-    EXPECT_EQ(out.events[23].start, make_utc(2024, 2, 7, 9, 0, 0));
+    EXPECT_EQ(out.events[29].start, make_utc(2024, 2, 13, 9, 0, 0));
 }
 
 TEST_F(CalendarIcs, DailyRruleClosedFormJumpFromFarPastDtstart)
