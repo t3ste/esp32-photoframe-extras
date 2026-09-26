@@ -8,7 +8,14 @@
 
 #include "board_hal.h"
 #include "cJSON.h"
+#include "feature_config.h"
+#if FEATURE_AGENDA
+#include "calendar_ics.h"
+#endif
 #include "cert_pin.h"
+#if FEATURE_CHIMES
+#include "chime.h"
+#endif
 #include "color_palette.h"
 #include "config.h"
 #include "config_manager.h"
@@ -32,6 +39,9 @@
 #include "power_manager.h"
 #include "processing_settings.h"
 #include "storage.h"
+#if FEATURE_TELEGRAM
+#include "telegram_bot.h"
+#endif
 #include "wifi_manager.h"
 
 static const char *TAG = "utils";
@@ -149,9 +159,78 @@ const char *utils_consume_config_error(void)
     return out;
 }
 
+#if FEATURE_AGENDA
+// Applies one of the three extra ICS sources' URL fields (see
+// NVS_AGENDA_CAL_C_URL_KEY etc. in config.h): if the incoming value differs
+// from what's already stored, OR the matching "<field>_refetch" flag was
+// sent (the Web UI's "refresh now" button, which doesn't change the URL
+// itself), does a one-shot, unconditional download into `cache_path` right
+// now - unlike Calendar A/B, these sources are otherwise never fetched
+// again on their own once saved. A fetch failure is logged but doesn't fail
+// the whole config save (the URL is still saved either way - a currently
+// unreachable source may become reachable later, and there's no ETag/prior
+// state to roll back to). `set_url` is one of the config_manager setters
+// for this slot (config_manager_set_agenda_cal_c_url() etc.).
+//
+// A successful fetch also deletes `flat_cache_path` (the already-expanded
+// cache agenda_manager.c's load_extra_ics_source() otherwise keeps reusing
+// for up to AGENDA_EXTRA_ICS_EXPAND_DAYS) - without this, a fresh raw file
+// from "refresh now" or a changed URL could sit unused for weeks behind a
+// still-fresh-looking old expansion, defeating the whole point of the
+// button.
+static void apply_extra_ics_url(cJSON *root, const char *url_field, const char *refetch_field,
+                                const char *old_url, const char *cache_path,
+                                const char *flat_cache_path, void (*set_url)(const char *))
+{
+    cJSON *url_item = cJSON_GetObjectItem(root, url_field);
+    const char *new_url =
+        (url_item && cJSON_IsString(url_item)) ? cJSON_GetStringValue(url_item) : NULL;
+    // Same "empty means untouched, not cleared" write-only convention as
+    // agenda_cal_url/_url2 above - never treat an empty string as an actual
+    // new value.
+    bool have_new_url = new_url && new_url[0] != '\0';
+    cJSON *refetch_item = cJSON_GetObjectItem(root, refetch_field);
+    bool refetch_requested = refetch_item && cJSON_IsTrue(refetch_item);
+
+    bool url_changed = have_new_url && strcmp(new_url, old_url) != 0;
+    const char *effective_url = have_new_url ? new_url : old_url;
+
+    if ((url_changed || refetch_requested) && effective_url && effective_url[0] != '\0') {
+        esp_err_t err = calendar_ics_fetch_once(effective_url, 0, cache_path);
+        if (err == ESP_OK) {
+            unlink(flat_cache_path);
+            ESP_LOGI(TAG, "Fetched extra ICS source (%s)", url_field);
+        } else {
+            ESP_LOGW(TAG, "Failed to fetch extra ICS source (%s): %s", url_field,
+                     esp_err_to_name(err));
+        }
+    }
+    if (have_new_url) {
+        set_url(new_url);
+    }
+}
+
+#endif
 esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
 {
     cJSON *item;
+#if FORK_ANY
+    // Every field below is independent - one field failing validation must
+    // never discard every field after it in the same request. Confirmed
+    // live (2026-09-20): a single non-numeric telegram_chat_id (or, in the
+    // separate incident that surfaced this, a WiFi SSID unreachable from
+    // this network) made this function `return ESP_FAIL` partway through,
+    // silently dropping every remaining field in a large Settings-page
+    // config import - Agenda, Chimes, Climate, Overlays, all of it - even
+    // though the request otherwise had nothing wrong with those fields.
+    // `had_error` now just records that *something* failed so the HTTP
+    // handler can still report it, without stopping unrelated fields from
+    // applying. utils_consume_config_error() only ever holds the most
+    // recent message if more than one field fails in the same request -
+    // still a strict improvement over previously reporting exactly one
+    // failure and hiding how much else silently never happened.
+    bool had_error = false;
+#endif
 
     // General
     item = cJSON_GetObjectItem(root, "device_name");
@@ -173,16 +252,53 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     item = cJSON_GetObjectItem(root, "timezone");
     if (item && cJSON_IsString(item)) {
         const char *tz = cJSON_GetStringValue(item);
+#if FORK_FIXES
+        bool tz_ok = true;
+#endif
         if (tz[0] == '\0') {
             utils_set_config_error("Time zone must not be empty");
+#if FORK_FIXES
+            tz_ok = false;
+#else
             return ESP_FAIL;
+#endif
         }
+#if FORK_FIXES
+        if (tz_ok) {
+            for (const unsigned char *p = (const unsigned char *) tz; *p != '\0'; p++) {
+                if (*p < 0x20 || *p > 0x7e) {
+                    utils_set_config_error("Time zone must be printable ASCII");
+                    tz_ok = false;
+                    break;
+                }
+#else
         for (const unsigned char *p = (const unsigned char *) tz; *p != '\0'; p++) {
             if (*p < 0x20 || *p > 0x7e) {
                 utils_set_config_error("Time zone must be printable ASCII");
                 return ESP_FAIL;
+#endif
             }
         }
+#if FORK_FIXES
+        if (tz_ok) {
+            esp_err_t tz_err = config_manager_set_timezone(tz);
+            if (tz_err == ESP_ERR_INVALID_SIZE) {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "Time zone is too long (max %d characters)",
+                         TIMEZONE_MAX_LEN - 1);
+                utils_set_config_error(msg);
+                tz_ok = false;
+            } else if (tz_err != ESP_OK) {
+                utils_set_config_error("Failed to save the time zone");
+                tz_ok = false;
+            } else {
+                setenv("TZ", tz, 1);
+                tzset();
+            }
+        }
+        if (!tz_ok) {
+            had_error = true;
+#else
         esp_err_t tz_err = config_manager_set_timezone(tz);
         if (tz_err == ESP_ERR_INVALID_SIZE) {
             char msg[64];
@@ -193,9 +309,12 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         } else if (tz_err != ESP_OK) {
             utils_set_config_error("Failed to save the time zone");
             return ESP_FAIL;
+#endif
         }
+#if !(FORK_FIXES)
         setenv("TZ", tz, 1);
         tzset();
+#endif
     }
 
     // Advanced network settings (#43): custom NTP server, static IP and DNS
@@ -222,9 +341,17 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         const char *addr = cJSON_GetStringValue(item);
         if (addr[0] != '\0' && esp_netif_str_to_ip4(addr, &parsed) != ESP_OK) {
             utils_set_config_error("Invalid static IP address");
+#if FORK_FIXES
+            had_error = true;
+        } else {
+            config_manager_set_static_ip(addr);
+#else
             return ESP_FAIL;
+#endif
         }
+#if !(FORK_FIXES)
         config_manager_set_static_ip(addr);
+#endif
     }
 
     item = cJSON_GetObjectItem(root, "static_netmask");
@@ -232,9 +359,17 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         const char *addr = cJSON_GetStringValue(item);
         if (addr[0] != '\0' && esp_netif_str_to_ip4(addr, &parsed) != ESP_OK) {
             utils_set_config_error("Invalid static netmask");
+#if FORK_FIXES
+            had_error = true;
+        } else {
+            config_manager_set_static_netmask(addr);
+#else
             return ESP_FAIL;
+#endif
         }
+#if !(FORK_FIXES)
         config_manager_set_static_netmask(addr);
+#endif
     }
 
     item = cJSON_GetObjectItem(root, "static_gateway");
@@ -242,28 +377,63 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         const char *addr = cJSON_GetStringValue(item);
         if (addr[0] != '\0' && esp_netif_str_to_ip4(addr, &parsed) != ESP_OK) {
             utils_set_config_error("Invalid static gateway");
+#if FORK_FIXES
+            had_error = true;
+        } else {
+            config_manager_set_static_gateway(addr);
+#else
             return ESP_FAIL;
+#endif
         }
+#if !(FORK_FIXES)
         config_manager_set_static_gateway(addr);
+#endif
     }
 
     item = cJSON_GetObjectItem(root, "ip_mode");
     if (item && cJSON_IsString(item)) {
         bool want_static = (strcmp(cJSON_GetStringValue(item), "static") == 0);
         if (want_static) {
+#if FORK_FIXES
+            bool static_ok = true;
+#endif
             if (esp_netif_str_to_ip4(config_manager_get_static_ip(), &parsed) != ESP_OK) {
                 utils_set_config_error("Invalid static IP address");
+#if FORK_FIXES
+                had_error = true;
+                static_ok = false;
+#else
                 return ESP_FAIL;
+#endif
             }
             if (esp_netif_str_to_ip4(config_manager_get_static_netmask(), &parsed) != ESP_OK) {
                 utils_set_config_error("Invalid static netmask");
+#if FORK_FIXES
+                had_error = true;
+                static_ok = false;
+#else
                 return ESP_FAIL;
+#endif
             }
             if (esp_netif_str_to_ip4(config_manager_get_static_gateway(), &parsed) != ESP_OK) {
                 utils_set_config_error("Invalid static gateway");
-                return ESP_FAIL;
+#if FORK_FIXES
+                had_error = true;
+                static_ok = false;
             }
+            // Only actually switch to static mode if all three fields it
+            // depends on are valid - leaving ip_mode alone (not forcing back
+            // to DHCP) otherwise, same "don't touch what wasn't asked for"
+            // spirit as every other skipped field in this function.
+            if (static_ok) {
+                config_manager_set_ip_mode(IP_MODE_STATIC);
+#else
+                return ESP_FAIL;
+#endif
+            }
+#if !(FORK_FIXES)
             config_manager_set_ip_mode(IP_MODE_STATIC);
+#endif
         } else {
             config_manager_set_ip_mode(IP_MODE_DHCP);
         }
@@ -274,9 +444,17 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         const char *dns = cJSON_GetStringValue(item);
         if (dns[0] != '\0' && esp_netif_str_to_ip4(dns, &parsed) != ESP_OK) {
             utils_set_config_error("Invalid DNS server address");
+#if FORK_FIXES
+            had_error = true;
+        } else {
+            config_manager_set_dns_server(dns);
+#else
             return ESP_FAIL;
+#endif
         }
+#if !(FORK_FIXES)
         config_manager_set_dns_server(dns);
+#endif
     }
 
     // WiFi
@@ -307,9 +485,24 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
                 }
                 ESP_LOGI(TAG, "Successfully connected and saved WiFi credentials");
             } else {
+#if FORK_FIXES
+                // Deliberately falls through instead of returning - every
+                // other field in this function is independent and applies
+                // on its own merits; a bad SSID (e.g. importing another
+                // device's config export onto one that isn't on the same
+                // network) shouldn't silently discard every field still to
+                // come below just because it happened to be processed
+                // first. Confirmed live (2026-09-20) this WAS the one
+                // early-return in an otherwise skip-and-continue function -
+                // not what actually caused that incident (a request-body
+                // size limit rejected the whole PATCH before this code
+                // ever ran), but a real latent bug in its own right.
+#endif
                 ESP_LOGW(TAG, "Failed to connect to new WiFi, reverting to previous credentials");
                 wifi_manager_connect(current_ssid, config_manager_get_wifi_password());
+#if !(FORK_FIXES)
                 return ESP_FAIL;
+#endif
             }
         }
     }
@@ -336,7 +529,11 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
             display_manager_initialize_paint();
         } else {
             utils_set_config_error("Display rotation must be 0 or 180 degrees");
+#if FORK_FIXES
+            had_error = true;
+#else
             return ESP_FAIL;
+#endif
         }
     }
 
@@ -348,8 +545,24 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     }
 
     // Rotation schedule: an array of cron expressions. Validate every rule
+#if FORK_FIXES
+    // before applying any; reject just THIS field (not the rest of the
+    // request - see this function's own top-of-function comment) on the
+    // first bad one. The do/while(0)+break wrapper exists purely so a
+    // validation failure partway through the array can skip straight to
+    // "leave the existing schedule alone" without an early function return.
+#else
     // before applying any; reject the whole request on the first bad one.
+#endif
     item = cJSON_GetObjectItem(root, "rotate_cron");
+#if FORK_FIXES
+    if (item && cJSON_IsArray(item))
+        do {
+            int count = cJSON_GetArraySize(item);
+            if (count > MAX_CRON_RULES) {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "Too many schedule rules (max %d)", MAX_CRON_RULES);
+#else
     if (item && cJSON_IsArray(item)) {
         int count = cJSON_GetArraySize(item);
         if (count > MAX_CRON_RULES) {
@@ -383,16 +596,72 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
             if (!cron_parse(expr, &tmp)) {
                 char msg[96];
                 snprintf(msg, sizeof(msg), "Invalid cron expression: %s", expr);
+#endif
                 utils_set_config_error(msg);
+#if FORK_FIXES
+                had_error = true;
+                break;
+#else
                 return ESP_FAIL;
+#endif
             }
+#if FORK_FIXES
+            // An empty schedule is ambiguous (it would silently fall back to
+            // hourly rotation, and the empty set can't be restored after a
+            // reboot). Turning auto_rotate off is the way to stop rotating.
+            if (count == 0) {
+                utils_set_config_error("Schedule must contain at least one rule");
+                had_error = true;
+                break;
+#else
             if (n < MAX_CRON_RULES) {
                 rules[n++] = expr;
+#endif
             }
+#if FORK_FIXES
+            const char *rules[MAX_CRON_RULES];
+            int n = 0;
+            cJSON *el;
+            bool rule_error = false;
+            cJSON_ArrayForEach(el, item)
+            {
+                if (!cJSON_IsString(el)) {
+                    utils_set_config_error("Schedule rule must be a string");
+                    rule_error = true;
+                    break;
+                }
+                const char *expr = cJSON_GetStringValue(el);
+                if (strlen(expr) >= CRON_RULE_MAX_LEN) {
+                    utils_set_config_error("Cron expression too long");
+                    rule_error = true;
+                    break;
+                }
+                cron_rule_t tmp;
+                if (!cron_parse(expr, &tmp)) {
+                    char msg[96];
+                    snprintf(msg, sizeof(msg), "Invalid cron expression: %s", expr);
+                    utils_set_config_error(msg);
+                    rule_error = true;
+                    break;
+                }
+                if (n < MAX_CRON_RULES) {
+                    rules[n++] = expr;
+                }
+            }
+            if (rule_error) {
+                had_error = true;
+                break;
+            }
+            config_manager_set_cron_rules(rules, n);
+            power_manager_reset_rotate_timer();
+        } while (0);
+    else {
+#else
         }
         config_manager_set_cron_rules(rules, n);
         power_manager_reset_rotate_timer();
     } else {
+#endif
         // Backward compatibility: convert a legacy interval to a cron rule.
         item = cJSON_GetObjectItem(root, "rotate_interval");
         if (item && cJSON_IsNumber(item)) {
@@ -407,6 +676,10 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         rotation_mode_t mode = ROTATION_MODE_STORAGE;
         if (strcmp(mode_str, "url") == 0)
             mode = ROTATION_MODE_URL;
+#if FEATURE_TELEGRAM
+        else if (strcmp(mode_str, "telegram") == 0)
+            mode = ROTATION_MODE_TELEGRAM;
+#endif
         // Backwards compatibility: accept "sdcard" as alias for "storage"
         if (strcmp(mode_str, "sdcard") == 0)
             mode = ROTATION_MODE_STORAGE;
@@ -441,13 +714,30 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
                 if (pin_ret != ESP_OK) {
                     ESP_LOGE(TAG, "Cert pin failed, rejecting config: %s", err_buf);
                     utils_set_cert_pin_error(err_buf);
+#if FORK_FIXES
+                    had_error = true;
+                } else {
+                    config_manager_set_image_url(new_url);
+#else
                     return ESP_FAIL;
+#endif
                 }
+#if FORK_FIXES
+            } else {
+                if (cur_is_https) {
+                    // Downgrading to HTTP/empty: clear the pinned cert
+                    cert_pin_clear();
+                }
+                config_manager_set_image_url(new_url);
+#else
             } else if (cur_is_https) {
                 // Downgrading to HTTP/empty: clear the pinned cert
                 cert_pin_clear();
+#endif
             }
+#if !(FORK_FIXES)
             config_manager_set_image_url(new_url);
+#endif
         }
     }
 
@@ -471,10 +761,18 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         esp_err_t pw_err = config_manager_set_http_password(cJSON_GetStringValue(item));
         if (pw_err == ESP_ERR_INVALID_SIZE) {
             utils_set_config_error("Device password is too long (max 63 bytes)");
+#if FORK_FIXES
+            had_error = true;
+#else
             return ESP_FAIL;
+#endif
         } else if (pw_err != ESP_OK) {
             utils_set_config_error("Failed to save the device password");
+#if FORK_FIXES
+            had_error = true;
+#else
             return ESP_FAIL;
+#endif
         }
         // Lockouts earned against the old password shouldn't outlive it.
         http_auth_limiter_reset();
@@ -501,6 +799,57 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         config_manager_set_ha_url(cJSON_GetStringValue(item));
     }
 
+#if FORK_FIXES
+    item = cJSON_GetObjectItem(root, "ha_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_ha_enabled(cJSON_IsTrue(item));
+    }
+
+#endif
+#if FEATURE_TELEGRAM
+    // Telegram Bot
+    item = cJSON_GetObjectItem(root, "telegram_bot_token");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_telegram_bot_token(cJSON_GetStringValue(item));
+    }
+
+    item = cJSON_GetObjectItem(root, "telegram_chat_id");
+    if (item && cJSON_IsString(item)) {
+        const char *chat_id = cJSON_GetStringValue(item);
+        // Must be empty (clearing) or a plain integer (optionally negative -
+        // Telegram uses negative IDs for groups/supergroups).
+        bool valid = true;
+        for (size_t i = 0; chat_id[i] != '\0' && valid; i++) {
+            if (chat_id[i] == '-' && i == 0) {
+                continue;
+            }
+            if (chat_id[i] < '0' || chat_id[i] > '9') {
+                valid = false;
+            }
+        }
+        if (!valid) {
+            utils_set_config_error("Telegram chat ID must be a numeric ID");
+            had_error = true;
+        } else {
+            config_manager_set_telegram_chat_id(chat_id);
+        }
+    }
+
+    item = cJSON_GetObjectItem(root, "telegram_pairing_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_telegram_pairing_enabled(cJSON_IsTrue(item));
+        if (!cJSON_IsTrue(item)) {
+            // Clears the tracking queue only - files stay on storage.
+            config_manager_clear_telegram_pending_images();
+        }
+    }
+
+    item = cJSON_GetObjectItem(root, "telegram_wake_notify_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_telegram_wake_notify_enabled(cJSON_IsTrue(item));
+    }
+
+#endif
     // AI API Keys
     item = cJSON_GetObjectItem(root, "openai_api_key");
     if (item && cJSON_IsString(item)) {
@@ -524,7 +873,669 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         debug_log_set_enabled(cJSON_IsTrue(item));
     }
 
+#if FEATURE_OTA_CHANNEL
+    // OTA
+    item = cJSON_GetObjectItem(root, "ota_check_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_ota_check_enabled(cJSON_IsTrue(item));
+    }
+
+#endif
+#if FEATURE_ERROR_BANNER
+    // Error overlay
+    item = cJSON_GetObjectItem(root, "error_overlay_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_error_overlay_enabled(cJSON_IsTrue(item));
+    }
+
+#endif
+#if FEATURE_WIFI_RESILIENCE
+    // WiFi performance mode
+    item = cJSON_GetObjectItem(root, "wifi_performance_mode_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_wifi_performance_mode_enabled(cJSON_IsTrue(item));
+    }
+
+    item = cJSON_GetObjectItem(root, "wifi_tx_power_cap_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_wifi_tx_power_cap_enabled(cJSON_IsTrue(item));
+    }
+
+    item = cJSON_GetObjectItem(root, "wifi_extended_retry_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_wifi_extended_retry_enabled(cJSON_IsTrue(item));
+    }
+
+    item = cJSON_GetObjectItem(root, "wifi_reprovision_on_fail_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_wifi_reprovision_on_fail_enabled(cJSON_IsTrue(item));
+    }
+
+#endif
+#if FEATURE_HTTPS
+    // Takes effect on the next http_server_init() (boot/reconnect), not live.
+    item = cJSON_GetObjectItem(root, "https_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_https_enabled(cJSON_IsTrue(item));
+    }
+
+#endif
+#if FEATURE_TELEGRAM
+    // Auto-rotate orientation pairing (random mode only)
+    item = cJSON_GetObjectItem(root, "rotation_pairing_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_rotation_pairing_enabled(cJSON_IsTrue(item));
+    }
+
+#endif
+#if FEATURE_FACECROP
+    // Cover/Fit pre-rendered variant selection during Storage/SD rotation
+    item = cJSON_GetObjectItem(root, "variant_selection_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_variant_selection_enabled(cJSON_IsTrue(item));
+    }
+
+#endif
+#if FEATURE_TELEGRAM
+    // Telegram notification on fallback-rotation display changes
+    item = cJSON_GetObjectItem(root, "telegram_rotation_notify_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_telegram_rotation_notify_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "telegram_fallback_rotation_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_telegram_fallback_rotation_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "telegram_fallback_on_error_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_telegram_fallback_on_error_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "telegram_power_save_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_telegram_power_save_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "telegram_power_save_latest_only");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_telegram_power_save_latest_only(cJSON_IsTrue(item));
+    }
+
+    // Keep a copy of each Telegram photo as received, before e-paper processing
+    item = cJSON_GetObjectItem(root, "telegram_keep_originals_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_telegram_keep_originals_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "telegram_image_format");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_telegram_image_format(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "telegram_dedup_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_telegram_dedup_enabled(cJSON_IsTrue(item));
+    }
+
+#endif
+#if FEATURE_OVERLAYS
+    // Weather + headline overlays (on-device, no companion server needed)
+    item = cJSON_GetObjectItem(root, "weather_overlay_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_weather_overlay_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "weather_location_name");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_weather_location_name(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "weather_lat");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_weather_lat(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "weather_lon");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_weather_lon(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "weather_provider");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_weather_provider(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "headlines_overlay_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_headlines_overlay_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "headlines_rss_url");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_headlines_rss_url(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "headlines_count");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_headlines_count(item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "overlay_invert_colors");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_overlay_invert_colors(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "overlay_epdgz_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_overlay_epdgz_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "overlay_language");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_overlay_language(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "headlines_wrap_lines");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_headlines_wrap_lines(item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "caption_invert_colors_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_caption_invert_colors_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "weather_multiline_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_weather_multiline_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "weather_icon_set");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_weather_icon_set(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "weather_icon_colored");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_weather_icon_colored(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "show_exif_datetime_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_show_exif_datetime_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "low_battery_overlay_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_low_battery_overlay_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "low_battery_overlay_threshold");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_low_battery_overlay_threshold(item->valueint);
+    }
+#endif
+#if FEATURE_BATTERY_HISTORY
+    item = cJSON_GetObjectItem(root, "battery_history_backup_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_battery_history_backup_enabled(cJSON_IsTrue(item));
+    }
+#endif
+#if FEATURE_OVERLAYS
+
+#endif
+#if FEATURE_AGENDA
+    // Batches every agenda_*_set_* call below into one NVS open/commit
+    // instead of one each (~25 fields can appear in one Agenda settings
+    // save) - see config_manager_begin_agenda_batch()'s own comment. Every
+    // early return between here and the matching _end_agenda_batch() call
+    // near the bottom of this block closes the batch first so a rejected
+    // cron expression can't leave the NVS handle open uncommitted.
+    config_manager_begin_agenda_batch();
+
+    item = cJSON_GetObjectItem(root, "agenda_todo_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_agenda_todo_enabled(cJSON_IsTrue(item));
+        power_manager_reset_agenda_timer();
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_agenda_cal_enabled(cJSON_IsTrue(item));
+        power_manager_reset_agenda_timer();
+    }
+    item = cJSON_GetObjectItem(root, "agenda_todo_url");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_agenda_todo_url(cJSON_GetStringValue(item));
+    }
+    // Write-only, like wifi_password above: only ever applied when the
+    // client actually sent a non-empty value (an empty string here just
+    // means "the user didn't touch this field," not "clear the URL" - see
+    // config_manager_get_agenda_cal_url()'s doc comment).
+    item = cJSON_GetObjectItem(root, "agenda_cal_url");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_cal_url(cJSON_GetStringValue(item));
+    }
+    // Optional second calendar - same write-only treatment.
+    item = cJSON_GetObjectItem(root, "agenda_cal_url2");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_cal_url2(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_days");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_agenda_cal_days(item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_layout_mode");
+    if (item && cJSON_IsString(item)) {
+        const char *layout_str = cJSON_GetStringValue(item);
+        agenda_cal_layout_mode_t layout_mode = AGENDA_CAL_LAYOUT_LIST;
+        if (strcmp(layout_str, "grid_a") == 0) {
+            layout_mode = AGENDA_CAL_LAYOUT_GRID_A;
+        } else if (strcmp(layout_str, "grid_b") == 0) {
+            layout_mode = AGENDA_CAL_LAYOUT_GRID_B;
+        }
+        config_manager_set_agenda_cal_layout_mode(layout_mode);
+    }
+    item = cJSON_GetObjectItem(root, "agenda_shift_model");
+    if (item && cJSON_IsString(item)) {
+        const char *model_str = cJSON_GetStringValue(item);
+        agenda_shift_model_t shift_model = AGENDA_SHIFT_MODEL_NONE;
+        if (strcmp(model_str, "2-2-3") == 0) {
+            shift_model = AGENDA_SHIFT_MODEL_2_2_3;
+        } else if (strcmp(model_str, "week_week") == 0) {
+            shift_model = AGENDA_SHIFT_MODEL_WEEK_WEEK;
+        } else if (strcmp(model_str, "3-4") == 0) {
+            shift_model = AGENDA_SHIFT_MODEL_3_4;
+        }
+        config_manager_set_agenda_shift_model(shift_model);
+    }
+    item = cJSON_GetObjectItem(root, "agenda_shift_start");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_agenda_shift_start(cJSON_GetStringValue(item));
+    }
+#endif
+#if FEATURE_AGENDA && FEATURE_OVERLAYS
+    item = cJSON_GetObjectItem(root, "agenda_cal_weather_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_agenda_cal_weather_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_weather_right_aligned");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_agenda_cal_weather_right_aligned(cJSON_IsTrue(item));
+    }
+#endif
+#if FEATURE_AGENDA
+    item = cJSON_GetObjectItem(root, "agenda_cal_multiday_mode");
+    if (item && cJSON_IsString(item)) {
+        const char *mode_str = cJSON_GetStringValue(item);
+        agenda_multiday_mode_t mode = AGENDA_MULTIDAY_REPEAT;
+        if (strcmp(mode_str, "compact") == 0) {
+            mode = AGENDA_MULTIDAY_COMPACT;
+        } else if (strcmp(mode_str, "repeat_numbered") == 0) {
+            mode = AGENDA_MULTIDAY_REPEAT_NUMBERED;
+        }
+        config_manager_set_agenda_cal_multiday_mode(mode);
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_time_display_mode");
+    if (item && cJSON_IsString(item)) {
+        const char *time_mode_str = cJSON_GetStringValue(item);
+        agenda_time_display_mode_t time_mode = AGENDA_TIME_DISPLAY_OFF;
+        if (strcmp(time_mode_str, "duration") == 0) {
+            time_mode = AGENDA_TIME_DISPLAY_DURATION;
+        } else if (strcmp(time_mode_str, "range") == 0) {
+            time_mode = AGENDA_TIME_DISPLAY_RANGE;
+        }
+        config_manager_set_agenda_cal_time_display_mode(time_mode);
+    }
+
+#endif
+#if FEATURE_CHIMES
+    // Chimes (speaker feedback) - see chime_speaker_mode_t/chime_event_t in
+    // config.h and main/chime.c.
+    item = cJSON_GetObjectItem(root, "chime_speaker_mode");
+    if (item && cJSON_IsString(item)) {
+        const char *mode_str = cJSON_GetStringValue(item);
+        chime_speaker_mode_t mode = CHIME_SPEAKER_OFF;
+        if (strcmp(mode_str, "battery_and_mains") == 0) {
+            mode = CHIME_SPEAKER_BATTERY_AND_MAINS;
+        } else if (strcmp(mode_str, "mains_only") == 0) {
+            mode = CHIME_SPEAKER_MAINS_ONLY;
+        }
+        config_manager_set_chime_speaker_mode(mode);
+    }
+    item = cJSON_GetObjectItem(root, "chime_volume");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_chime_volume(item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "chime_quiet_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_chime_quiet_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "chime_quiet_start");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_chime_quiet_start(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "chime_quiet_end");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_chime_quiet_end(cJSON_GetStringValue(item));
+    }
+    static const struct {
+        const char *field;
+        chime_event_t event;
+    } chime_event_fields[] = {
+        {"chime_event_rotation_enabled", CHIME_EVENT_ROTATION},
+        {"chime_event_telegram_photo_enabled", CHIME_EVENT_TELEGRAM_PHOTO},
+        {"chime_event_low_battery_enabled", CHIME_EVENT_LOW_BATTERY},
+        {"chime_event_wifi_reprovision_enabled", CHIME_EVENT_WIFI_REPROVISION},
+        {"chime_event_agenda_due_enabled", CHIME_EVENT_AGENDA_DUE},
+        {"chime_event_ota_success_enabled", CHIME_EVENT_OTA_SUCCESS},
+        {"chime_event_critical_error_enabled", CHIME_EVENT_CRITICAL_ERROR},
+    };
+    for (size_t i = 0; i < sizeof(chime_event_fields) / sizeof(chime_event_fields[0]); i++) {
+        item = cJSON_GetObjectItem(root, chime_event_fields[i].field);
+        if (item && cJSON_IsBool(item)) {
+            config_manager_set_chime_event_enabled(chime_event_fields[i].event, cJSON_IsTrue(item));
+        }
+    }
+
+#endif
+#if FEATURE_CLIMATE
+    // Climate (SHTC3 temperature/humidity) - see climate_room_type_t/
+    // climate_temp_unit_t in config.h and main/climate.[ch].
+    item = cJSON_GetObjectItem(root, "climate_room_type");
+    if (item && cJSON_IsString(item)) {
+        const char *room_str = cJSON_GetStringValue(item);
+        climate_room_type_t room = CLIMATE_ROOM_LIVING_ROOM;
+        if (strcmp(room_str, "bedroom") == 0) {
+            room = CLIMATE_ROOM_BEDROOM;
+        } else if (strcmp(room_str, "bathroom") == 0) {
+            room = CLIMATE_ROOM_BATHROOM;
+        } else if (strcmp(room_str, "kitchen") == 0) {
+            room = CLIMATE_ROOM_KITCHEN;
+        } else if (strcmp(room_str, "basement") == 0) {
+            room = CLIMATE_ROOM_BASEMENT;
+        }
+        config_manager_set_climate_room_type(room);
+    }
+    item = cJSON_GetObjectItem(root, "climate_temp_unit");
+    if (item && cJSON_IsString(item)) {
+        const char *unit_str = cJSON_GetStringValue(item);
+        config_manager_set_climate_temp_unit(
+            strcmp(unit_str, "fahrenheit") == 0 ? CLIMATE_UNIT_FAHRENHEIT : CLIMATE_UNIT_CELSIUS);
+    }
+    item = cJSON_GetObjectItem(root, "climate_logging_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_climate_logging_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "climate_history_backup_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_climate_history_backup_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "climate_overlay_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_climate_overlay_enabled(cJSON_IsTrue(item));
+    }
+#endif
+#if FEATURE_CLIMATE && FEATURE_AGENDA
+    item = cJSON_GetObjectItem(root, "climate_agenda_header_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_climate_agenda_header_enabled(cJSON_IsTrue(item));
+    }
+#endif
+#if FEATURE_CLIMATE
+    item = cJSON_GetObjectItem(root, "climate_temp_offset");
+    if (item && cJSON_IsNumber(item)) {
+        char offset_str[CLIMATE_OFFSET_MAX_LEN];
+        snprintf(offset_str, sizeof(offset_str), "%.2f", item->valuedouble);
+        config_manager_set_climate_temp_offset(offset_str);
+    }
+    item = cJSON_GetObjectItem(root, "climate_hum_offset");
+    if (item && cJSON_IsNumber(item)) {
+        char offset_str[CLIMATE_OFFSET_MAX_LEN];
+        snprintf(offset_str, sizeof(offset_str), "%.2f", item->valuedouble);
+        config_manager_set_climate_hum_offset(offset_str);
+    }
+
+#endif
+#if FEATURE_AGENDA
+    // Plain display names, not credentials - unlike agenda_cal_url above,
+    // applied even when empty (an empty save genuinely means "cleared back
+    // to the generic default", not "field left untouched").
+    item = cJSON_GetObjectItem(root, "agenda_cal_name");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_agenda_cal_name(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_name2");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_agenda_cal_name2(cJSON_GetStringValue(item));
+    }
+    // Three extra ICS sources - no periodic refresh, see
+    // apply_extra_ics_url()'s comment above. Enabled/name are plain
+    // settings; URL is write-only like agenda_cal_url/_url2 above, but
+    // unlike those, an actual change (or an explicit "<x>_refetch": true)
+    // triggers an immediate one-shot download.
+    item = cJSON_GetObjectItem(root, "agenda_cal_c_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_agenda_cal_c_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_d_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_agenda_cal_d_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_e_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_agenda_cal_e_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_c_name");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_agenda_cal_c_name(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_d_name");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_agenda_cal_d_name(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_e_name");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_agenda_cal_e_name(cJSON_GetStringValue(item));
+    }
+    apply_extra_ics_url(root, "agenda_cal_c_url", "agenda_cal_c_refetch",
+                        config_manager_get_agenda_cal_c_url(), AGENDA_CAL_CACHE_PATH_C,
+                        AGENDA_CAL_CACHE_PATH_C_FLAT, config_manager_set_agenda_cal_c_url);
+    apply_extra_ics_url(root, "agenda_cal_d_url", "agenda_cal_d_refetch",
+                        config_manager_get_agenda_cal_d_url(), AGENDA_CAL_CACHE_PATH_D,
+                        AGENDA_CAL_CACHE_PATH_D_FLAT, config_manager_set_agenda_cal_d_url);
+    apply_extra_ics_url(root, "agenda_cal_e_url", "agenda_cal_e_refetch",
+                        config_manager_get_agenda_cal_e_url(), AGENDA_CAL_CACHE_PATH_E,
+                        AGENDA_CAL_CACHE_PATH_E_FLAT, config_manager_set_agenda_cal_e_url);
+    // Agenda schedule: same shape/validation as rotate_cron above, but an
+    // empty array is allowed here (agenda_manager_is_enabled() already
+    // requires a non-empty schedule before agenda mode can ever fire, so
+    // an empty schedule is just "not configured yet," not an error).
+    item = cJSON_GetObjectItem(root, "agenda_cron");
+    if (item && cJSON_IsArray(item))
+        do {
+            int count = cJSON_GetArraySize(item);
+            if (count > MAX_CRON_RULES) {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "Too many agenda schedule rules (max %d)",
+                         MAX_CRON_RULES);
+                utils_set_config_error(msg);
+                had_error = true;
+                break;
+            }
+            const char *rules[MAX_CRON_RULES];
+            int n = 0;
+            cJSON *el;
+            bool rule_error = false;
+            cJSON_ArrayForEach(el, item)
+            {
+                if (!cJSON_IsString(el)) {
+                    utils_set_config_error("Agenda schedule rule must be a string");
+                    rule_error = true;
+                    break;
+                }
+                const char *expr = cJSON_GetStringValue(el);
+                if (strlen(expr) >= CRON_RULE_MAX_LEN) {
+                    utils_set_config_error("Cron expression too long");
+                    rule_error = true;
+                    break;
+                }
+                cron_rule_t tmp;
+                if (!cron_parse(expr, &tmp)) {
+                    char msg[96];
+                    snprintf(msg, sizeof(msg), "Invalid agenda cron expression: %s", expr);
+                    utils_set_config_error(msg);
+                    rule_error = true;
+                    break;
+                }
+                if (n < MAX_CRON_RULES) {
+                    rules[n++] = expr;
+                }
+            }
+            if (rule_error) {
+                had_error = true;
+                break;
+            }
+            config_manager_set_agenda_cron_rules(rules, n);
+            power_manager_reset_agenda_timer();
+        } while (0);
+    item = cJSON_GetObjectItem(root, "agenda_stack_layout");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_agenda_stack_layout(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_color_profile_active");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_agenda_color_profile_active(item->valueint);
+    }
+    // Per-role color pickers - all optional, non-secret, plain strings (one
+    // of "red"/"yellow"/"blue"/"green"); an invalid/unrecognized value is
+    // handled fail-soft by agenda_renderer.c's role_hue(), not rejected here.
+    item = cJSON_GetObjectItem(root, "agenda_pri_a_color");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_pri_a_color(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_pri_b_color");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_pri_b_color(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_pri_c_color");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_pri_c_color(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_pri_d_color");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_pri_d_color(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_due_overdue_color");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_due_overdue_color(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_due_today_color");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_due_today_color(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_due_later_color");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_due_later_color(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_project_color");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_project_color(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "agenda_context_color");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_agenda_context_color(cJSON_GetStringValue(item));
+    }
+
+#endif
+#if FEATURE_ALARMCLOCK
+    // Alarm clock schedule - same shape/validation as agenda_cron above.
+    // config_manager_set_alarm_cron_rules() is a harmless no-op on a build
+    // without FEATURE_ALARMCLOCK, so this needs no #ifdef here.
+    item = cJSON_GetObjectItem(root, "alarm_cron");
+    if (item && cJSON_IsArray(item))
+        do {
+            int count = cJSON_GetArraySize(item);
+            if (count > MAX_CRON_RULES) {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "Too many alarm schedule rules (max %d)",
+                         MAX_CRON_RULES);
+                utils_set_config_error(msg);
+                had_error = true;
+                break;
+            }
+            const char *rules[MAX_CRON_RULES];
+            int n = 0;
+            cJSON *el;
+            bool rule_error = false;
+            cJSON_ArrayForEach(el, item)
+            {
+                if (!cJSON_IsString(el)) {
+                    utils_set_config_error("Alarm schedule rule must be a string");
+                    rule_error = true;
+                    break;
+                }
+                const char *expr = cJSON_GetStringValue(el);
+                if (strlen(expr) >= CRON_RULE_MAX_LEN) {
+                    utils_set_config_error("Cron expression too long");
+                    rule_error = true;
+                    break;
+                }
+                cron_rule_t tmp;
+                if (!cron_parse(expr, &tmp)) {
+                    char msg[96];
+                    snprintf(msg, sizeof(msg), "Invalid alarm cron expression: %s", expr);
+                    utils_set_config_error(msg);
+                    rule_error = true;
+                    break;
+                }
+                if (n < MAX_CRON_RULES) {
+                    rules[n++] = expr;
+                }
+            }
+            if (rule_error) {
+                had_error = true;
+                break;
+            }
+            config_manager_set_alarm_cron_rules(rules, n);
+        } while (0);
+
+    item = cJSON_GetObjectItem(root, "alarm_ring_duration_sec");
+    if (item && cJSON_IsNumber(item)) {
+        if (item->valueint > 0 && item->valueint <= ALARM_RING_DURATION_MAX_SEC) {
+            config_manager_set_alarm_ring_duration_sec((uint16_t) item->valueint);
+        } else {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Alarm ring duration must be 1-%d seconds",
+                     ALARM_RING_DURATION_MAX_SEC);
+            utils_set_config_error(msg);
+            had_error = true;
+        }
+    }
+
+    item = cJSON_GetObjectItem(root, "alarm_volume");
+    if (item && cJSON_IsNumber(item)) {
+        if (item->valueint >= ALARM_VOLUME_MIN && item->valueint <= ALARM_VOLUME_MAX) {
+            config_manager_set_alarm_volume(item->valueint);
+        } else {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Alarm volume must be %d-%d %%", ALARM_VOLUME_MIN,
+                     ALARM_VOLUME_MAX);
+            utils_set_config_error(msg);
+            had_error = true;
+        }
+    }
+    item = cJSON_GetObjectItem(root, "alarm_ramp_sec");
+    if (item && cJSON_IsNumber(item)) {
+        if (item->valueint >= 0 && item->valueint <= ALARM_RAMP_MAX_SEC) {
+            config_manager_set_alarm_ramp_sec(item->valueint);
+        } else {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Alarm volume ramp-up must be 0-%d seconds",
+                     ALARM_RAMP_MAX_SEC);
+            utils_set_config_error(msg);
+            had_error = true;
+        }
+    }
+    item = cJSON_GetObjectItem(root, "alarm_tune");
+    if (item && cJSON_IsNumber(item)) {
+        if (item->valueint >= 0 && item->valueint <= ALARM_TUNE_MAX_INDEX) {
+            config_manager_set_alarm_tune(item->valueint);
+        } else {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Alarm tone must be 0-%d", ALARM_TUNE_MAX_INDEX);
+            utils_set_config_error(msg);
+            had_error = true;
+        }
+    }
+
+#endif
+#if FEATURE_AGENDA
+    config_manager_end_agenda_batch();
+
+#endif
+#if FORK_ANY
+    return had_error ? ESP_FAIL : ESP_OK;
+#else
     return ESP_OK;
+#endif
 }
 
 // Context for HTTP event handler
@@ -1310,6 +2321,191 @@ static esp_err_t fetch_display_file(image_format_t image_format, bool thumbnail_
     return ESP_OK;
 }
 
+#if FEATURE_ERROR_BANNER
+// Generates a blank white canvas at the panel's native resolution and
+// overlays the message on it - used whenever there's no existing displayed
+// image to overlay onto (fresh boot, after /clear, or a non-overlay-ready
+// current image). White is a valid palette entry on every supported panel,
+// so the buffer is already "processed" as far as image_processor_draw_caption
+// is concerned.
+static esp_err_t display_error_overlay_blank(const char *message)
+{
+    int width = BOARD_HAL_DISPLAY_WIDTH;
+    int height = BOARD_HAL_DISPLAY_HEIGHT;
+    size_t buf_size = (size_t) width * (size_t) height * 3;
+
+    uint8_t *rgb_buffer = heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM);
+    if (!rgb_buffer) {
+        ESP_LOGE(TAG, "Failed to allocate blank canvas for error overlay");
+        return ESP_ERR_NO_MEM;
+    }
+    memset(rgb_buffer, 0xFF, buf_size);
+
+    image_processor_draw_caption(rgb_buffer, width, height, message, false);
+    esp_err_t err = image_processor_write_rgb_to_png(rgb_buffer, width, height, CURRENT_PNG_PATH);
+    heap_caps_free(rgb_buffer);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write blank error-overlay canvas: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    display_manager_show_image(CURRENT_PNG_PATH);
+    ESP_LOGW(TAG, "Displayed error overlay on a blank canvas: %s", message);
+    return ESP_OK;
+}
+
+// Overlays a short message on the currently displayed image WITHOUT modifying
+// the original saved file: copies it to the scratch PNG path first, draws the
+// caption there, and displays the copy. Falls back to a blank canvas (see
+// above) if there's nothing suitable to overlay onto.
+static esp_err_t display_error_overlay(const char *message)
+{
+    const char *current_image = display_manager_get_current_image();
+    if (!current_image || current_image[0] == '\0') {
+        ESP_LOGI(TAG, "No current image to overlay error onto, using a blank canvas");
+        return display_error_overlay_blank(message);
+    }
+
+    image_format_t format = image_processor_detect_format(current_image);
+    if (format != IMAGE_FORMAT_PNG || !image_processor_is_processed(current_image)) {
+        ESP_LOGI(TAG,
+                 "Current image %s is not an overlay-ready processed PNG, using a blank canvas",
+                 current_image);
+        return display_error_overlay_blank(message);
+    }
+
+    FILE *src = fopen(current_image, "rb");
+    if (!src) {
+        ESP_LOGE(TAG, "Failed to open %s for error overlay", current_image);
+        return ESP_FAIL;
+    }
+    FILE *dst = fopen(CURRENT_PNG_PATH, "wb");
+    if (!dst) {
+        fclose(src);
+        ESP_LOGE(TAG, "Failed to open %s for error overlay", CURRENT_PNG_PATH);
+        return ESP_FAIL;
+    }
+    char buf[512];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+        fwrite(buf, 1, n, dst);
+    }
+    fclose(src);
+    fclose(dst);
+
+    // Error overlay is a distinct feature from the weather/headline overlay
+    // and Telegram captions - always the fixed default look (black bar,
+    // white text), unaffected by either's color setting.
+    image_processor_add_caption_to_file(CURRENT_PNG_PATH, message, false);
+    display_manager_show_image(CURRENT_PNG_PATH);
+    ESP_LOGW(TAG, "Displayed error overlay: %s", message);
+    return ESP_OK;
+}
+
+void utils_handle_wifi_connect_result(bool connected)
+{
+    if (connected) {
+        if (config_manager_get_wifi_fail_count() != 0) {
+            config_manager_set_wifi_fail_count(0);
+        }
+#endif
+#if FEATURE_ERROR_BANNER && FEATURE_CHIMES
+        chime_repeat_gate(CHIME_EVENT_CRITICAL_ERROR, false);  // resolved - reset the repeat count
+#endif
+#if FEATURE_ERROR_BANNER
+        return;
+    }
+
+    int count = config_manager_get_wifi_fail_count() + 1;
+    config_manager_set_wifi_fail_count(count);
+    ESP_LOGW(TAG, "WiFi connect failed (%d consecutive)", count);
+
+#endif
+#if FEATURE_ERROR_BANNER && FEATURE_CHIMES
+    // Repeats once per wake while still failing (not just on the first
+    // crossing), up to CHIME_REPEAT_MAX times - see chime_repeat_gate().
+    if (chime_repeat_gate(CHIME_EVENT_CRITICAL_ERROR, count >= WIFI_FAIL_OVERLAY_THRESHOLD)) {
+        chime_play_if_enabled(CHIME_EVENT_CRITICAL_ERROR);
+    }
+#endif
+#if FEATURE_ERROR_BANNER
+    if (!config_manager_get_error_overlay_enabled() || count < WIFI_FAIL_OVERLAY_THRESHOLD) {
+        return;
+    }
+
+    char caption[96];
+    snprintf(caption, sizeof(caption), "Error: No WiFi connection (%dx in a row)", count);
+    display_error_overlay(caption);
+}
+
+// Per-wake-cycle state for utils_record_internet_attempt()/
+// utils_finalize_internet_health() - not persisted (RTC_DATA_ATTR isn't
+// needed): a fresh deep-sleep wake always starts with both false, and a
+// button wake that stays awake across multiple manual actions doesn't need
+// this tracked across them either.
+static bool s_internet_needed_this_wake = false;
+static bool s_internet_succeeded_this_wake = false;
+
+void utils_record_internet_attempt(bool succeeded)
+{
+    s_internet_needed_this_wake = true;
+    if (succeeded) {
+        s_internet_succeeded_this_wake = true;
+    }
+}
+
+void utils_finalize_internet_health(void)
+{
+    if (!s_internet_needed_this_wake) {
+        return;  // nothing enabled this cycle actually needed internet
+    }
+    bool succeeded = s_internet_succeeded_this_wake;
+    s_internet_needed_this_wake = false;
+    s_internet_succeeded_this_wake = false;
+
+    if (succeeded) {
+        if (config_manager_get_wifi_fail_count() != 0) {
+            config_manager_set_wifi_fail_count(0);
+        }
+#endif
+#if FEATURE_ERROR_BANNER && FEATURE_CHIMES
+        chime_repeat_gate(CHIME_EVENT_CRITICAL_ERROR, false);  // resolved - reset the repeat count
+#endif
+#if FEATURE_ERROR_BANNER
+        return;
+    }
+
+    int count = config_manager_get_wifi_fail_count() + 1;
+    config_manager_set_wifi_fail_count(count);
+    ESP_LOGW(TAG,
+             "Internet-dependent request(s) failed despite WiFi being connected (%d consecutive)",
+             count);
+
+#endif
+#if FEATURE_ERROR_BANNER && FEATURE_CHIMES
+    if (chime_repeat_gate(CHIME_EVENT_CRITICAL_ERROR, count >= WIFI_FAIL_OVERLAY_THRESHOLD)) {
+        chime_play_if_enabled(CHIME_EVENT_CRITICAL_ERROR);
+    }
+#endif
+#if FEATURE_ERROR_BANNER
+    if (!config_manager_get_error_overlay_enabled() || count < WIFI_FAIL_OVERLAY_THRESHOLD) {
+        return;
+    }
+
+    char caption[96];
+    snprintf(caption, sizeof(caption), "Error: No internet access (%dx in a row)", count);
+    display_error_overlay(caption);
+}
+
+esp_err_t utils_test_error_overlay(void)
+{
+    // Manual preview from the Web UI - always overlays the example message
+    // regardless of the error-overlay setting or the WiFi-fail counter, so
+    // it can be used to see what the feature looks like before enabling it.
+    return display_error_overlay("Error: No WiFi connection (3x in a row) - TEST");
+}
+
+#endif
 esp_err_t fetch_and_display_image_from_url(const char *url, bool *not_modified)
 {
     ESP_LOGI(TAG, "Fetching image from URL: %s", url);
@@ -1391,13 +2587,104 @@ esp_err_t trigger_image_rotation(void)
     rotation_mode_t rotation_mode = config_manager_get_rotation_mode();
     esp_err_t result = ESP_OK;
 
+#if FEATURE_TELEGRAM
+    if (rotation_mode == ROTATION_MODE_TELEGRAM) {
+        // Telegram mode - poll getUpdates, download+display the newest image
+        // (with progressive-size fallback), queue any "/" commands.
+        telegram_poll_result_t poll_result = TELEGRAM_POLL_ERROR;
+        esp_err_t poll_err = telegram_bot_poll(&poll_result);
+        utils_record_internet_attempt(poll_err == ESP_OK);
+
+        if (poll_result == TELEGRAM_POLL_RESET) {
+            // Emergency "/telegram_reset": the queue was already cleared and
+            // acknowledged inside telegram_bot_poll() - skip HA notify, the
+            // post-rotate HTTP window, everything, and sleep right now.
+            ESP_LOGW(TAG, "Telegram emergency reset - entering deep sleep immediately");
+            power_manager_enter_sleep();
+            // Not reached.
+        }
+
+        if (poll_err == ESP_OK) {
+            utils_set_last_fetch_error(NULL);
+            if (poll_result == TELEGRAM_POLL_OK_NO_IMAGE) {
+                if (!config_manager_get_telegram_fallback_rotation_enabled()) {
+                    // Fallback rotation disabled - this wake changes nothing;
+                    // the display only ever updates on a wake that actually
+                    // receives a new Telegram image.
+                    ESP_LOGI(TAG,
+                             "No new Telegram image, fallback rotation disabled - leaving "
+                             "display unchanged");
+                } else {
+                    // No new Telegram image this cycle - still change the
+                    // display, same as the non-Telegram rotation modes, by
+                    // falling back to the active album(s) (this also covers the
+                    // Telegram download folder, which shows up as a regular
+                    // album - see telegram_bot_poll()).
+                    ESP_LOGI(TAG, "No new Telegram image, falling back to local rotation");
+
+                    // 256, matching display_manager.c's own current_image[]
+                    // buffer this is copied from - a smaller size here could
+                    // silently truncate a long real path (e.g. a Google
+                    // Pixel Motion Photo filename) differently than the
+                    // untruncated `after` read below ever would, making the
+                    // strcmp() further down spuriously see a "change" (or
+                    // miss one) that never actually happened.
+                    char prev_image[256];
+                    const char *before = display_manager_get_current_image();
+                    strncpy(prev_image, before ? before : "", sizeof(prev_image) - 1);
+                    prev_image[sizeof(prev_image) - 1] = '\0';
+
+                    display_manager_rotate_from_storage();
+
+                    // Only notify if the display actually changed - rotation is
+                    // a no-op when there are no enabled albums / no images.
+                    // Suppressed in power save mode regardless of the setting's
+                    // own stored value - this is a genuine photo upload,
+                    // avoidable network time this mode exists to remove.
+                    const char *after = display_manager_get_current_image();
+                    if (config_manager_get_telegram_rotation_notify_enabled() &&
+                        !config_manager_get_telegram_power_save_enabled() && after &&
+                        after[0] != '\0' && strcmp(after, prev_image) != 0) {
+                        telegram_bot_notify_fallback_image(after);
+                    }
+                }
+            }
+            result = ESP_OK;
+        } else {
+            const char *reason = (poll_result == TELEGRAM_POLL_NOT_CONFIGURED)
+                                     ? "Telegram bot not configured"
+                                     : "Telegram poll failed";
+            utils_set_last_fetch_error(reason);
+
+            // The on-error fallback sub-option only matters while the main
+            // fallback-rotation toggle is off (the restrictive "only ever
+            // change display on a genuine new Telegram photo" policy) - with
+            // it on, a poll error always falls back, same as ever.
+            if (!config_manager_get_telegram_fallback_rotation_enabled() &&
+                !config_manager_get_telegram_fallback_on_error_enabled()) {
+                ESP_LOGW(TAG, "%s, fallback rotation disabled - leaving display unchanged", reason);
+            } else {
+                ESP_LOGW(TAG, "%s, falling back to local rotation", reason);
+                display_manager_rotate_from_storage();
+            }
+            result = ESP_FAIL;
+        }
+    } else if (rotation_mode == ROTATION_MODE_URL) {
+#else
     if (rotation_mode == ROTATION_MODE_URL) {
+#endif
         // URL mode - fetch image from URL
         const char *image_url = config_manager_get_image_url();
         ESP_LOGI(TAG, "URL rotation mode - downloading from: %s", image_url);
 
         bool not_modified = false;
+#if FEATURE_ERROR_BANNER
+        bool url_fetch_ok = (fetch_and_display_image_from_url(image_url, &not_modified) == ESP_OK);
+        utils_record_internet_attempt(url_fetch_ok);
+        if (url_fetch_ok) {
+#else
         if (fetch_and_display_image_from_url(image_url, &not_modified) == ESP_OK) {
+#endif
             if (not_modified) {
                 // Server confirmed cached image still current (HTTP 304).
                 // Keep the existing eInk image — do not refresh, do not fall
@@ -1418,6 +2705,19 @@ esp_err_t trigger_image_rotation(void)
         result = ESP_OK;
     }
 
+#if FEATURE_TELEGRAM
+    // This runs on whichever task called us (button_task, deep_sleep_wake_task,
+    // rotation_timer_task, or the HTTP server's worker task via /api/rotate) -
+    // several of those have needed their stack size bumped for this same
+    // pipeline (Telegram fetch/JPEG decode/processing/overlay compositing)
+    // more than once, most recently over-confidently. Logging the actual
+    // high-water mark here (words remaining, not bytes - see
+    // uxTaskGetStackHighWaterMark()'s own units) turns the next "was that
+    // enough?" into a real measurement instead of another guess.
+    ESP_LOGI(TAG, "trigger_image_rotation() stack headroom remaining: %u words",
+             (unsigned) uxTaskGetStackHighWaterMark(NULL));
+
+#endif
     return result;
 }
 

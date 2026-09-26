@@ -1,0 +1,3 @@
+# main/image_processor.*: the whole fork delta is the image pipeline (streaming decode, EPDGZ, text and
+# badge drawing) shared by telegram, overlays, agenda, climate, error-banner and facecrop
+32.38 FORK_IMAGE_PIPELINE

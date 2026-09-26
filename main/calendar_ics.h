@@ -1,0 +1,130 @@
+#ifndef CALENDAR_ICS_H
+#define CALENDAR_ICS_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <time.h>
+
+#include "esp_err.h"
+
+// 48 (was 24): the Agenda 7-day grid layout can touch a full week across up
+// to 5 calendar sources - 24 was already borderline for a busy calendar
+// even at the old 1-3 day lookahead. Heap-allocated (ics_event_list_t is
+// always heap_caps_calloc'd, never a stack local - see agenda_manager.c),
+// so this only costs PSRAM, not stack.
+#define ICS_MAX_EVENTS 48
+#define ICS_SUMMARY_MAX_LEN 160
+
+typedef struct {
+    time_t start;
+    time_t end;  // == start if no duration could be determined
+    bool all_day;
+    char summary[ICS_SUMMARY_MAX_LEN];
+} ics_event_t;
+
+typedef struct {
+    int count;
+    ics_event_t events[ICS_MAX_EVENTS];
+} ics_event_list_t;
+
+/**
+ * @brief Fetches `url` (an iCalendar/ICS feed - e.g. a Google Calendar
+ * "secret address in iCal format", a plain authless HTTPS GET) and
+ * extracts non-recurring VEVENTs overlapping [window_start, window_end).
+ *
+ * Recurring events (a VEVENT with an RRULE) are not expanded by this pass
+ * - see calendar_ics.c's RRULE-lite extension for DAILY/WEEKLY support.
+ * An RRULE'd event with none of the supported forms is silently skipped
+ * (fail-soft: better to omit one event than show a wrong occurrence).
+ *
+ * If `cache_path` is non-NULL, this is a conditional GET: `etag_in` (may be
+ * NULL/empty) is sent as If-None-Match, and on a 304 reply the body cached
+ * at `cache_path` from the last successful 200 is re-parsed instead of
+ * re-downloading - the parse itself is still redone every call, since which
+ * events fall in [window_start, window_end) shifts day to day even when the
+ * feed's content hasn't changed at all. `etag_out`/`etag_out_len` receive
+ * the validator to persist for next time (already carries forward `etag_in`
+ * if this response didn't repeat an ETag) - the caller owns actually
+ * persisting it (see config_manager.h's agenda ETag getters/setters). Pass
+ * cache_path/etag_in/etag_out as NULL to skip conditional-GET entirely and
+ * always fetch unconditionally.
+ *
+ * Best-effort: a fetch failure returns an error and leaves *out zeroed
+ * (count = 0).
+ */
+esp_err_t calendar_ics_fetch(const char *url, int timeout_ms, time_t window_start,
+                             time_t window_end, const char *cache_path, const char *etag_in,
+                             char *etag_out, size_t etag_out_len, ics_event_list_t *out);
+
+/**
+ * @brief Pure parsing logic behind calendar_ics_fetch(), split out so it's
+ * host-testable without a real HTTP fetch: parses `body` (an ICS feed
+ * already in memory, `body_len` bytes - modified in place during
+ * line-unfolding) directly. See calendar_ics_fetch() for the extraction
+ * rules.
+ *
+ * A DTSTART/DTEND with no trailing "Z" (bare or TZID-qualified) is
+ * interpreted as the device's own local time (via mktime(), the same
+ * local-time convention every other wake/schedule computation in this
+ * firmware already relies on) rather than real IANA timezone conversion -
+ * accurate for the common case where the calendar's own timezone matches
+ * the device's configured timezone, approximate otherwise.
+ */
+esp_err_t calendar_ics_parse(char *body, size_t body_len, time_t window_start, time_t window_end,
+                             ics_event_list_t *out);
+
+/**
+ * @brief One-shot, unconditional fetch: downloads `url` and overwrites
+ * `cache_path` with the raw response body - no ETag/conditional-GET, no
+ * parsing/event extraction. For ICS sources that are only ever meant to be
+ * fetched on an explicit user action (a URL being set/changed, a manual
+ * "refresh now", see agenda_manager.c's extra ICS sources) rather than on
+ * every agenda wake like calendar_ics_fetch() above.
+ */
+esp_err_t calendar_ics_fetch_once(const char *url, int timeout_ms, const char *cache_path);
+
+/**
+ * @brief Reads whatever is currently cached at `cache_path` and parses it
+ * (calendar_ics_parse()) - no network access at all. The per-wake read
+ * path for a source that doesn't auto-refresh (calendar_ics_fetch_once()
+ * above is the only thing that ever updates `cache_path`). Returns
+ * ESP_ERR_NOT_FOUND if the file doesn't exist/is empty - a source that was
+ * never configured, same as a fresh device.
+ */
+esp_err_t calendar_ics_read_cache(const char *cache_path, time_t window_start, time_t window_end,
+                                  ics_event_list_t *out);
+
+/**
+ * @brief Writes `list` to `path` as a small flat cache - one line per
+ * event, "<start>\t<end>\t<all_day 0|1>\t<summary>\n" (any stray tab/
+ * newline/carriage-return already in `summary` is replaced with a space so
+ * it can't be mistaken for a field separator or a second line). This is
+ * NOT valid ICS - it's a fast internal format so re-reading it
+ * (calendar_ics_read_expanded_cache() below) never needs to re-run the
+ * line-unfolding/VEVENT-scanning/RRULE-expansion parser again. Used by
+ * agenda_manager.c's extra ICS sources to avoid re-parsing a large raw
+ * .ics file on every agenda wake: the raw file is parsed/expanded once
+ * for a wide (e.g. 30-day) window, the flat result is cached here, and
+ * every wake after that just reads this cheap file until it runs out of
+ * upcoming entries.
+ */
+esp_err_t calendar_ics_write_expanded_cache(const char *path, const ics_event_list_t *list);
+
+/**
+ * @brief Reads back a cache written by calendar_ics_write_expanded_cache()
+ * - a cheap line-split, no ICS parsing at all. A malformed line is skipped
+ * (fail-soft), not treated as a fatal error. Returns ESP_ERR_NOT_FOUND if
+ * the file doesn't exist, same convention as calendar_ics_read_cache().
+ */
+esp_err_t calendar_ics_read_expanded_cache(const char *path, ics_event_list_t *out);
+
+/**
+ * @brief True if `list` has at least one event that hasn't fully passed yet
+ * (end > now) - i.e. the source isn't exhausted/stale. Used by callers that
+ * treat "no more upcoming content at all" as actionable, e.g.
+ * agenda_manager.c's extra ICS sources, which never refresh themselves and
+ * so need to flag when they've run dry.
+ */
+bool calendar_ics_has_upcoming_event(const ics_event_list_t *list, time_t now);
+
+#endif

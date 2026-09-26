@@ -1,0 +1,19 @@
+# ProvisionPage.vue: the old fork's copy predates upstream's newer setup page (network list, scan retry);
+# everything is dropped and the offline-mode option is added by hand (provision_manual.py).
+0 drop
+1 drop
+2 drop
+4 drop
+5 drop
+6 drop
+7 drop
+8 drop
+9 drop
+10 drop
+11 drop
+13 drop
+14 drop
+3.0 drop
+3.1 drop
+12.0 drop
+12.1 drop

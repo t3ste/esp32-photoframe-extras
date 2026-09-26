@@ -7,14 +7,38 @@
 
 #include "config.h"
 #include "esp_log.h"
+#include "feature_config.h"
+#if FORK_FIXES
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#endif
 #include "nvs.h"
 #include "storage.h"
 
 static const char *TAG = "album_manager";
 static char enabled_albums_str[512] = "";
 
+#if FORK_FIXES
+// enabled_albums_str is read and mutated from multiple FreeRTOS tasks (the
+// HTTP server, the Telegram bot task, auto-rotate). Without a lock,
+// get_enabled_albums()'s count-then-populate two-pass strtok scan could see
+// a concurrent set_album_enabled() shrink the string between passes,
+// leaving the tail of its malloc'd array as uninitialized memory while
+// still reporting the first pass's (now-too-high) count.
+#define ALBUM_LOCK_TIMEOUT_MS (5 * 1000)
+static SemaphoreHandle_t album_mutex = NULL;
+
+#endif
 esp_err_t album_manager_init(void)
 {
+#if FORK_FIXES
+    album_mutex = xSemaphoreCreateMutex();
+    if (!album_mutex) {
+        ESP_LOGE(TAG, "Failed to create album mutex");
+        return ESP_ERR_NO_MEM;
+    }
+
+#endif
     if (!storage_has_persistent_storage()) {
         ESP_LOGI(TAG, "Storage not mounted - skipping album manager initialization");
         return ESP_OK;
@@ -152,6 +176,41 @@ esp_err_t album_manager_create_album(const char *album_name)
     return ESP_OK;
 }
 
+#if FORK_FIXES
+// Empties and removes `path` (a directory - e.g. an album's "crop"
+// subdirectory, see docs/FACE_CROP.md). One level of recursion is enough for
+// every directory shape this project ever creates, but this recurses
+// generally rather than assuming that, so any subdirectory - not just
+// "crop" - empties correctly instead of silently blocking the parent's own
+// rmdir() the way a flat unlink()-every-entry loop does.
+static esp_err_t remove_directory_recursive(const char *path)
+{
+    DIR *dir = opendir(path);
+    if (!dir) {
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+
+        char entry_path[512];
+        snprintf(entry_path, sizeof(entry_path), "%s/%s", path, entry->d_name);
+
+        if (entry->d_type == DT_DIR) {
+            remove_directory_recursive(entry_path);
+        } else {
+            unlink(entry_path);
+        }
+    }
+    closedir(dir);
+
+    return (rmdir(path) == 0) ? ESP_OK : ESP_FAIL;
+}
+
+#endif
 esp_err_t album_manager_delete_album(const char *album_name)
 {
     if (!album_name || strlen(album_name) == 0) {
@@ -166,6 +225,9 @@ esp_err_t album_manager_delete_album(const char *album_name)
     char album_path[256];
     snprintf(album_path, sizeof(album_path), "%s/%s", IMAGE_DIRECTORY, album_name);
 
+#if FORK_FIXES
+    if (remove_directory_recursive(album_path) != ESP_OK) {
+#else
     DIR *dir = opendir(album_path);
     if (!dir) {
         return ESP_ERR_NOT_FOUND;
@@ -184,6 +246,7 @@ esp_err_t album_manager_delete_album(const char *album_name)
     closedir(dir);
 
     if (rmdir(album_path) != 0) {
+#endif
         ESP_LOGE(TAG, "Failed to delete album directory: %s", album_name);
         return ESP_FAIL;
     }
@@ -194,6 +257,80 @@ esp_err_t album_manager_delete_album(const char *album_name)
     return ESP_OK;
 }
 
+#if FEATURE_FACECROP
+// Web UI maintenance action supporting the Cover/Fit variant-selection
+// feature (see docs/FACE_CROP.md): for every album, creates a "crop"
+// subdirectory if missing and moves any "<name>.cover.<ext>" files
+// currently sitting loose in the album root into it - the layout
+// display_manager.c's resolve_display_variant() expects. A photo already
+// laid out correctly (or with no Cover variant at all) is untouched.
+esp_err_t album_manager_organize_crop_variants(int *out_moved_count)
+{
+    int moved = 0;
+    char **albums = NULL;
+    int album_count = 0;
+
+    esp_err_t err = album_manager_list_albums(&albums, &album_count);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    for (int i = 0; i < album_count; i++) {
+        char album_path[256];
+        if (album_manager_get_album_path(albums[i], album_path, sizeof(album_path)) != ESP_OK) {
+            continue;
+        }
+
+        char crop_dir[300];
+        snprintf(crop_dir, sizeof(crop_dir), "%s/crop", album_path);
+        bool crop_dir_ready = false;
+
+        DIR *dir = opendir(album_path);
+        if (!dir) {
+            continue;
+        }
+
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL) {
+            if (entry->d_type != DT_REG) {
+                continue;
+            }
+            const char *ext = strrchr(entry->d_name, '.');
+            if (!ext) {
+                continue;
+            }
+            size_t base_len = (size_t) (ext - entry->d_name);
+            if (base_len < 6 || strncasecmp(entry->d_name + base_len - 6, ".cover", 6) != 0) {
+                continue;
+            }
+
+            if (!crop_dir_ready) {
+                mkdir(crop_dir, 0755);  // ignore EEXIST - failure surfaces via rename() below
+                crop_dir_ready = true;
+            }
+
+            char src_path[700], dest_path[700];
+            snprintf(src_path, sizeof(src_path), "%s/%s", album_path, entry->d_name);
+            snprintf(dest_path, sizeof(dest_path), "%s/%s", crop_dir, entry->d_name);
+
+            if (rename(src_path, dest_path) == 0) {
+                moved++;
+            } else {
+                ESP_LOGW(TAG, "Failed to move %s into crop/", src_path);
+            }
+        }
+        closedir(dir);
+    }
+
+    album_manager_free_album_list(albums, album_count);
+    if (out_moved_count) {
+        *out_moved_count = moved;
+    }
+    ESP_LOGI(TAG, "Organized crop/ folders: moved %d file(s)", moved);
+    return ESP_OK;
+}
+
+#endif
 esp_err_t album_manager_set_album_enabled(const char *album_name, bool enabled)
 {
     if (!album_name || strlen(album_name) == 0) {
@@ -206,6 +343,13 @@ esp_err_t album_manager_set_album_enabled(const char *album_name, bool enabled)
         return ESP_ERR_NOT_FOUND;
     }
 
+#if FORK_FIXES
+    if (xSemaphoreTake(album_mutex, pdMS_TO_TICKS(ALBUM_LOCK_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG, "Timed out acquiring album mutex (set_enabled)");
+        return ESP_ERR_TIMEOUT;
+    }
+
+#endif
     char new_list[512] = "";
     size_t pos = 0;
     bool found = false;
@@ -259,6 +403,9 @@ esp_err_t album_manager_set_album_enabled(const char *album_name, bool enabled)
 
     ESP_LOGI(TAG, "Set album %s to %s. Enabled albums: %s", album_name,
              enabled ? "enabled" : "disabled", enabled_albums_str);
+#if FORK_FIXES
+    xSemaphoreGive(album_mutex);
+#endif
     return ESP_OK;
 }
 
@@ -268,9 +415,19 @@ bool album_manager_is_album_enabled(const char *album_name)
         return false;
     }
 
+#if FORK_FIXES
+    if (xSemaphoreTake(album_mutex, pdMS_TO_TICKS(ALBUM_LOCK_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG, "Timed out acquiring album mutex (is_enabled)");
+        return false;
+    }
+
+#endif
     char temp_str[512];
     strncpy(temp_str, enabled_albums_str, sizeof(temp_str) - 1);
     temp_str[sizeof(temp_str) - 1] = '\0';
+#if FORK_FIXES
+    xSemaphoreGive(album_mutex);
+#endif
 
     char *token = strtok(temp_str, ",");
     while (token != NULL) {
@@ -296,13 +453,35 @@ esp_err_t album_manager_get_enabled_albums(char ***albums, int *count)
     }
 
     *count = 0;
+#if FORK_FIXES
+
+    if (xSemaphoreTake(album_mutex, pdMS_TO_TICKS(ALBUM_LOCK_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG, "Timed out acquiring album mutex (get_enabled)");
+        *albums = NULL;
+        return ESP_ERR_TIMEOUT;
+    }
+    // Snapshot once under the lock - both passes below parse this local copy,
+    // not the shared buffer, so a concurrent set_album_enabled() can't shrink
+    // the string between the counting pass and the populate pass.
+    char snapshot[512];
+    strncpy(snapshot, enabled_albums_str, sizeof(snapshot) - 1);
+    snapshot[sizeof(snapshot) - 1] = '\0';
+    xSemaphoreGive(album_mutex);
+
+    if (strlen(snapshot) == 0) {
+#else
     if (strlen(enabled_albums_str) == 0) {
+#endif
         *albums = NULL;
         return ESP_OK;
     }
 
     char temp_str[512];
+#if FORK_FIXES
+    strncpy(temp_str, snapshot, sizeof(temp_str) - 1);
+#else
     strncpy(temp_str, enabled_albums_str, sizeof(temp_str) - 1);
+#endif
     temp_str[sizeof(temp_str) - 1] = '\0';
 
     char *token = strtok(temp_str, ",");
@@ -321,7 +500,11 @@ esp_err_t album_manager_get_enabled_albums(char ***albums, int *count)
         return ESP_ERR_NO_MEM;
     }
 
+#if FORK_FIXES
+    strncpy(temp_str, snapshot, sizeof(temp_str) - 1);
+#else
     strncpy(temp_str, enabled_albums_str, sizeof(temp_str) - 1);
+#endif
     temp_str[sizeof(temp_str) - 1] = '\0';
 
     int idx = 0;

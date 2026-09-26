@@ -1,0 +1,37 @@
+# main/main.c
+0 FORK_ANY
+1:1-1 FEATURE_AGENDA
+1:2-3 FEATURE_ALARMCLOCK
+2:1-1 FEATURE_CHIMES
+2:2-2 FEATURE_CLIMATE
+# button task and hotspot toggle: integrated by hand (offline-hotspot + alarm UI)
+5 drop
+6 drop
+7 drop
+8 drop
+9 drop
+10 drop
+11 drop
+12 drop
+13 drop
+14 drop
+15 drop
+16 drop
+# WiFi init condition, agenda/alarm wake decision, connect result: by hand
+19 drop
+20 drop
+21 drop
+29 FORK_ANY
+30 FORK_FIXES
+31 FORK_FIXES
+32 FORK_FIXES
+35.0 FORK_ANY
+# rotate-button wake (long press + dedicated task) and cold-boot WiFi handling: by hand
+35.1 drop
+36 drop
+37 drop
+38 drop
+39 drop
+40 drop
+41 drop
+42 drop

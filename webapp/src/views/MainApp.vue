@@ -6,10 +6,20 @@ import AlbumGallery from "../components/AlbumGallery.vue";
 import ImageUpload from "../components/ImageUpload.vue";
 import SettingsPanel from "../components/SettingsPanel.vue";
 import OtaUpdate from "../components/OtaUpdate.vue";
+// #if FEATURE_BATTERY_HISTORY
+import BatteryHistory from "../components/BatteryHistory.vue";
+// #endif
+// #if FEATURE_CLIMATE
+import ClimateHistory from "../components/ClimateHistory.vue";
+// #endif
 
 const appStore = useAppStore();
 const settingsStore = useSettingsStore();
 
+// #if FORK_ANY
+const mainTab = ref("gallery");
+
+// #endif
 onMounted(async () => {
   // Load system info first to check for SD card
   await appStore.loadSystemInfo();
@@ -124,15 +134,74 @@ onUnmounted(() => {
           text="This device supports an SD card. To upload images and create multiple albums, please insert one and restart the device."
         ></v-alert>
 
+<!-- #if FORK_ANY -->
+        <v-tabs v-model="mainTab" color="primary" show-arrows class="mb-6">
+          <v-tab value="gallery">Gallery</v-tab>
+          <v-tab value="settings">Settings</v-tab>
+<!-- #endif -->
+<!-- #if FEATURE_BATTERY_HISTORY -->
+          <v-tab value="battery">Battery History</v-tab>
+<!-- #endif -->
+<!-- #if FEATURE_CLIMATE -->
+          <v-tab v-if="settingsStore.deviceSettings.climateSensorAvailable" value="climate">
+            Climate History
+          </v-tab>
+<!-- #endif -->
+<!-- #if FORK_ANY -->
+          <v-tab value="updates">Updates</v-tab>
+        </v-tabs>
+<!-- #else -->
         <AlbumGallery
           v-if="appStore.systemInfo.sdcard_inserted || appStore.systemInfo.has_flash_storage"
         />
+<!-- #endif -->
 
+<!-- #if FORK_ANY -->
+        <v-tabs-window v-model="mainTab">
+          <v-tabs-window-item value="gallery">
+            <AlbumGallery
+              v-if="appStore.systemInfo.sdcard_inserted || appStore.systemInfo.has_flash_storage"
+            />
+<!-- #else -->
         <ImageUpload class="mt-6" />
+<!-- #endif -->
 
+<!-- #if FORK_ANY -->
+            <ImageUpload class="mt-6" />
+          </v-tabs-window-item>
+<!-- #else -->
         <SettingsPanel class="mt-6" />
+<!-- #endif -->
 
+<!-- #if FORK_ANY -->
+          <v-tabs-window-item value="settings">
+            <SettingsPanel />
+          </v-tabs-window-item>
+
+<!-- #endif -->
+<!-- #if FEATURE_BATTERY_HISTORY -->
+          <v-tabs-window-item value="battery">
+            <BatteryHistory />
+          </v-tabs-window-item>
+
+<!-- #endif -->
+<!-- #if FEATURE_CLIMATE -->
+          <v-tabs-window-item
+            v-if="settingsStore.deviceSettings.climateSensorAvailable"
+            value="climate"
+          >
+            <ClimateHistory />
+          </v-tabs-window-item>
+
+<!-- #endif -->
+<!-- #if FORK_ANY -->
+          <v-tabs-window-item value="updates">
+            <OtaUpdate />
+          </v-tabs-window-item>
+        </v-tabs-window>
+<!-- #else -->
         <OtaUpdate class="mt-6" />
+<!-- #endif -->
       </v-container>
     </v-main>
 

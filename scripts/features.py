@@ -117,6 +117,13 @@ FEATURES = (
         "OTA release channel (stable/pre-release) and firmware variant choice",
     ),
     Feature(
+        "wifi-resilience",
+        "FEATURE_WIFI_RESILIENCE",
+        (),
+        (),
+        "WiFi options: credential-wipe safety, extended retry, battery TX cap",
+    ),
+    Feature(
         "facecrop",
         "FEATURE_FACECROP",
         (),
@@ -195,6 +202,11 @@ def _unsupported(name, board, excluded):
         if reason:
             return f"requires '{dependency}', which is unavailable ({reason})"
     return None
+
+
+def is_supported(name, board):
+    """True if feature 'name' can be built for 'board'."""
+    return _unsupported(normalize(name), board, ()) is None
 
 
 def resolve(board, requested=(), excluded=(), all_features=False):

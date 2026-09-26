@@ -63,6 +63,20 @@ The script automatically:
    except the M5Paper, which is a plain `esp32`)
 4. Runs `idf.py build` OR `idf.py build` with correct options
 
+**Optional features.** Without further options the build is the upstream firmware. Extra
+features (Telegram, agenda, overlays, alarm clock, HTTPS, ...) are switched on per build:
+
+```bash
+./build.py --board waveshare_photopainter_73 --with agenda,telegram
+./build.py --board waveshare_photopainter_73 --all-features
+./build.py --board seeedstudio_xiao_ee02 --list-features
+```
+
+See [FEATURES.md](FEATURES.md) for the list, the hardware each feature needs and how the
+options are checked; [FEATURE_FLAGS_PLAN.md](FEATURE_FLAGS_PLAN.md) describes the design.
+To compile every feature on its own, run `python scripts/feature_matrix.py --board <board>
+single` in an activated ESP-IDF shell.
+
 ### 3. Flash and Monitor
 
 The project uses ESP Component Manager to automatically download the `esp_jpeg` component during the first build.

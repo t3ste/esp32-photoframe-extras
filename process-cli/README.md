@@ -15,7 +15,7 @@ Node.js CLI tool for processing images for ESP32 PhotoFrame. Uses the [epaper-im
 
 ```bash
 git clone https://github.com/aitjcize/esp32-photoframe.git
-cd esp32-photoframe/esp32-photoframe/process-cli
+cd esp32-photoframe/process-cli
 npm install
 npm link  # Makes photoframe-process command available globally
 ```
@@ -65,6 +65,23 @@ photoframe-process ~/Photos/Albums -o output/
 
 Automatically processes subdirectories as albums, preserving folder structure.
 
+### Split Output by Orientation
+
+```bash
+# Route each album's output into landscape/portrait/square subfolders, based on
+# each photo's OWN orientation (before any auto-rotation to match the display)
+photoframe-process ~/Photos/Albums --split-by-orientation -o output/
+```
+
+Folder mode only (errors on a single-file input). Produces e.g.
+`output/AlbumName/landscape/photo1.epdgz`, `output/AlbumName/portrait/photo2.epdgz`,
+`output/AlbumName/square/photo3.epdgz` instead of one flat `output/AlbumName/` - useful when
+downstream logic (firmware rotation, manual sorting) wants photos pre-grouped by shape rather than
+mixed together. A photo that can't be decoded at all (corrupt file, unsupported format) is copied
+unmodified into an `output/AlbumName/unknown/` subfolder instead of just being skipped with a
+console error, so it stays visible in a large batch rather than silently disappearing. Off by
+default - existing output layout is unchanged unless this flag is given.
+
 ### Device Parameters
 
 ```bash
@@ -83,6 +100,28 @@ photoframe-process ~/Photos/Albums --upload --device-parameters --host photofram
 ```
 
 Processes in temp directory, uploads via HTTP API, auto-cleans up.
+
+### Face-Aware Crop Metadata
+
+```bash
+# Detect faces, write photo.facecrop.json, and steer the rendered crop to keep them visible
+photoframe-process photo.jpg --detect-faces --board waveshare_photopainter_73 -o output/
+
+# Metadata only - no rendered image, just the JSON sidecar
+photoframe-process photo.jpg --detect-faces --metadata-only --board waveshare_photopainter_73
+```
+
+Opt-in (off unless `--detect-faces` is given) - see [docs/FACE_CROP.md](../docs/FACE_CROP.md) for the
+full option list, the JSON schema, and how `--board`/`--resolution`/`--display-size-mm`/`--orientation`
+combine to pick the crop's target geometry.
+
+A complete flowchart of this CLI's entire option set and control flow (not just face-crop) is in
+`../docs/diagrams/` as three PlantUML files - render with the PlantUML VS Code extension,
+`plantuml.jar`, or https://www.plantuml.com/plantuml:
+
+- [process-cli-options.puml](../docs/diagrams/process-cli-options.puml) - every CLI option, grouped by concern
+- [process-cli-main-flow.puml](../docs/diagrams/process-cli-main-flow.puml) - the main CLI control flow
+- [process-cli-image-flow.puml](../docs/diagrams/process-cli-image-flow.puml) - the per-image `processImageFile()` detail
 
 ### Image Server Mode
 
@@ -136,11 +175,13 @@ Options:
 - `photo.png` - 800x480 dithered PNG (theoretical palette for device)
 - `photo.bmp` - 800x480 dithered BMP
 - `photo.jpg` - 400x240 thumbnail
+- `photo.capture.json` - EXIF capture-date sidecar (only written when the source has a
+  `DateTimeOriginal` tag) - see [docs/OVERLAYS.md](../docs/OVERLAYS.md#capture-date-caption-for-storageauto-rotate-photos)
 - `--use-perceived-output` - Use perceived palette colors (realistic preview)
 
 ## Processing Pipeline
 
-1. Load image → 2. EXIF orientation → 3. Rotate if portrait → 4. Resize to 800x480 (cover mode) → 5. Tone mapping (S-curve/contrast) → 6. Saturation adjustment → 7. Floyd-Steinberg dithering → 8. Output EPDGZ + thumbnail
+1. Load image (EXIF-orientation-corrected automatically by the decoder) → 2. Rotate if portrait → 3. Resize to 800x480 (cover mode) → 4. Tone mapping (S-curve/contrast) → 5. Saturation adjustment → 6. Floyd-Steinberg dithering → 7. Output EPDGZ + thumbnail
 
 ## Examples
 

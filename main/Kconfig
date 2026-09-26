@@ -24,15 +24,28 @@ menu "Photoframe optional features"
     config FORK_HTTP_FETCH
         bool
 
+    config FORK_EXIF
+        bool
+
     config FORK_WEATHER
         bool
         select FORK_HTTP_FETCH
 
-    config FORK_EXIF
+    config FORK_CLIMATE_CORE
         bool
 
     config FORK_IMAGE_PIPELINE
         bool
+
+    config FORK_AUDIO_HAL
+        bool
+
+    config FORK_OTA_REPO
+        string "GitHub repository that OTA updates are fetched from (owner/name)"
+        default "aitjcize/esp32-photoframe"
+        help
+            The release feed the firmware checks for updates. The default is the
+            upstream project; a fork that publishes its own releases sets this.
 
     # ---- Features -----------------------------------------------------------
 
@@ -48,8 +61,9 @@ menu "Photoframe optional features"
     config FEATURE_OVERLAYS
         bool "Weather and headline overlays"
         default n
-        select FORK_WEATHER
         select FORK_HTTP_FETCH
+        select FORK_WEATHER
+        select FORK_CLIMATE_CORE
         select FORK_EXIF
         select FORK_IMAGE_PIPELINE
         help
@@ -60,6 +74,9 @@ menu "Photoframe optional features"
         bool "Agenda mode (ToDo and calendars)"
         default n
         select FORK_HTTP_FETCH
+        select FORK_WEATHER
+        select FORK_CLIMATE_CORE
+        select FORK_IMAGE_PIPELINE
         help
             Full-screen ToDo list and calendar views (ICS sources A-E with
             recurrence rules), 7-day grid and colour profiles.
@@ -68,6 +85,7 @@ menu "Photoframe optional features"
         bool "Chimes (speaker feedback)"
         default n
         depends on FORK_HW_SPEAKER
+        select FORK_AUDIO_HAL
         help
             Short beeps for firmware events. Needs a board with a speaker.
 
@@ -75,6 +93,8 @@ menu "Photoframe optional features"
         bool "Climate sensor readout and history"
         default n
         depends on FORK_HW_CLIMATE_SENSOR
+        select FORK_CLIMATE_CORE
+        select FORK_IMAGE_PIPELINE
         help
             Temperature and humidity badges, Agenda chip and history chart.
             Needs a board with a temperature/humidity sensor.
@@ -83,6 +103,7 @@ menu "Photoframe optional features"
         bool "Bedside alarm clock"
         default n
         depends on FORK_HW_SPEAKER
+        select FORK_AUDIO_HAL
         help
             Configurable alarm schedule that wakes the device and rings through
             the speaker without bringing up WiFi. Needs a board with a speaker.
@@ -125,6 +146,7 @@ menu "Photoframe optional features"
     config FEATURE_ERROR_BANNER
         bool "On-display error banner"
         default n
+        select FORK_IMAGE_PIPELINE
         help
             Shows WiFi and internet failures as a banner on the display.
 
@@ -134,6 +156,14 @@ menu "Photoframe optional features"
         help
             Choose between stable and pre-release updates and between the
             firmware variants offered by the release.
+
+    config FEATURE_WIFI_RESILIENCE
+        bool "WiFi resilience options"
+        default n
+        help
+            Keep the saved WiFi credentials over transient connection failures
+            (extended retry, reprovisioning switch), cap the TX power while a
+            battery is connected, and choose the WiFi performance mode.
 
     config FEATURE_FACECROP
         bool "Face-aware crop variants"
@@ -146,6 +176,7 @@ menu "Photoframe optional features"
     config FORK_FIXES
         bool "General fixes and robustness improvements"
         default n
+        select FORK_HTTP_FETCH
         help
             Bug fixes and hardening that go beyond upstream and are not tied
             to a single feature.

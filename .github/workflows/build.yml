@@ -17,6 +17,9 @@ jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
+  # plain: no optional feature, i.e. the upstream firmware - this is what a release ships.
+  # full:  every optional feature the board supports (build.py --all-features); uploaded
+  #        as a workflow artifact only.
   build:
     runs-on: ubuntu-latest
     needs: ci
@@ -25,7 +28,16 @@ jobs:
     strategy:
       matrix:
         board: [waveshare_photopainter_73, seeedstudio_xiao_ee02, seeedstudio_reterminal_e1002, seeedstudio_xiao_ee04, seeedstudio_reterminal_e1004, seeedstudio_reterminal_e1003, seeedstudio_xiao_ee03, m5stack_m5paper_v11]
+        variant: [plain, full]
         include:
+          - variant: plain
+            feature_args: ''
+            suffix: ''
+            artifact_prefix: photoframe-firmware-
+          - variant: full
+            feature_args: '--all-features'
+            suffix: '-full'
+            artifact_prefix: photoframe-firmware-full-
           # bootloader_offset differs by chip family: 0x1000 on the ESP32,
           # 0x0 on the ESP32-S3.
           - board: waveshare_photopainter_73
@@ -85,7 +97,7 @@ jobs:
         node-version: '20'
 
     - name: Build webapp
-      run: python3 build.py --step webapp
+      run: python3 build.py --board ${{ matrix.board }} ${{ matrix.feature_args }} --step webapp
 
     - name: Install splash screen system dependencies
       run: |
@@ -101,7 +113,7 @@ jobs:
         esp_idf_version: release-v6.0
         target: ${{ matrix.target }}
         command: |
-          python3 build.py --board ${{ matrix.board }} --step firmware \
+          python3 build.py --board ${{ matrix.board }} ${{ matrix.feature_args }} --step firmware \
             -DFIRMWARE_VERSION='${{ steps.version.outputs.version }}'
 
     - name: Install esptool
@@ -112,21 +124,71 @@ jobs:
         mkdir -p firmware
 
         # Create merged firmware directly from build directory
-        esptool.py --chip ${{ matrix.target }} merge-bin -o firmware/photoframe-firmware-${{ matrix.board }}-merged.bin \
+        esptool.py --chip ${{ matrix.target }} merge-bin -o firmware/photoframe-firmware-${{ matrix.board }}${{ matrix.suffix }}-merged.bin \
           --flash_mode dio --flash_freq 80m --flash_size ${{ matrix.flash_size }} \
           ${{ matrix.bootloader_offset }} build/bootloader/bootloader.bin \
           0x8000 build/partition_table/partition-table.bin \
           0x20000 build/esp32-photoframe.bin
 
         # Copy OTA binary with board name for release
-        cp build/esp32-photoframe.bin firmware/esp32-photoframe-${{ matrix.board }}.bin
+        cp build/esp32-photoframe.bin firmware/esp32-photoframe-${{ matrix.board }}${{ matrix.suffix }}.bin
 
     - name: Upload firmware artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: photoframe-firmware-${{ matrix.board }}
+        name: ${{ matrix.artifact_prefix }}${{ matrix.board }}
         path: firmware/
         retention-days: 90
+
+  # Every optional feature on its own (plus nothing and everything) must at least
+  # compile; a board only takes the features whose hardware it has. One job per set,
+  # each with a fresh build directory.
+  feature-compile:
+    runs-on: ubuntu-latest
+    needs: ci
+    strategy:
+      matrix:
+        board: [waveshare_photopainter_73, seeedstudio_xiao_ee02]
+        feature_set: [off, telegram, overlays, agenda, battery-history, display-history, https, offline-hotspot, error-banner, ota-channel, wifi-resilience, facecrop, fixes, all]
+        include:
+          - board: waveshare_photopainter_73
+            feature_set: chimes
+          - board: waveshare_photopainter_73
+            feature_set: climate
+          - board: waveshare_photopainter_73
+            feature_set: alarmclock
+          - board: waveshare_photopainter_73
+            feature_set: voice-stop
+      fail-fast: false
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+      with:
+        submodules: 'recursive'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '20'
+
+    - name: Build the web app of the feature set
+      run: python3 scripts/feature_matrix.py --board ${{ matrix.board }} --webapp only ${{ matrix.feature_set }}
+
+    - name: Install splash screen system dependencies
+      run: |
+        pip install qrcode
+        sudo apt-get update && sudo apt-get install -y librsvg2-bin
+
+    - name: Generate splash screen
+      run: python3 build.py --board ${{ matrix.board }} --step splash
+
+    - name: Compile the feature set
+      uses: espressif/esp-idf-ci-action@v1
+      with:
+        esp_idf_version: release-v6.0
+        target: esp32s3
+        command: python3 scripts/feature_matrix.py --board ${{ matrix.board }} --webapp skip ${{ matrix.feature_set }}
 
   release:
     runs-on: ubuntu-latest

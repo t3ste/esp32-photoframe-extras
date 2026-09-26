@@ -6,6 +6,18 @@ const latestVersion = ref("-");
 const otaState = ref("idle");
 const progress = ref(0);
 const errorMessage = ref("");
+// #if FEATURE_OTA_CHANNEL
+const latestPrerelease = ref(false);
+const variantSwitch = ref(false);
+
+// Which release channel / firmware variant the check and install use
+// (stored on the device, see /api/ota/options).
+const channel = ref("stable");
+const alarmclock = ref(false);
+const alarmclockAvailable = ref(false);
+const runningAlarmclock = ref(false);
+const savingOptions = ref(false);
+// #endif
 
 let statusPollInterval = null;
 
@@ -15,6 +27,17 @@ const installing = computed(
   () => otaState.value === "downloading" || otaState.value === "installing"
 );
 
+// #if FEATURE_OTA_CHANNEL
+const busy = computed(() => checking.value || installing.value);
+
+const switchNote = computed(() => {
+  if (!variantSwitch.value) return "";
+  return alarmclock.value
+    ? " - switches to the Alarm Clock firmware"
+    : " - switches to the regular firmware (no Alarm Clock)";
+});
+
+// #endif
 const statusMessage = computed(() => {
   switch (otaState.value) {
     case "idle":
@@ -22,7 +45,13 @@ const statusMessage = computed(() => {
     case "checking":
       return "Checking for updates...";
     case "update_available":
+      // #if FEATURE_OTA_CHANNEL
+      return `Update available: ${latestVersion.value}${
+        latestPrerelease.value ? " (pre-release)" : ""
+      }${switchNote.value}`;
+      // #else
       return `Update available: ${latestVersion.value}`;
+    // #endif
     case "downloading":
       return "Downloading firmware...";
     case "installing":
@@ -66,6 +95,10 @@ async function loadOTAStatus() {
     otaState.value = data.state || "idle";
     progress.value = data.progress_percent || 0;
     errorMessage.value = data.error_message || "";
+    // #if FEATURE_OTA_CHANNEL
+    latestPrerelease.value = data.latest_prerelease === true;
+    variantSwitch.value = data.variant_switch === true;
+    // #endif
 
     // If state is idle and we were checking, it means check completed with no update
     // The state should transition appropriately based on the backend response
@@ -74,6 +107,45 @@ async function loadOTAStatus() {
   }
 }
 
+// #if FEATURE_OTA_CHANNEL
+async function loadOptions() {
+  try {
+    const response = await fetch("/api/ota/options");
+    if (!response.ok) return;
+    const data = await response.json();
+    channel.value = data.channel || "stable";
+    alarmclock.value = data.alarmclock === true;
+    alarmclockAvailable.value = data.alarmclock_available === true;
+    runningAlarmclock.value = data.running_alarmclock === true;
+  } catch (error) {
+    console.error("Failed to load OTA options:", error);
+  }
+}
+
+async function saveOptions() {
+  savingOptions.value = true;
+  try {
+    const response = await fetch("/api/ota/options", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel: channel.value, alarmclock: alarmclock.value }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    // The device forgets the previous check when the options change.
+    await loadOptions();
+    await loadOTAStatus();
+  } catch (error) {
+    errorMessage.value = "Failed to save update options: " + error.message;
+    otaState.value = "error";
+    await loadOptions();
+  } finally {
+    savingOptions.value = false;
+  }
+}
+
+// #endif
 async function checkForUpdate() {
   try {
     const response = await fetch("/api/ota/check", { method: "POST" });
@@ -140,6 +212,9 @@ function stopStatusPolling() {
 
 onMounted(() => {
   loadOTAStatus();
+  // #if FEATURE_OTA_CHANNEL
+  loadOptions();
+  // #endif
 });
 
 onUnmounted(() => {
@@ -159,6 +234,39 @@ onUnmounted(() => {
         Check for and install firmware updates from GitHub releases.
       </p>
 
+      <!-- #if FEATURE_OTA_CHANNEL -->
+      <v-row>
+        <v-col cols="12" md="6">
+          <v-radio-group
+            v-model="channel"
+            inline
+            hide-details
+            label="Release channel"
+            :disabled="busy || savingOptions"
+            @update:model-value="saveOptions"
+          >
+            <v-radio label="Stable" value="stable" />
+            <v-radio label="Include pre-releases" value="prerelease" />
+          </v-radio-group>
+        </v-col>
+        <v-col v-if="alarmclockAvailable" cols="12" md="6">
+          <v-checkbox
+            v-model="alarmclock"
+            label="Alarm Clock firmware"
+            density="compact"
+            hide-details
+            :disabled="busy || savingOptions"
+            @update:model-value="saveOptions"
+          />
+          <div class="text-caption text-medium-emphasis">
+            This device currently runs the firmware
+            {{ runningAlarmclock ? "with" : "without" }} the Alarm Clock. Changing this and
+            installing switches to the other firmware.
+          </div>
+        </v-col>
+      </v-row>
+
+      <!-- #endif -->
       <v-row align="center">
         <v-col cols="12" md="4">
           <v-list-item>
@@ -176,6 +284,11 @@ onUnmounted(() => {
               <span :class="{ 'text-success': updateAvailable }">
                 {{ latestVersion }}
               </span>
+              <!-- #if FEATURE_OTA_CHANNEL -->
+              <v-chip v-if="latestPrerelease" size="x-small" color="warning" class="ml-2">
+                pre-release
+              </v-chip>
+              <!-- #endif -->
             </v-list-item-subtitle>
           </v-list-item>
         </v-col>

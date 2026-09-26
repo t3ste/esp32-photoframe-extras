@@ -20,6 +20,11 @@ const ICON_PATHS = {
 
 const ssid = ref("");
 const password = ref("");
+// #if FEATURE_OFFLINE_HOTSPOT
+// Offline mode (github.com/aitjcize/esp32-photoframe#90): configure the frame without
+// any WiFi network; its own hotspot serves the web UI on demand.
+const offlineMode = ref(false);
+// #endif
 const deviceName = ref("PhotoFrame");
 const showPassword = ref(false);
 const loading = ref(false);
@@ -88,6 +93,12 @@ async function submitForm() {
   statusMessage.value = "Testing WiFi connection...";
 
   const formData = new URLSearchParams();
+  // #if FEATURE_OFFLINE_HOTSPOT
+  formData.append("offlineMode", offlineMode.value ? "true" : "false");
+  if (offlineMode.value) {
+    formData.append("deviceName", deviceName.value);
+  } else {
+  // #endif
   formData.append("ssid", ssid.value);
   formData.append("password", password.value);
   formData.append("deviceName", deviceName.value);
@@ -100,6 +111,9 @@ async function submitForm() {
   if (dnsServer.value.trim()) {
     formData.append("dnsServer", dnsServer.value.trim());
   }
+  // #if FEATURE_OFFLINE_HOTSPOT
+  }
+  // #endif
 
   try {
     const response = await fetch("/save", {
@@ -112,6 +126,14 @@ async function submitForm() {
 
     if (response.ok) {
       status.value = "success";
+      // #if FEATURE_OFFLINE_HOTSPOT
+      if (offlineMode.value) {
+        statusMessage.value =
+          "Offline mode configured! The device will restart in 3 seconds and run without any WiFi network. " +
+          "Hold the BOOT button for 3 seconds any time to manage photos via its own hotspot.";
+        return;
+      }
+      // #endif
       // Generate mDNS hostname from device name (lowercase, spaces to hyphens)
       const hostname = deviceName.value.toLowerCase().replace(/\s+/g, "-");
       statusMessage.value = `Credentials saved! Device will restart in 3 seconds and attempt to connect to "${ssid.value}".`;
@@ -148,6 +170,19 @@ async function submitForm() {
         <v-card-subtitle class="mb-2"> Connect your PhotoFrame to WiFi </v-card-subtitle>
 
         <v-form @submit.prevent="submitForm">
+          <!-- #if FEATURE_OFFLINE_HOTSPOT -->
+          <v-checkbox
+            v-model="offlineMode"
+            label="Use offline - no WiFi network"
+            hint="Manage photos later via the device's own hotspot (hold BOOT for 3s)"
+            persistent-hint
+            density="compact"
+            :disabled="loading"
+            class="mb-2"
+          />
+
+          <template v-if="!offlineMode">
+          <!-- #endif -->
           <v-combobox
             v-model="ssid"
             :items="networks"
@@ -213,6 +248,9 @@ async function submitForm() {
               </span>
             </template>
           </v-text-field>
+          <!-- #if FEATURE_OFFLINE_HOTSPOT -->
+          </template>
+          <!-- #endif -->
 
           <v-text-field
             v-model="deviceName"
@@ -223,7 +261,11 @@ async function submitForm() {
             class="mb-2"
           />
 
+          <!-- #if FEATURE_OFFLINE_HOTSPOT -->
+          <div v-if="!offlineMode" class="mb-4">
+            <!-- #else -->
           <div class="mb-4">
+            <!-- #endif -->
             <button
               type="button"
               class="advanced-toggle"
@@ -294,7 +336,11 @@ async function submitForm() {
           </div>
 
           <v-btn type="submit" color="primary" size="large" block :loading="loading">
+            <!-- #if FEATURE_OFFLINE_HOTSPOT -->
+            {{ offlineMode ? "Use Offline" : "Connect to WiFi" }}
+            <!-- #else -->
             Connect to WiFi
+            <!-- #endif -->
           </v-btn>
         </v-form>
 

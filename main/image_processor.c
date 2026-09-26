@@ -9,6 +9,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "feature_config.h"
+
+#if FORK_IMAGE_PIPELINE
+#include "GUI_ColorMap.h"
+#endif
 #include "board_hal.h"
 #include "color_palette.h"
 #include "config_manager.h"
@@ -16,10 +21,33 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
+#if FORK_IMAGE_PIPELINE
+#include "fonts.h"
+#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "jpeg_decoder.h"
 #include "processing_settings.h"
+#if FORK_IMAGE_PIPELINE
+#include "weather.h"
+#include "weather_icons_data.h"
+#include "zlib.h"
+
+// Same header choice as jpeg_decoder.c (the wrapper the streaming JPEG
+// decode below bypasses): this chip's ROM has TJpgDec built in
+// (ESP_ROM_HAS_JPEG_DECODE), so JD_USE_ROM defaults on and the vendored
+// managed_components/espressif__esp_jpeg/tjpgd/ source isn't even compiled.
+// The ROM header's jd_decomp() also wants its outfunc to return `unsigned
+// int` instead of `int` - jpg_stream_out_t below mirrors jpeg_decoder.c's
+// own jpeg_decode_out_t for exactly that reason.
+#if CONFIG_JD_USE_ROM
+#include "rom/tjpgd.h"
+typedef unsigned int jpg_stream_out_t;
+#else
+#include "tjpgd.h"
+typedef int jpg_stream_out_t;
+#endif
+#endif
 
 static const char *TAG = "image_processor";
 
@@ -69,10 +97,13 @@ static rgb_t palette_measured[7];
 // Theoretical is the device output ramp (value = round(i * 255 / 15) = i * 17),
 // mirroring epaper-image-convert; measured is the calibrated perceived ramp
 // used for color matching and error diffusion.
-#define GRAY(v)       \
-    {                 \
-        (v), (v), (v) \
-    }
+#if FORK_IMAGE_PIPELINE
+// clang-format off
+#define GRAY(v) {(v), (v), (v)}
+// clang-format on
+#else
+#define GRAY(v) {(v), (v), (v)}
+#endif
 static const rgb_t gray_theoretical[16] = {
     GRAY(0),   GRAY(17),  GRAY(34),  GRAY(51),  GRAY(68),  GRAY(85),  GRAY(102), GRAY(119),
     GRAY(136), GRAY(153), GRAY(170), GRAY(187), GRAY(204), GRAY(221), GRAY(238), GRAY(255)};
@@ -84,6 +115,27 @@ static bool board_is_grayscale(void)
     return strncmp(BOARD_HAL_DISPLAY_TYPE, "gc", 2) == 0;
 }
 
+#if FORK_IMAGE_PIPELINE
+// Set by agenda_renderer.c around a render using a mono/mono-invert color
+// profile - a profile-level choice to render everything in two colors,
+// independent of board_is_grayscale() (the panel's own hardware capability,
+// e.g. still a full-color Spectra6). Without this, draw_weather_icon()'s
+// "colored" mode only ever checked the board, so a mono profile on a color
+// panel still showed weather icons in their full traffic-light hues (a blue
+// cloud, a yellow sun) even though every other element correctly rendered
+// in plain black/white - reported live (2026-09-20) via a mono-invert
+// profile whose day-header weather chips stayed fully colored on-device.
+// Reset to false by the caller once rendering finishes so it never leaks
+// into an unrelated render (e.g. the plain photo-overlay weather line,
+// which has no color-profile concept at all).
+static bool s_agenda_mono_icon_mode = false;
+
+void image_processor_set_mono_icon_mode(bool mono)
+{
+    s_agenda_mono_icon_mode = mono;
+}
+
+#endif
 // CIE L* (0..100) of a relative luminance Y (0..1)
 static float lstar_from_y(float y)
 {
@@ -549,8 +601,19 @@ static void background_theoretical_rgb(const char *name, uint8_t rgb[3])
 
 // rotate is passed in (not re-read from config) so one snapshot governs the
 // whole pass -- geometry, decoder gating, and sink must agree even if the
+#if FORK_IMAGE_PIPELINE
+// user flips the orientation setting mid-stream. forced_scale_mode is the
+// same idea for scale mode: -1 reads processing_settings_get_scale_mode()
+// as before (every existing caller), any other value pins geometry to that
+// scale_mode_t regardless of the global setting - used by
+// image_processor_render_variant() to render a specific Cover/Fit variant
+// on demand, independent of whatever the device's own setting currently is.
+static void geometry_init(geometry_t *geo, const uint8_t *src, int src_w, int src_h, bool rotate,
+                          int forced_scale_mode)
+#else
 // user flips the orientation setting mid-stream
 static void geometry_init(geometry_t *geo, const uint8_t *src, int src_w, int src_h, bool rotate)
+#endif
 {
     geo->src = src;
     geo->src_w = src_w;
@@ -578,7 +641,14 @@ static void geometry_init(geometry_t *geo, const uint8_t *src, int src_w, int sr
     // produces). The resample math is shared with cover mode -- off_x/off_y
     // just become the (negative) content origin.
     char bg_name[12] = "";
+#if FORK_IMAGE_PIPELINE
+    scale_mode_t effective_scale_mode = forced_scale_mode >= 0
+                                            ? (scale_mode_t) forced_scale_mode
+                                            : processing_settings_get_scale_mode();
+    geo->fit = effective_scale_mode == SCALE_MODE_FIT;
+#else
     geo->fit = processing_settings_get_scale_mode() == SCALE_MODE_FIT;
+#endif
     geo->content_x0 = 0;
     geo->content_y0 = 0;
     geo->content_x1 = geo->proc_w;
@@ -767,6 +837,24 @@ static void geometry_repaint_background(const geometry_t *geo, int out_y, uint8_
     }
 }
 
+#if FORK_IMAGE_PIPELINE
+// One output row's worth of the streaming pipeline: resample from source,
+// color-difference-reduce, dither, restore letterbox bars, then hand off to
+// the sink. Shared by run_stream()'s own for-loop and jpg_stream_run()'s
+// incremental, MCU-row-band-driven equivalent (see the "Streamed JPEG
+// source" section below) - both need the exact same per-row sequence, just
+// driven differently (a fixed range vs. as source rows become available).
+static esp_err_t run_stream_row(geometry_t *geo, cdr_state_t *cdr, dither_state_t *dither,
+                                uint8_t *row, int y, row_sink_fn sink, void *sink_ctx)
+{
+    geometry_fill_row(geo, y, row);
+    cdr_apply_row(cdr, row, geo->out_w);
+    dither_row(dither, row);
+    geometry_repaint_background(geo, y, row);
+    return sink(sink_ctx, y, row);
+}
+
+#endif
 static esp_err_t run_stream(geometry_t *geo, dither_algorithm_t dither_algorithm, row_sink_fn sink,
                             void *sink_ctx)
 {
@@ -787,11 +875,15 @@ static esp_err_t run_stream(geometry_t *geo, dither_algorithm_t dither_algorithm
     }
 
     for (int y = 0; y < geo->out_h && err == ESP_OK; y++) {
+#if FORK_IMAGE_PIPELINE
+        err = run_stream_row(geo, &cdr, &dither, row, y, sink, sink_ctx);
+#else
         geometry_fill_row(geo, y, row);
         cdr_apply_row(&cdr, row, geo->out_w);
         dither_row(&dither, row);
         geometry_repaint_background(geo, y, row);
         err = sink(sink_ctx, y, row);
+#endif
 
         // Yield periodically so the IDLE task can feed the watchdog; dense
         // enough that the sleep windows overlap with other busy tasks'
@@ -809,12 +901,21 @@ static esp_err_t run_stream(geometry_t *geo, dither_algorithm_t dither_algorithm
 
 static esp_err_t process_rgb_stream(const uint8_t *rgb_buffer, int width, int height,
                                     dither_algorithm_t dither_algorithm, row_sink_fn sink,
+#if FORK_IMAGE_PIPELINE
+                                    void *sink_ctx, bool processing_order, bool rotated,
+                                    int forced_scale_mode)
+#else
                                     void *sink_ctx, bool processing_order, bool rotated)
+#endif
 {
     ESP_LOGI(TAG, "Processing RGB buffer: %dx%d", width, height);
 
     geometry_t geo;
+#if FORK_IMAGE_PIPELINE
+    geometry_init(&geo, rgb_buffer, width, height, rotated, forced_scale_mode);
+#else
     geometry_init(&geo, rgb_buffer, width, height, rotated);
+#endif
     if (processing_order) {
         geometry_set_processing_order(&geo);
     }
@@ -909,7 +1010,287 @@ static esp_err_t png_writer_close(png_writer_t *pw, bool success)
     return err;
 }
 
+#if FORK_IMAGE_PIPELINE
+// Streaming EPDGZ writer -- an alternative row_sink_fn to png_writer_*, for
+// callers that want the smaller, faster-to-display format instead (EPDGZ
+// stores the already-resolved 4-bit palette index, gzip-compressed, so a
+// future display is a plain gzip-inflate + nibble read with no per-pixel
+// RGB->palette re-matching, unlike reading a "processed" PNG back - see
+// GUI_PNGfile.c's read_png_mapped()). Same gzip framing and 4-bit packing as
+// display_save_frame_epdgz() in display_manager.c (which snapshots the
+// already-rendered panel framebuffer for the URL-streaming display path) but
+// driven by the row_sink_fn interface instead, so it can sit anywhere
+// png_writer_row_sink does today.
+typedef struct {
+    FILE *fp;
+    z_stream strm;
+    bool zready;
+    int width;
+    int height;
+    uint8_t *packed_row;  // row_bytes, reused every row
+    uint8_t *out_chunk;   // deflate output scratch
+    GUI_RGBMapFn map_rgb;
+} epdgz_writer_t;
+
+#define EPDGZ_WRITER_CHUNK 4096
+
+// Separate from display_manager.c's zalloc_psram/zfree_psram (which aren't
+// exported) - same ~10-line shape, not worth cross-module coupling for.
+static voidpf epdgz_zalloc_psram(voidpf opaque, uInt items, uInt size)
+{
+    (void) opaque;
+    return heap_caps_malloc((size_t) items * size, MALLOC_CAP_SPIRAM);
+}
+
+static void epdgz_zfree_psram(voidpf opaque, voidpf address)
+{
+    (void) opaque;
+    heap_caps_free(address);
+}
+
+// Returns ESP_ERR_NO_MEM (quietly, no ESP_LOGE) if the ~260 KB of deflate
+// state can't be allocated - callers treat that as an expected "fall back to
+// PNG instead" signal, not a hard error.
+static esp_err_t epdgz_writer_open(epdgz_writer_t *ew, const char *filename, int width, int height)
+{
+    memset(ew, 0, sizeof(*ew));
+    ew->width = width;
+    ew->height = height;
+    ew->map_rgb = board_is_grayscale() ? GUI_RGBToGray16 : GUI_RGBToSpectra6;
+
+    ew->fp = fopen(filename, "wb");
+    if (!ew->fp) {
+        ESP_LOGE(TAG, "Failed to open file for writing: %s", filename);
+        return ESP_FAIL;
+    }
+
+    size_t row_bytes = ((size_t) width + 1) / 2;
+    ew->packed_row = (uint8_t *) heap_caps_malloc(row_bytes, MALLOC_CAP_SPIRAM);
+    ew->out_chunk = (uint8_t *) heap_caps_malloc(EPDGZ_WRITER_CHUNK, MALLOC_CAP_SPIRAM);
+
+    ew->strm.zalloc = epdgz_zalloc_psram;
+    ew->strm.zfree = epdgz_zfree_psram;
+    ew->strm.opaque = Z_NULL;
+    // windowBits 15+16 selects the gzip wrapper GUI_ReadEPDGZ expects
+    ew->zready = ew->packed_row && ew->out_chunk &&
+                 deflateInit2(&ew->strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 15 + 16, 8,
+                              Z_DEFAULT_STRATEGY) == Z_OK;
+
+    if (!ew->zready) {
+        if (ew->packed_row) {
+            heap_caps_free(ew->packed_row);
+        }
+        if (ew->out_chunk) {
+            heap_caps_free(ew->out_chunk);
+        }
+        fclose(ew->fp);
+        memset(ew, 0, sizeof(*ew));
+        return ESP_ERR_NO_MEM;
+    }
+
+    return ESP_OK;
+}
+
+static esp_err_t epdgz_writer_row_sink(void *ctx, int y, const uint8_t *row)
+{
+    epdgz_writer_t *ew = (epdgz_writer_t *) ctx;
+    int width = ew->width;
+
+    for (int x = 0; x < width; x += 2) {
+        UBYTE p1 = ew->map_rgb(row[x * 3], row[x * 3 + 1], row[x * 3 + 2]);
+        UBYTE p2 = (x + 1 < width)
+                       ? ew->map_rgb(row[(x + 1) * 3], row[(x + 1) * 3 + 1], row[(x + 1) * 3 + 2])
+                       : 0;
+        ew->packed_row[x / 2] = (uint8_t) ((p1 << 4) | p2);
+    }
+
+    size_t row_bytes = ((size_t) width + 1) / 2;
+    ew->strm.next_in = ew->packed_row;
+    ew->strm.avail_in = row_bytes;
+    int flush = (y == ew->height - 1) ? Z_FINISH : Z_NO_FLUSH;
+    do {
+        ew->strm.next_out = ew->out_chunk;
+        ew->strm.avail_out = EPDGZ_WRITER_CHUNK;
+        if (deflate(&ew->strm, flush) == Z_STREAM_ERROR) {
+            return ESP_FAIL;
+        }
+        size_t have = EPDGZ_WRITER_CHUNK - ew->strm.avail_out;
+        if (have > 0 && fwrite(ew->out_chunk, 1, have, ew->fp) != have) {
+            ESP_LOGE(TAG, "Failed to write EPDGZ row data");
+            return ESP_FAIL;
+        }
+    } while (ew->strm.avail_out == 0);
+
+    // Yield periodically so the IDLE task can feed the watchdog, matching
+    // display_save_frame_epdgz()'s same precaution for the same CPU-heavy
+    // per-row deflate work
+    if ((y & 63) == 0) {
+        vTaskDelay(1);
+    }
+
+    return ESP_OK;
+}
+
+static esp_err_t epdgz_writer_close(epdgz_writer_t *ew, bool success)
+{
+    esp_err_t err = success ? ESP_OK : ESP_FAIL;
+
+    if (ew->zready) {
+        deflateEnd(&ew->strm);
+    }
+    if (ew->packed_row) {
+        heap_caps_free(ew->packed_row);
+    }
+    if (ew->out_chunk) {
+        heap_caps_free(ew->out_chunk);
+    }
+    if (ew->fp) {
+        if (fclose(ew->fp) != 0 && err == ESP_OK) {
+            ESP_LOGE(TAG, "Failed to finalize EPDGZ file");
+            err = ESP_FAIL;
+        }
+    }
+    memset(ew, 0, sizeof(*ew));
+
+    return err;
+}
+
+// Decodes an in-RAM .epdgz buffer (gzip-compressed, 4-bit-per-pixel packed,
+// same framing epdgz_writer_row_sink() produces and GUI_ReadEPDGZ() already
+// reads straight to the panel) back into a fresh RGB888 buffer. Unlike a
+// JPG/PNG decode, this can only ever reconstruct the palette color each
+// pixel was already dithered to - lossy relative to the true original, but
+// exact relative to what's actually on disk, which is all
+// image_processor_compose_pair_to_rgb() needs to recombine two already-
+// rendered Telegram photos. Dimensions are always the panel's own
+// resolution (BOARD_HAL_DISPLAY_WIDTH/HEIGHT) - .epdgz never stores its own,
+// the same assumption GUI_ReadEPDGZ() makes.
+static esp_err_t decode_epdgz_buffer(const uint8_t *data, size_t size, uint8_t **rgb_buffer,
+                                     int *width, int *height)
+{
+    int w = BOARD_HAL_DISPLAY_WIDTH;
+    int h = BOARD_HAL_DISPLAY_HEIGHT;
+    size_t packed_size = ((size_t) w * h + 1) / 2;
+
+    uint8_t *packed = (uint8_t *) heap_caps_malloc(packed_size, MALLOC_CAP_SPIRAM);
+    if (!packed) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    z_stream strm = {0};
+    strm.next_in = (Bytef *) data;
+    strm.avail_in = (uInt) size;
+    strm.next_out = packed;
+    strm.avail_out = (uInt) packed_size;
+
+    if (inflateInit2(&strm, 16 + MAX_WBITS) != Z_OK) {
+        heap_caps_free(packed);
+        return ESP_FAIL;
+    }
+    int ret = inflate(&strm, Z_FINISH);
+    inflateEnd(&strm);
+    if (ret != Z_STREAM_END && ret != Z_OK) {
+        ESP_LOGE(TAG, "EPDGZ decompression failed: %d", ret);
+        heap_caps_free(packed);
+        return ESP_FAIL;
+    }
+
+    uint8_t *rgb = (uint8_t *) heap_caps_malloc((size_t) w * h * 3, MALLOC_CAP_SPIRAM);
+    if (!rgb) {
+        heap_caps_free(packed);
+        return ESP_ERR_NO_MEM;
+    }
+
+    void (*index_to_rgb)(UBYTE, uint8_t *, uint8_t *, uint8_t *) =
+        board_is_grayscale() ? GUI_Gray16ToRGB : GUI_Spectra6ToRGB;
+
+    size_t byte_idx = 0;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x += 2) {
+            uint8_t byte = packed[byte_idx++];
+            uint8_t *px1 = &rgb[((size_t) y * w + x) * 3];
+            index_to_rgb((byte >> 4) & 0x0F, &px1[0], &px1[1], &px1[2]);
+            if (x + 1 < w) {
+                uint8_t *px2 = &rgb[((size_t) y * w + x + 1) * 3];
+                index_to_rgb(byte & 0x0F, &px2[0], &px2[1], &px2[2]);
+            }
+        }
+    }
+
+    heap_caps_free(packed);
+    *rgb_buffer = rgb;
+    *width = w;
+    *height = h;
+    return ESP_OK;
+}
+
+// Writes a whole in-RAM RGB888 buffer to a PNG file in one call, for callers
+// that already have a complete buffer (Telegram pairing/thumbnail/caption
+// helpers) rather than a row-by-row source - built on the same png_writer_t
+// streaming primitives as the rest of this file, just driven in a loop
+// instead of from a decode callback.
+static esp_err_t write_png_file(const char *filename, uint8_t *rgb_data, int width, int height)
+{
+    png_writer_t pw;
+    esp_err_t err = png_writer_open(&pw, filename, width, height);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    bool ok = true;
+    for (int y = 0; y < height; y++) {
+        if (png_writer_row_sink(&pw, y, &rgb_data[(size_t) y * width * 3]) != ESP_OK) {
+            ok = false;
+            break;
+        }
+    }
+
+    return png_writer_close(&pw, ok);
+}
+
+// Writes a whole in-RAM RGB888 buffer to an EPDGZ file in one call - mirrors
+// write_png_file() above exactly, just through the epdgz_writer_t
+// primitives instead. Same quiet ESP_ERR_NO_MEM-on-OOM contract as
+// epdgz_writer_open() itself; image_processor_write_rgb_to_fmt() below is
+// the only caller and handles the PNG fallback.
+static esp_err_t write_epdgz_file(const char *filename, uint8_t *rgb_data, int width, int height)
+{
+    epdgz_writer_t ew;
+    esp_err_t err = epdgz_writer_open(&ew, filename, width, height);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    bool ok = true;
+    for (int y = 0; y < height; y++) {
+        if (epdgz_writer_row_sink(&ew, y, &rgb_data[(size_t) y * width * 3]) != ESP_OK) {
+            ok = false;
+            break;
+        }
+    }
+
+    return epdgz_writer_close(&ew, ok);
+}
+
+// Decode JPG from buffer to RGB.
+//
+// esp_jpeg_decode() below is one single blocking call into tjpgd (ROM) with
+// no yield points of its own - confirmed on real hardware to trip the task
+// watchdog (IDLE0 starved past CONFIG_ESP_TASK_WDT_TIMEOUT_S, currently 15s)
+// while decoding a large document upload (multi-megapixel JPEG, e.g. a
+// 3072x4080 photo sent as a Telegram "file" rather than a compressed
+// "photo"). Not fatal today - CONFIG_ESP_TASK_WDT_PANIC is off, so this
+// only logs a warning and the decode completes right after - but it is a
+// real, reproducible risk on any config/board where panic-on-timeout ends
+// up enabled. A real fix would need either unsubscribing the calling task
+// (rotation_timer_task et al.) from the watchdog for the duration of this
+// call, or raising CONFIG_ESP_TASK_WDT_TIMEOUT_S further - neither
+// implemented here since neither is free (the former risks masking a
+// genuine hang in this same call; the latter delays detecting an actually
+// wedged task).
+#else
 // Decode JPG from buffer to RGB
+#endif
 static esp_err_t decode_jpg_buffer(const uint8_t *jpg_data, size_t jpg_size, uint8_t **rgb_buffer,
                                    int *width, int *height)
 {
@@ -959,6 +1340,548 @@ static esp_err_t decode_jpg_buffer(const uint8_t *jpg_data, size_t jpg_size, uin
     return ESP_OK;
 }
 
+#if FORK_IMAGE_PIPELINE
+// ---- Streamed JPEG source ----
+//
+// esp_jpeg_decode() (used by decode_jpg_buffer() above) requires the WHOLE
+// compressed file in one contiguous buffer before decoding anything - fine
+// for most Telegram photos (Telegram re-encodes those to a modest size),
+// but a "document" upload keeps its original size verbatim, which can
+// exceed the largest contiguous free PSRAM block even though the chip
+// nominally has plenty of total heap (WiFi/TLS/etc. already fragment a lot
+// of it mid-poll-cycle). This bypasses that wrapper and drives tjpgd's own
+// low-level streaming API (jd_prepare()/jd_decomp()) directly: the
+// compressed bitstream is read through a small infunc() reading straight
+// from the still-open file (not a preloaded buffer), removing the
+// encoded-size ceiling entirely.
+//
+// Two tiers, both used only as a fallback when image_processor_process()'s
+// normal read-whole-file-then-decode fails with ESP_ERR_NO_MEM (fewer,
+// larger reads are more efficient, so the buffered path stays primary):
+//
+// - jpg_stream_run() (Tier 1): ALSO streams the decoded output, one MCU row
+//   band at a time, straight into the existing row-streaming pipeline
+//   (run_stream_row(), shared with run_stream() above) - never
+//   materializes the decoded image either. Non-rotated sources only: like
+//   png_stream_open()'s own "native_row_order && rotated" restriction,
+//   rotating means each OUTPUT row reads across nearly the FULL source
+//   height (see geometry_fill_row()'s rotated branch), not a small nearby
+//   window, which breaks the small-ring assumption this tier depends on.
+// - decode_jpg_streaming_buffer() (Tier 2): only removes the encoded-input
+//   ceiling; the decoded output is still one contiguous buffer (sized to
+//   tjpgd's own built-in descaling, same heuristic decode_jpg_buffer() uses
+//   - usually far smaller than the original file). Used for rotated
+//   sources, where Tier 1 doesn't apply.
+
+// tjpgd's own fixed-size scratch pool (Huffman tables, IDCT workspace, MCU
+// pixel buffer) - NOT proportional to image/file size, just to chroma
+// subsampling mode; matches jpeg_decoder.c's own sizing exactly (the
+// wrapper this bypasses). jd_prepare()/jd_decomp() report JDR_MEM1 if this
+// is ever too small - checked explicitly below, never assumed sufficient.
+#if defined(JD_FASTDECODE) && (JD_FASTDECODE == 2)
+#define JPG_STREAM_POOL_SIZE 65472
+#else
+#define JPG_STREAM_POOL_SIZE 3100
+#endif
+
+typedef struct {
+    FILE *fp;
+    bool io_error;
+} jpg_stream_io_t;
+
+// Shared by both tiers' infunc callbacks. Per TJpgDec's documented infunc
+// contract: buf == NULL means "skip nbyte bytes" (used to bypass large
+// APPn/EXIF segments without ever reading them into memory at all).
+// unsigned int (not size_t) to exactly match jd_prepare()'s infunc
+// parameter type in both the ROM and vendored tjpgd headers - jpeg_decoder.c
+// (the wrapper this bypasses) uses the same type for the same reason.
+static unsigned int jpg_stream_io_read(jpg_stream_io_t *io, uint8_t *buf, unsigned int nbyte)
+{
+    if (!buf) {
+        if (fseek(io->fp, (long) nbyte, SEEK_CUR) != 0) {
+            io->io_error = true;
+            return 0;
+        }
+        return nbyte;
+    }
+    size_t got = fread(buf, 1, nbyte, io->fp);
+    if (got < nbyte && ferror(io->fp)) {
+        io->io_error = true;
+    }
+    return got;
+}
+
+// Maps tjpgd's reported (pre-scale) dimensions to a descale factor, using
+// the exact same thresholds decode_jpg_buffer() already uses. Returns
+// tjpgd's scale argument (0..3, i.e. 1/1/2/4/8).
+static uint8_t jpg_stream_pick_scale(int width, int height)
+{
+    if (width > BOARD_HAL_DISPLAY_WIDTH * 4 || height > BOARD_HAL_DISPLAY_HEIGHT * 4) {
+        return 2;  // 1/4
+    }
+    if (width > BOARD_HAL_DISPLAY_WIDTH * 2 || height > BOARD_HAL_DISPLAY_HEIGHT * 2) {
+        return 1;  // 1/2
+    }
+    return 0;
+}
+
+// ---- Tier 2: streamed input, single (descaled) output buffer ----
+
+typedef struct {
+    jpg_stream_io_t io;
+    uint8_t *out_buf;
+    size_t out_buf_size;
+    int out_width;  // post-descale - output buffer's row stride, in pixels
+} jpg_stream_buffer_ctx_t;
+
+static unsigned int jpg_stream_buffer_infunc(JDEC *jd, uint8_t *buf, unsigned int nbyte)
+{
+    return jpg_stream_io_read(&((jpg_stream_buffer_ctx_t *) jd->device)->io, buf, nbyte);
+}
+
+// Copies one decoded MCU tile into its place in the flat output buffer -
+// mirrors jpeg_decoder.c's own jpeg_decode_out_cb() (the reference this
+// bypasses), RGB888-only (the only format this codebase ever requests).
+// Bounds-checked against the buffer's actual allocated size: tjpgd clips
+// MCUs to the image edge itself, so this should never trip, but a
+// corrupt/unexpected decoder state must fail cleanly here rather than
+// write past the allocation.
+static jpg_stream_out_t jpg_stream_buffer_outfunc(JDEC *jd, void *bitmap, JRECT *rect)
+{
+    jpg_stream_buffer_ctx_t *ctx = (jpg_stream_buffer_ctx_t *) jd->device;
+    const uint8_t *in = (const uint8_t *) bitmap;
+    size_t tile_w = (size_t) (rect->right - rect->left + 1);
+
+    for (int y = rect->top; y <= rect->bottom; y++) {
+        size_t row_off = (size_t) y * ctx->out_width * 3 + (size_t) rect->left * 3;
+        if (row_off + tile_w * 3 > ctx->out_buf_size) {
+            ESP_LOGE(TAG, "JPG streaming output buffer overflow (row %d)", y);
+            return 0;  // abort jd_decomp() immediately
+        }
+        memcpy(ctx->out_buf + row_off, in, tile_w * 3);
+        in += tile_w * 3;
+    }
+    return 1;
+}
+
+// Streamed-input counterpart to decode_jpg_buffer(): same descale heuristic
+// and single-buffer output, but reads the compressed bitstream directly
+// from `path` in small chunks instead of requiring it all in one buffer
+// first. Used for rotated sources, where jpg_stream_run() (Tier 1, fully
+// streamed) can't apply - see this section's header comment.
+static esp_err_t decode_jpg_streaming_buffer(const char *path, uint8_t **rgb_buffer, int *width,
+                                             int *height)
+{
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        ESP_LOGE(TAG, "Failed to open %s for streaming JPEG decode", path);
+        return ESP_FAIL;
+    }
+
+    void *pool = heap_caps_malloc(JPG_STREAM_POOL_SIZE, MALLOC_CAP_DEFAULT);
+    if (!pool) {
+        ESP_LOGE(TAG, "Failed to allocate tjpgd working buffer (%d bytes)", JPG_STREAM_POOL_SIZE);
+        fclose(fp);
+        return ESP_ERR_NO_MEM;
+    }
+
+    jpg_stream_buffer_ctx_t ctx = {.io = {.fp = fp, .io_error = false}};
+    JDEC jd;
+    JRESULT jr = jd_prepare(&jd, jpg_stream_buffer_infunc, pool, JPG_STREAM_POOL_SIZE, &ctx);
+    if (jr != JDR_OK) {
+        ESP_LOGE(TAG, "tjpgd jd_prepare failed (jr=%d)%s", jr,
+                 jr == JDR_MEM1 ? " - working buffer too small" : "");
+        heap_caps_free(pool);
+        fclose(fp);
+        return ESP_FAIL;
+    }
+
+    uint8_t scale = jpg_stream_pick_scale(jd.width, jd.height);
+    int scale_div = 1 << scale;
+    ctx.out_width = jd.width / scale_div;
+    int out_height = jd.height / scale_div;
+    ctx.out_buf_size = (size_t) ctx.out_width * out_height * 3;
+
+    ESP_LOGI(TAG, "JPG (streaming) scaled from %dx%d to %dx%d (scale: 1/%d)", jd.width, jd.height,
+             ctx.out_width, out_height, scale_div);
+
+    ctx.out_buf = (uint8_t *) heap_caps_malloc(ctx.out_buf_size, MALLOC_CAP_SPIRAM);
+    if (!ctx.out_buf) {
+        ESP_LOGE(TAG, "Failed to allocate JPG RGB buffer of %zu bytes (streaming)",
+                 ctx.out_buf_size);
+        heap_caps_free(pool);
+        fclose(fp);
+        return ESP_ERR_NO_MEM;
+    }
+
+    jr = jd_decomp(&jd, jpg_stream_buffer_outfunc, scale);
+    bool io_error = ctx.io.io_error;
+    heap_caps_free(pool);
+    fclose(fp);
+
+    if (jr != JDR_OK || io_error) {
+        ESP_LOGE(TAG, "tjpgd jd_decomp failed (jr=%d, io_error=%d)", jr, io_error);
+        set_last_error("JPG decoding failed");
+        heap_caps_free(ctx.out_buf);
+        return ESP_FAIL;
+    }
+
+    *rgb_buffer = ctx.out_buf;
+    *width = ctx.out_width;
+    *height = out_height;
+    return ESP_OK;
+}
+
+// ---- Tier 1: fully streamed (input AND output), non-rotated sources only ----
+
+typedef struct {
+    jpg_stream_io_t io;
+
+    uint8_t *ring;  // ring_rows full-width (post-descale) source rows
+    int ring_rows;
+    int width;         // post-descale
+    int height;        // post-descale
+    int mcu_h;         // post-descale MCU tile height (row-band granularity)
+    int rows_decoded;  // highest source row index with valid ring data, + 1
+    bool overflow;     // ring capacity would have been exceeded - kept distinct
+                       // from `error` so the failure is diagnosable
+    bool error;        // any other decode-time failure (sink, or the checks above)
+
+    geometry_t geo;
+    cdr_state_t cdr;
+    dither_state_t dither;
+    uint8_t *out_row;  // one output row scratch buffer, geo.out_w * 3 bytes
+    int next_out_row;
+    row_sink_fn sink;
+    void *sink_ctx;
+} jpg_stream_ring_ctx_t;
+
+static unsigned int jpg_stream_ring_infunc(JDEC *jd, uint8_t *buf, unsigned int nbyte)
+{
+    return jpg_stream_io_read(&((jpg_stream_ring_ctx_t *) jd->device)->io, buf, nbyte);
+}
+
+// Conservative (never-underestimating) upper bound on the highest source
+// row geometry_fill_row() might read to produce output row `out_y` -
+// mirrors that function's own box/bilinear resample math (including the
+// off_y crop/letterbox offset) plus a flat safety margin for rounding.
+// Producing a row before its bound is satisfied would read stale/
+// uninitialized ring data (silent corruption) - worse than the explicit,
+// clean ring-overflow failure below, so this must never come up short.
+static int jpg_stream_max_needed_src_row(const geometry_t *geo, int out_y)
+{
+    float bound;
+    if (geo->box) {
+        bound = (out_y + 1 + geo->off_y) / geo->scale;
+    } else {
+        float fy = (out_y + 0.5f + geo->off_y) / geo->scale - 0.5f;
+        bound = fy + 1.0f;
+    }
+    int needed = (int) ceilf(bound) + 2;
+    if (needed < 0) {
+        needed = 0;
+    }
+    if (needed >= geo->src_h) {
+        needed = geo->src_h - 1;
+    }
+    return needed;
+}
+
+// Symmetric lower-bound counterpart, used only to size the ring-overflow
+// check below (how far back the ring still needs to retain data) - erring
+// conservative here means "assume more is still needed than strictly is",
+// which can only make the overflow check trip earlier/more often, never
+// later (so it can never mask an actual overflow).
+static int jpg_stream_min_needed_src_row(const geometry_t *geo, int out_y)
+{
+    float bound;
+    if (geo->box) {
+        bound = (out_y + geo->off_y) / geo->scale;
+    } else {
+        bound = (out_y + 0.5f + geo->off_y) / geo->scale - 0.5f;
+    }
+    int needed = (int) floorf(bound) - 2;
+    if (needed < 0) {
+        needed = 0;
+    }
+    if (needed >= geo->src_h) {
+        needed = geo->src_h - 1;
+    }
+    return needed;
+}
+
+// Feeds every output row that's now computable given rows_decoded, via the
+// exact same per-row sequence run_stream()'s own loop uses
+// (run_stream_row()) - just driven by row-band arrival instead of a fixed
+// range.
+static void jpg_stream_produce_ready_rows(jpg_stream_ring_ctx_t *ctx)
+{
+    while (ctx->next_out_row < ctx->geo.out_h && !ctx->error) {
+        if (jpg_stream_max_needed_src_row(&ctx->geo, ctx->next_out_row) >= ctx->rows_decoded) {
+            break;  // not enough source data yet - wait for the next row-band
+        }
+
+        if (run_stream_row(&ctx->geo, &ctx->cdr, &ctx->dither, ctx->out_row, ctx->next_out_row,
+                           ctx->sink, ctx->sink_ctx) != ESP_OK) {
+            ctx->error = true;
+            break;
+        }
+        ctx->next_out_row++;
+
+        if ((ctx->next_out_row & 7) == 0) {
+            vTaskDelay(1);
+        }
+    }
+}
+
+static const uint8_t *jpg_stream_ring_get_row(void *row_ctx, int src_y)
+{
+    jpg_stream_ring_ctx_t *ctx = (jpg_stream_ring_ctx_t *) row_ctx;
+    // By construction, jpg_stream_produce_ready_rows() only calls
+    // run_stream_row() (and therefore geometry_fill_row(), which is what
+    // ultimately calls this via geo->get_row) for output rows whose full
+    // source dependency (jpg_stream_max_needed_src_row()) is already
+    // decoded - src_y is always < ctx->rows_decoded here.
+    return ctx->ring + (size_t) (src_y % ctx->ring_rows) * ctx->width * 3;
+}
+
+static jpg_stream_out_t jpg_stream_ring_outfunc(JDEC *jd, void *bitmap, JRECT *rect)
+{
+    jpg_stream_ring_ctx_t *ctx = (jpg_stream_ring_ctx_t *) jd->device;
+    const uint8_t *in = (const uint8_t *) bitmap;
+    int tile_w = rect->right - rect->left + 1;
+
+    if (rect->right >= ctx->width || rect->bottom >= ctx->height) {
+        ESP_LOGE(TAG, "JPG streaming: MCU rect (%d,%d)-(%d,%d) exceeds %dx%d image", rect->left,
+                 rect->top, rect->right, rect->bottom, ctx->width, ctx->height);
+        ctx->error = true;
+        return 0;
+    }
+
+    int oldest_needed = jpg_stream_min_needed_src_row(&ctx->geo, ctx->next_out_row);
+
+    for (int y = rect->top; y <= rect->bottom; y++) {
+        // Ring-capacity guard: writing row `y` must not stomp on a row the
+        // pipeline hasn't consumed yet. The window sizing in
+        // jpg_stream_run() is meant to guarantee this never trips, but an
+        // image/geometry combination outside what that sizing accounted
+        // for must fail cleanly here instead of silently overwriting
+        // not-yet-read rows.
+        if (y - oldest_needed >= ctx->ring_rows) {
+            ESP_LOGE(TAG,
+                     "JPG streaming row buffer would overflow (row %d, oldest still-needed %d, "
+                     "ring %d rows)",
+                     y, oldest_needed, ctx->ring_rows);
+            ctx->overflow = true;
+            ctx->error = true;
+            return 0;  // abort jd_decomp() immediately
+        }
+
+        uint8_t *slot =
+            ctx->ring + (size_t) (y % ctx->ring_rows) * ctx->width * 3 + (size_t) rect->left * 3;
+        memcpy(slot, in, (size_t) tile_w * 3);
+        in += (size_t) tile_w * 3;
+
+        if (y >= ctx->rows_decoded) {
+            ctx->rows_decoded = y + 1;
+        }
+    }
+
+    // A full row-band just completed once the last MCU column of this band
+    // was written (rect->right reaches the image's right edge) - tjpgd
+    // always decodes MCUs left-to-right within a band before moving down,
+    // so this is the first point at which any NEW output row's full width
+    // is actually available.
+    if (rect->right >= ctx->width - 1) {
+        jpg_stream_produce_ready_rows(ctx);
+    }
+
+    return ctx->error ? 0 : 1;
+}
+
+// Fully streamed JPEG decode: reads `path` in small chunks and feeds
+// decoded rows directly into `sink` as they become available, never
+// materializing the compressed file OR the decoded image as a whole.
+// Non-rotated sources only (see this section's header comment) - always
+// native row order (the only order this codebase's JPEG call site needs).
+static esp_err_t jpg_stream_run(const char *path, dither_algorithm_t dither_algorithm,
+                                row_sink_fn sink, void *sink_ctx)
+{
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        ESP_LOGE(TAG, "Failed to open %s for streaming JPEG decode", path);
+        return ESP_FAIL;
+    }
+
+    void *pool = heap_caps_malloc(JPG_STREAM_POOL_SIZE, MALLOC_CAP_DEFAULT);
+    if (!pool) {
+        ESP_LOGE(TAG, "Failed to allocate tjpgd working buffer (%d bytes)", JPG_STREAM_POOL_SIZE);
+        fclose(fp);
+        return ESP_ERR_NO_MEM;
+    }
+
+    jpg_stream_ring_ctx_t ctx = {0};
+    ctx.io.fp = fp;
+
+    JDEC jd;
+    JRESULT jr = jd_prepare(&jd, jpg_stream_ring_infunc, pool, JPG_STREAM_POOL_SIZE, &ctx);
+    if (jr != JDR_OK) {
+        ESP_LOGE(TAG, "tjpgd jd_prepare failed (jr=%d)%s", jr,
+                 jr == JDR_MEM1 ? " - working buffer too small" : "");
+        heap_caps_free(pool);
+        fclose(fp);
+        return ESP_FAIL;
+    }
+
+    uint8_t scale = jpg_stream_pick_scale(jd.width, jd.height);
+    int scale_div = 1 << scale;
+    ctx.width = jd.width / scale_div;
+    ctx.height = jd.height / scale_div;
+    ctx.mcu_h = (jd.msy * 8) >> scale;
+    if (ctx.mcu_h < 1) {
+        ctx.mcu_h = 1;
+    }
+
+    ESP_LOGI(TAG, "JPG (streaming, row-pipelined) scaled from %dx%d to %dx%d (scale: 1/%d)",
+             jd.width, jd.height, ctx.width, ctx.height, scale_div);
+
+    geometry_init(&ctx.geo, NULL, ctx.width, ctx.height, false, -1);
+    cdr_init(&ctx.cdr);
+    esp_err_t err = dither_init(&ctx.dither, ctx.geo.out_w, dither_algorithm);
+    if (err != ESP_OK) {
+        heap_caps_free(pool);
+        fclose(fp);
+        return err;
+    }
+
+    // Ring sized generously against the same resample-window rationale
+    // png_stream_open() uses (see its comment) - the off_y crop/letterbox
+    // offset doesn't widen this (it shifts which absolute rows are needed,
+    // not how many are needed at once), rounded up to whole MCU row-bands
+    // so a band's write is never split across the ring's wrap point.
+    int window = (ctx.geo.scale < 1.0f) ? (int) ceilf(1.0f / ctx.geo.scale) + 4 : 6;
+    if (window > ctx.height) {
+        window = ctx.height;
+    }
+    ctx.ring_rows = ((window + ctx.mcu_h - 1) / ctx.mcu_h) * ctx.mcu_h;
+    if (ctx.ring_rows > ctx.height) {
+        ctx.ring_rows = ctx.height;
+    }
+
+    ctx.ring = (uint8_t *) heap_caps_malloc((size_t) ctx.ring_rows * ctx.width * 3,
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    ctx.out_row = (uint8_t *) heap_caps_malloc((size_t) ctx.geo.out_w * 3, MALLOC_CAP_SPIRAM);
+    if (!ctx.ring || !ctx.out_row) {
+        ESP_LOGE(TAG, "Failed to allocate JPG streaming ring/row buffer");
+        heap_caps_free(ctx.ring);
+        heap_caps_free(ctx.out_row);
+        dither_free(&ctx.dither);
+        heap_caps_free(pool);
+        fclose(fp);
+        return ESP_ERR_NO_MEM;
+    }
+
+    ctx.geo.get_row = jpg_stream_ring_get_row;
+    ctx.geo.row_ctx = &ctx;
+    ctx.sink = sink;
+    ctx.sink_ctx = sink_ctx;
+
+    ESP_LOGI(TAG, "Streaming JPEG: %dx%d (%d-row window)", ctx.width, ctx.height, ctx.ring_rows);
+
+    jr = jd_decomp(&jd, jpg_stream_ring_outfunc, scale);
+
+    // jd_decomp() returning JDR_OK means every MCU (including the final
+    // row-band) was processed, which already triggered
+    // jpg_stream_produce_ready_rows() as far as it could go - this is a
+    // harmless no-op safety net for the (expected-empty) remainder.
+    bool io_error = ctx.io.io_error;
+    if (jr == JDR_OK && !ctx.error) {
+        ctx.rows_decoded = ctx.height;
+        jpg_stream_produce_ready_rows(&ctx);
+    }
+
+    heap_caps_free(ctx.ring);
+    heap_caps_free(ctx.out_row);
+    dither_free(&ctx.dither);
+    heap_caps_free(pool);
+    fclose(fp);
+
+    if (jr != JDR_OK) {
+        ESP_LOGE(TAG, "tjpgd jd_decomp failed (jr=%d)", jr);
+        set_last_error("JPG decoding failed");
+        return ESP_FAIL;
+    }
+    if (ctx.overflow) {
+        set_last_error("JPG decoding failed (internal buffer overflow)");
+        return ESP_FAIL;
+    }
+    if (ctx.error || io_error) {
+        ESP_LOGE(TAG, "JPG streaming decode failed (sink or I/O error)");
+        return ESP_FAIL;
+    }
+    if (ctx.next_out_row != ctx.geo.out_h) {
+        ESP_LOGE(TAG, "JPG streaming decode incomplete (%d/%d rows produced)", ctx.next_out_row,
+                 ctx.geo.out_h);
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+
+// Fallback for image_processor_process() below, used only when the initial
+// whole-file read fails with ESP_ERR_NO_MEM and the source is a JPEG - see
+// the "Streamed JPEG source" section above for the two tiers this picks
+// between (jpg_stream_run() when possible, decode_jpg_streaming_buffer()
+// otherwise).
+static esp_err_t process_jpg_streaming_fallback(const char *input_path, const char *output_path,
+                                                dither_algorithm_t dither_algorithm, bool rotated)
+{
+    esp_err_t err;
+
+    if (!rotated) {
+        ESP_LOGI(TAG, "Writing PNG output to %s (streaming fallback)", output_path);
+        png_writer_t writer;
+        err = png_writer_open(&writer, output_path, BOARD_HAL_DISPLAY_WIDTH,
+                              BOARD_HAL_DISPLAY_HEIGHT);
+        if (err == ESP_OK) {
+            err = jpg_stream_run(input_path, dither_algorithm, png_writer_row_sink, &writer);
+            esp_err_t close_err = png_writer_close(&writer, err == ESP_OK);
+            if (err == ESP_OK) {
+                err = close_err;
+            }
+        }
+    } else {
+        uint8_t *rgb_buffer = NULL;
+        int width = 0, height = 0;
+        err = decode_jpg_streaming_buffer(input_path, &rgb_buffer, &width, &height);
+        if (err != ESP_OK) {
+            return err;
+        }
+        ESP_LOGI(TAG, "Decoded image (streaming fallback): %dx%d", width, height);
+        ESP_LOGI(TAG, "Writing PNG output to %s (streaming fallback)", output_path);
+        png_writer_t writer;
+        err = png_writer_open(&writer, output_path, BOARD_HAL_DISPLAY_WIDTH,
+                              BOARD_HAL_DISPLAY_HEIGHT);
+        if (err == ESP_OK) {
+            err = process_rgb_stream(rgb_buffer, width, height, dither_algorithm,
+                                     png_writer_row_sink, &writer, false, rotated, -1);
+            esp_err_t close_err = png_writer_close(&writer, err == ESP_OK);
+            if (err == ESP_OK) {
+                err = close_err;
+            }
+        }
+        heap_caps_free(rgb_buffer);
+    }
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Successfully wrote PNG to %s (streaming fallback)", output_path);
+    } else {
+        unlink(output_path);
+    }
+    return err;
+}
+
+#endif
 // PNG memory read callback structure
 typedef struct {
     const uint8_t *data;
@@ -1268,7 +2191,11 @@ static esp_err_t png_stream_run(png_stream_src_t *src, dither_algorithm_t dither
     ESP_LOGI(TAG, "Streaming PNG: %dx%d (%d-row window)", src->width, src->height, src->ring_rows);
 
     geometry_t geo;
+#if FORK_IMAGE_PIPELINE
+    geometry_init(&geo, NULL, src->width, src->height, rotated, -1);
+#else
     geometry_init(&geo, NULL, src->width, src->height, rotated);
+#endif
     if (processing_order) {
         geometry_set_processing_order(&geo);
     }
@@ -1397,7 +2324,11 @@ esp_err_t image_processor_process_to_display(const uint8_t *input_data, size_t i
     err = display_manager_begin_rgb_stream();
     if (err == ESP_OK) {
         err = process_rgb_stream(rgb_buffer, width, height, dither_algorithm, display_row_sink,
+#if FORK_IMAGE_PIPELINE
+                                 &sink_ctx, true, sink_ctx.rotated, -1);
+#else
                                  &sink_ctx, true, sink_ctx.rotated);
+#endif
 
         // Every row has been painted; release the decoded source before end
         // runs the snapshot (its zlib state needs PSRAM a near-full decode
@@ -1415,14 +2346,43 @@ esp_err_t image_processor_process_to_display(const uint8_t *input_data, size_t i
     return err;
 }
 
+#if FORK_IMAGE_PIPELINE
+// Derives the "same path, but .png" fallback name used when an EPDGZ
+// encode can't get the memory it needs - always safe in place, since
+// ".epdgz" (6 chars) is never shorter than ".png" (4 chars).
+static void with_png_extension(const char *path, char *out, size_t out_size)
+{
+    strncpy(out, path, out_size - 1);
+    out[out_size - 1] = '\0';
+    char *ext = strrchr(out, '.');
+    if (ext) {
+        strcpy(ext, ".png");
+    }
+}
+
+esp_err_t image_processor_process_fmt(const char *input_path, const char *output_path,
+                                      dither_algorithm_t dither_algorithm,
+                                      image_format_t out_format, image_format_t *out_actual_format)
+#else
 esp_err_t image_processor_process(const char *input_path, const char *output_path,
                                   dither_algorithm_t dither_algorithm)
+#endif
 {
     const char *algo_names[] = {"floyd-steinberg", "stucki", "burkes", "sierra"};
+#if FORK_IMAGE_PIPELINE
+    ESP_LOGI(TAG, "Processing %s -> %s (dither: %s, format: %s)", input_path, output_path,
+             algo_names[dither_algorithm], out_format == IMAGE_FORMAT_EPD_GZ ? "epdgz" : "png");
+#else
     ESP_LOGI(TAG, "Processing %s -> %s (dither: %s)", input_path, output_path,
              algo_names[dither_algorithm]);
+#endif
 
     last_error_msg[0] = '\0';
+#if FORK_IMAGE_PIPELINE
+    if (out_actual_format) {
+        *out_actual_format = IMAGE_FORMAT_PNG;
+    }
+#endif
 
     // Detect format first
     image_format_t format = image_processor_detect_format(input_path);
@@ -1442,10 +2402,35 @@ esp_err_t image_processor_process(const char *input_path, const char *output_pat
     long file_size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
+#if FORK_IMAGE_PIPELINE
+    bool rotated = orientation_needs_rotation();
+
+#endif
     uint8_t *file_buffer = heap_caps_malloc(file_size, MALLOC_CAP_SPIRAM);
     if (!file_buffer) {
+#if !(FORK_IMAGE_PIPELINE)
         ESP_LOGE(TAG, "Failed to allocate file buffer of %ld bytes", file_size);
+#endif
         fclose(fp);
+#if FORK_IMAGE_PIPELINE
+        // A large "document" upload (Telegram doesn't re-encode/downscale
+        // those the way it does "photo" messages) can exceed the largest
+        // contiguous free PSRAM block even though the chip nominally has
+        // plenty of total heap - only JPEG has a streaming fallback for
+        // this (see the "Streamed JPEG source" section above); PNG has no
+        // equivalent yet, so this stays a hard failure for that format. The
+        // streaming fallback also stays PNG-only regardless of out_format -
+        // not worth teaching EPDGZ-encoding to this already-exotic tier.
+        if (format == IMAGE_FORMAT_JPG) {
+            ESP_LOGW(TAG,
+                     "Failed to allocate file buffer of %ld bytes - falling back to streaming JPEG "
+                     "decode",
+                     file_size);
+            return process_jpg_streaming_fallback(input_path, output_path, dither_algorithm,
+                                                  rotated);
+        }
+        ESP_LOGE(TAG, "Failed to allocate file buffer of %ld bytes", file_size);
+#endif
         return ESP_ERR_NO_MEM;
     }
 
@@ -1459,9 +2444,17 @@ esp_err_t image_processor_process(const char *input_path, const char *output_pat
     }
 
     esp_err_t err;
+#if FORK_IMAGE_PIPELINE
+    char png_fallback_path[320];
+#else
     bool rotated = orientation_needs_rotation();
+#endif
 
+#if FORK_IMAGE_PIPELINE
+    // Non-rotated PNGs stream straight from the decoder into the output
+#else
     // Non-rotated PNGs stream straight from the decoder into the output PNG
+#endif
     if (format == IMAGE_FORMAT_PNG) {
         png_stream_src_t stream;
         bool streamable = false;
@@ -1471,25 +2464,79 @@ esp_err_t image_processor_process(const char *input_path, const char *output_pat
             return err;
         }
         if (streamable) {
+#if FORK_IMAGE_PIPELINE
+            const char *actual_output_path = output_path;
+            image_format_t actual_format = out_format;
+            png_writer_t png_writer;
+            epdgz_writer_t epdgz_writer;
+
+            if (out_format == IMAGE_FORMAT_EPD_GZ) {
+                err = epdgz_writer_open(&epdgz_writer, output_path, BOARD_HAL_DISPLAY_WIDTH,
+                                        BOARD_HAL_DISPLAY_HEIGHT);
+                if (err == ESP_ERR_NO_MEM) {
+                    ESP_LOGW(TAG, "Not enough memory for EPDGZ encoding - falling back to PNG");
+                    with_png_extension(output_path, png_fallback_path, sizeof(png_fallback_path));
+                    actual_output_path = png_fallback_path;
+                    actual_format = IMAGE_FORMAT_PNG;
+                    err = png_writer_open(&png_writer, actual_output_path, BOARD_HAL_DISPLAY_WIDTH,
+                                          BOARD_HAL_DISPLAY_HEIGHT);
+                }
+            } else {
+                err = png_writer_open(&png_writer, output_path, BOARD_HAL_DISPLAY_WIDTH,
+                                      BOARD_HAL_DISPLAY_HEIGHT);
+            }
+
+#else
             ESP_LOGI(TAG, "Writing PNG output to %s", output_path);
             png_writer_t writer;
             err = png_writer_open(&writer, output_path, BOARD_HAL_DISPLAY_WIDTH,
                                   BOARD_HAL_DISPLAY_HEIGHT);
+#endif
             if (err == ESP_OK) {
+#if FORK_IMAGE_PIPELINE
+                if (actual_format == IMAGE_FORMAT_EPD_GZ) {
+                    err = png_stream_run(&stream, dither_algorithm, epdgz_writer_row_sink,
+                                         &epdgz_writer, false, rotated);
+                    esp_err_t close_err = epdgz_writer_close(&epdgz_writer, err == ESP_OK);
+                    if (err == ESP_OK) {
+                        err = close_err;
+                    }
+                } else {
+                    err = png_stream_run(&stream, dither_algorithm, png_writer_row_sink,
+                                         &png_writer, false, rotated);
+                    esp_err_t close_err = png_writer_close(&png_writer, err == ESP_OK);
+                    if (err == ESP_OK) {
+                        err = close_err;
+                    }
+#else
                 err = png_stream_run(&stream, dither_algorithm, png_writer_row_sink, &writer, false,
                                      rotated);
                 esp_err_t close_err = png_writer_close(&writer, err == ESP_OK);
                 if (err == ESP_OK) {
                     err = close_err;
+#endif
                 }
             }
             png_stream_close(&stream);
             heap_caps_free(file_buffer);
 
             if (err == ESP_OK) {
+#if FORK_IMAGE_PIPELINE
+                ESP_LOGI(TAG, "Successfully wrote %s to %s",
+                         actual_format == IMAGE_FORMAT_EPD_GZ ? "EPDGZ" : "PNG",
+                         actual_output_path);
+                if (out_actual_format) {
+                    *out_actual_format = actual_format;
+                }
+#else
                 ESP_LOGI(TAG, "Successfully wrote PNG to %s", output_path);
+#endif
             } else {
+#if FORK_IMAGE_PIPELINE
+                unlink(actual_output_path);
+#else
                 unlink(output_path);
+#endif
             }
             return err;
         }
@@ -1518,11 +2565,54 @@ esp_err_t image_processor_process(const char *input_path, const char *output_pat
 
     ESP_LOGI(TAG, "Decoded image: %dx%d", width, height);
 
+#if FORK_IMAGE_PIPELINE
+    const char *actual_output_path = output_path;
+    image_format_t actual_format = out_format;
+    png_writer_t png_writer;
+    epdgz_writer_t epdgz_writer;
+
+    if (out_format == IMAGE_FORMAT_EPD_GZ) {
+        err = epdgz_writer_open(&epdgz_writer, output_path, BOARD_HAL_DISPLAY_WIDTH,
+                                BOARD_HAL_DISPLAY_HEIGHT);
+        if (err == ESP_ERR_NO_MEM) {
+            ESP_LOGW(TAG, "Not enough memory for EPDGZ encoding - falling back to PNG");
+            with_png_extension(output_path, png_fallback_path, sizeof(png_fallback_path));
+            actual_output_path = png_fallback_path;
+            actual_format = IMAGE_FORMAT_PNG;
+            err = png_writer_open(&png_writer, actual_output_path, BOARD_HAL_DISPLAY_WIDTH,
+                                  BOARD_HAL_DISPLAY_HEIGHT);
+        }
+    } else {
+        err = png_writer_open(&png_writer, output_path, BOARD_HAL_DISPLAY_WIDTH,
+                              BOARD_HAL_DISPLAY_HEIGHT);
+    }
+
+#else
     // Stream processed rows straight into the output PNG
     ESP_LOGI(TAG, "Writing PNG output to %s", output_path);
     png_writer_t writer;
     err = png_writer_open(&writer, output_path, BOARD_HAL_DISPLAY_WIDTH, BOARD_HAL_DISPLAY_HEIGHT);
+#endif
     if (err == ESP_OK) {
+#if FORK_IMAGE_PIPELINE
+        if (actual_format == IMAGE_FORMAT_EPD_GZ) {
+            err = process_rgb_stream(rgb_buffer, width, height, dither_algorithm,
+                                     epdgz_writer_row_sink, &epdgz_writer, false, rotated, -1);
+            esp_err_t close_err = epdgz_writer_close(&epdgz_writer, err == ESP_OK);
+            if (err == ESP_OK) {
+                err = close_err;
+            }
+        } else {
+            // Keep the processing error (e.g. ESP_ERR_NO_MEM, which callers
+            // map to a specific response); only a failed finalize of an
+            // otherwise successful write becomes the result.
+            err = process_rgb_stream(rgb_buffer, width, height, dither_algorithm,
+                                     png_writer_row_sink, &png_writer, false, rotated, -1);
+            esp_err_t close_err = png_writer_close(&png_writer, err == ESP_OK);
+            if (err == ESP_OK) {
+                err = close_err;
+            }
+#else
         err = process_rgb_stream(rgb_buffer, width, height, dither_algorithm, png_writer_row_sink,
                                  &writer, false, rotated);
         // Keep the processing error (e.g. ESP_ERR_NO_MEM, which callers map
@@ -1531,20 +2621,203 @@ esp_err_t image_processor_process(const char *input_path, const char *output_pat
         esp_err_t close_err = png_writer_close(&writer, err == ESP_OK);
         if (err == ESP_OK) {
             err = close_err;
+#endif
         }
     }
 
     heap_caps_free(rgb_buffer);
 
     if (err == ESP_OK) {
+#if FORK_IMAGE_PIPELINE
+        ESP_LOGI(TAG, "Successfully wrote %s to %s",
+                 actual_format == IMAGE_FORMAT_EPD_GZ ? "EPDGZ" : "PNG", actual_output_path);
+        if (out_actual_format) {
+            *out_actual_format = actual_format;
+        }
+#else
         ESP_LOGI(TAG, "Successfully wrote PNG to %s", output_path);
+#endif
     } else {
+#if FORK_IMAGE_PIPELINE
+        unlink(actual_output_path);
+#else
         unlink(output_path);
+#endif
     }
 
     return err;
 }
 
+#if FORK_IMAGE_PIPELINE
+esp_err_t image_processor_render_variant(const char *input_path, const char *output_path,
+                                         dither_algorithm_t dither_algorithm,
+                                         image_format_t out_format,
+                                         image_format_t *out_actual_format, int forced_scale_mode,
+                                         const image_crop_rect_t *crop)
+{
+    ESP_LOGI(TAG, "Rendering variant %s -> %s (scale_mode: %d, crop: %s)", input_path, output_path,
+             forced_scale_mode, crop ? "yes" : "no");
+
+    last_error_msg[0] = '\0';
+    if (out_actual_format) {
+        *out_actual_format = IMAGE_FORMAT_PNG;
+    }
+
+    image_format_t format = image_processor_detect_format(input_path);
+    if (format != IMAGE_FORMAT_JPG && format != IMAGE_FORMAT_PNG) {
+        ESP_LOGE(TAG, "Unsupported source format for variant rendering (JPG/PNG only)");
+        return ESP_FAIL;
+    }
+
+    FILE *fp = fopen(input_path, "rb");
+    if (!fp) {
+        ESP_LOGE(TAG, "Failed to open input file: %s", input_path);
+        return ESP_FAIL;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    bool rotated = orientation_needs_rotation();
+
+    // Unlike image_processor_process_fmt(), there is no oversized-document
+    // streaming fallback here - that tier can't apply a crop, and this path
+    // is a lazy-render fallback for ordinary SD-card originals, not the
+    // large-Telegram-document case that fallback exists for.
+    uint8_t *file_buffer = heap_caps_malloc(file_size, MALLOC_CAP_SPIRAM);
+    if (!file_buffer) {
+        fclose(fp);
+        ESP_LOGE(TAG, "Failed to allocate file buffer of %ld bytes", file_size);
+        return ESP_ERR_NO_MEM;
+    }
+
+    size_t read_bytes = fread(file_buffer, 1, file_size, fp);
+    fclose(fp);
+    if (read_bytes != file_size) {
+        ESP_LOGE(TAG, "Failed to read entire file");
+        heap_caps_free(file_buffer);
+        return ESP_FAIL;
+    }
+
+    uint8_t *rgb_buffer = NULL;
+    int width = 0, height = 0;
+    esp_err_t err;
+    if (format == IMAGE_FORMAT_JPG) {
+        err = decode_jpg_buffer(file_buffer, file_size, &rgb_buffer, &width, &height);
+    } else {
+        err = decode_png_buffer(file_buffer, file_size, &rgb_buffer, &width, &height);
+    }
+    heap_caps_free(file_buffer);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Decoded image: %dx%d", width, height);
+
+    // Apply the crop (in the decoded source's own pixel space) before the
+    // resize/dither pipeline runs, so it's a lossless pre-crop rather than a
+    // second, lossy crop stacked on top of an already-resized image -
+    // mirroring process-cli's own cropRect handling in utils.js.
+    if (crop && crop->w > 0 && crop->h > 0) {
+        int cx = crop->x < 0 ? 0 : crop->x;
+        int cy = crop->y < 0 ? 0 : crop->y;
+        int cw = crop->w;
+        int ch = crop->h;
+        if (cx >= width || cy >= height) {
+            ESP_LOGW(TAG, "Crop rectangle entirely outside the image - ignoring it");
+        } else {
+            if (cx + cw > width) {
+                cw = width - cx;
+            }
+            if (cy + ch > height) {
+                ch = height - cy;
+            }
+            if (cw > 0 && ch > 0 && (cx != 0 || cy != 0 || cw != width || ch != height)) {
+                uint8_t *cropped = heap_caps_malloc((size_t) cw * ch * 3, MALLOC_CAP_SPIRAM);
+                if (cropped) {
+                    for (int y = 0; y < ch; y++) {
+                        memcpy(cropped + (size_t) y * cw * 3,
+                               rgb_buffer + ((size_t) (cy + y) * width + cx) * 3, (size_t) cw * 3);
+                    }
+                    heap_caps_free(rgb_buffer);
+                    rgb_buffer = cropped;
+                    width = cw;
+                    height = ch;
+                    ESP_LOGI(TAG, "Applied crop: %dx%d at (%d,%d) -> %dx%d", crop->w, crop->h, cx,
+                             cy, width, height);
+                } else {
+                    ESP_LOGW(TAG, "Not enough memory to apply crop - rendering uncropped");
+                }
+            }
+        }
+    }
+
+    const char *actual_output_path = output_path;
+    image_format_t actual_format = out_format;
+    char png_fallback_path[320];
+    png_writer_t png_writer;
+    epdgz_writer_t epdgz_writer;
+
+    if (out_format == IMAGE_FORMAT_EPD_GZ) {
+        err = epdgz_writer_open(&epdgz_writer, output_path, BOARD_HAL_DISPLAY_WIDTH,
+                                BOARD_HAL_DISPLAY_HEIGHT);
+        if (err == ESP_ERR_NO_MEM) {
+            ESP_LOGW(TAG, "Not enough memory for EPDGZ encoding - falling back to PNG");
+            with_png_extension(output_path, png_fallback_path, sizeof(png_fallback_path));
+            actual_output_path = png_fallback_path;
+            actual_format = IMAGE_FORMAT_PNG;
+            err = png_writer_open(&png_writer, actual_output_path, BOARD_HAL_DISPLAY_WIDTH,
+                                  BOARD_HAL_DISPLAY_HEIGHT);
+        }
+    } else {
+        err = png_writer_open(&png_writer, output_path, BOARD_HAL_DISPLAY_WIDTH,
+                              BOARD_HAL_DISPLAY_HEIGHT);
+    }
+
+    if (err == ESP_OK) {
+        if (actual_format == IMAGE_FORMAT_EPD_GZ) {
+            err = process_rgb_stream(rgb_buffer, width, height, dither_algorithm,
+                                     epdgz_writer_row_sink, &epdgz_writer, false, rotated,
+                                     forced_scale_mode);
+            esp_err_t close_err = epdgz_writer_close(&epdgz_writer, err == ESP_OK);
+            if (err == ESP_OK) {
+                err = close_err;
+            }
+        } else {
+            err =
+                process_rgb_stream(rgb_buffer, width, height, dither_algorithm, png_writer_row_sink,
+                                   &png_writer, false, rotated, forced_scale_mode);
+            esp_err_t close_err = png_writer_close(&png_writer, err == ESP_OK);
+            if (err == ESP_OK) {
+                err = close_err;
+            }
+        }
+    }
+
+    heap_caps_free(rgb_buffer);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Successfully wrote %s variant to %s",
+                 actual_format == IMAGE_FORMAT_EPD_GZ ? "EPDGZ" : "PNG", actual_output_path);
+        if (out_actual_format) {
+            *out_actual_format = actual_format;
+        }
+    } else {
+        unlink(actual_output_path);
+    }
+
+    return err;
+}
+
+esp_err_t image_processor_process(const char *input_path, const char *output_path,
+                                  dither_algorithm_t dither_algorithm)
+{
+    return image_processor_process_fmt(input_path, output_path, dither_algorithm, IMAGE_FORMAT_PNG,
+                                       NULL);
+}
+
+#endif
 // True when (r,g,b) is one of the theoretical output colors the processing
 // pipeline emits for this board
 static bool pixel_in_output_palette(uint8_t r, uint8_t g, uint8_t b)
@@ -1763,3 +3036,1626 @@ image_format_t image_processor_detect_format(const char *input_path)
 
     return IMAGE_FORMAT_UNKNOWN;
 }
+#if FORK_IMAGE_PIPELINE
+
+esp_err_t image_processor_peek_dimensions(const uint8_t *data, size_t size, image_format_t format,
+                                          int *out_width, int *out_height)
+{
+    if (!data || size == 0 || !out_width || !out_height) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (format == IMAGE_FORMAT_JPG) {
+        esp_jpeg_image_cfg_t jpeg_cfg = {.indata = (uint8_t *) data,
+                                         .indata_size = size,
+                                         .out_format = JPEG_IMAGE_FORMAT_RGB888,
+                                         .out_scale = JPEG_IMAGE_SCALE_0};
+        esp_jpeg_image_output_t outimg;
+        esp_err_t err = esp_jpeg_get_image_info(&jpeg_cfg, &outimg);
+        if (err != ESP_OK) {
+            return err;
+        }
+        *out_width = outimg.width;
+        *out_height = outimg.height;
+        return ESP_OK;
+    }
+
+    if (format == IMAGE_FORMAT_PNG) {
+        png_mem_read_t mem = {.data = data, .size = size, .offset = 0};
+
+        png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+        if (!png_ptr) {
+            return ESP_FAIL;
+        }
+        png_infop info_ptr = png_create_info_struct(png_ptr);
+        if (!info_ptr) {
+            png_destroy_read_struct(&png_ptr, NULL, NULL);
+            return ESP_FAIL;
+        }
+        if (setjmp(png_jmpbuf(png_ptr))) {
+            png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+            return ESP_FAIL;
+        }
+
+        png_set_read_fn(png_ptr, &mem, png_mem_read_callback);
+        png_read_info(png_ptr, info_ptr);
+        *out_width = png_get_image_width(png_ptr, info_ptr);
+        *out_height = png_get_image_height(png_ptr, info_ptr);
+
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        return ESP_OK;
+    }
+
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+bool image_processor_is_processed(const char *input_path)
+{
+    ESP_LOGD(TAG, "Checking if image is already processed: %s", input_path);
+
+    FILE *fp = fopen(input_path, "rb");
+    if (!fp) {
+        ESP_LOGE(TAG, "Failed to open input file: %s", input_path);
+        return false;
+    }
+
+    uint8_t sig[8];
+    size_t read = fread(sig, 1, 8, fp);
+    if (read != 8 || png_sig_cmp(sig, 0, 8) != 0) {
+        ESP_LOGD(TAG, "Not a PNG file");
+        fclose(fp);
+        return false;
+    }
+
+    png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png_ptr) {
+        fclose(fp);
+        return false;
+    }
+
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr) {
+        png_destroy_read_struct(&png_ptr, NULL, NULL);
+        fclose(fp);
+        return false;
+    }
+
+    if (setjmp(png_jmpbuf(png_ptr))) {
+        ESP_LOGE(TAG, "PNG error during check");
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+        return false;
+    }
+
+    png_init_io(png_ptr, fp);
+    png_set_sig_bytes(png_ptr, 8);
+    png_read_info(png_ptr, info_ptr);
+
+    int width = png_get_image_width(png_ptr, info_ptr);
+    int height = png_get_image_height(png_ptr, info_ptr);
+
+    if (width != BOARD_HAL_DISPLAY_WIDTH || height != BOARD_HAL_DISPLAY_HEIGHT) {
+        ESP_LOGI(TAG, "Dimensions mismatch: %dx%d (expected %dx%d)", width, height,
+                 BOARD_HAL_DISPLAY_WIDTH, BOARD_HAL_DISPLAY_HEIGHT);
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+        return false;
+    }
+
+    // Force RGB format
+    png_set_expand(png_ptr);
+    png_set_strip_alpha(png_ptr);
+    png_set_packing(png_ptr);
+    png_set_palette_to_rgb(png_ptr);
+    png_read_update_info(png_ptr, info_ptr);
+
+    if (png_get_channels(png_ptr, info_ptr) != 3) {
+        ESP_LOGI(TAG, "Not RGB format");
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+        return false;
+    }
+
+    // Check pixels row by row against the fixed theoretical palette (see
+    // the header doc comment for why not the calibrated/measured one).
+    png_bytep row = (png_bytep) malloc(png_get_rowbytes(png_ptr, info_ptr));
+    if (!row) {
+        ESP_LOGE(TAG, "Failed to allocate row buffer");
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+        return false;
+    }
+
+    bool valid = true;
+    for (int y = 0; y < height; y++) {
+        png_read_row(png_ptr, row, NULL);
+
+        for (int x = 0; x < width; x++) {
+            uint8_t r = row[x * 3];
+            uint8_t g = row[x * 3 + 1];
+            uint8_t b = row[x * 3 + 2];
+
+            bool color_match = false;
+            for (int i = 0; i < 7; i++) {
+                if (i == 4)
+                    continue;  // Skip reserved
+                if (r == palette[i].r && g == palette[i].g && b == palette[i].b) {
+                    color_match = true;
+                    break;
+                }
+            }
+
+            if (!color_match) {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid) {
+            break;
+        }
+    }
+
+    free(row);
+    png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+    fclose(fp);
+    return valid;
+}
+
+esp_err_t image_processor_peek_file_dimensions(const char *path, image_format_t format, int *out_w,
+                                               int *out_h)
+{
+    if (!path) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        return ESP_FAIL;
+    }
+    // Header-only peek - large enough for both JPEG SOF markers and a PNG
+    // IHDR chunk without reading the whole (possibly multi-MB) file.
+    const size_t scan_bytes = 65536;
+    // PSRAM: runs on every rotation cycle (via image_orientation_mismatches())
+    // right before overlay_manager's weather/headlines fetch in the same wake
+    // cycle - see the fix in rotate_random() for why a 64 KB internal-RAM
+    // buffer here is risky even though it's freed promptly.
+    uint8_t *buf = heap_caps_malloc(scan_bytes, MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        fclose(f);
+        return ESP_ERR_NO_MEM;
+    }
+    size_t n = fread(buf, 1, scan_bytes, f);
+    fclose(f);
+    esp_err_t err = image_processor_peek_dimensions(buf, n, format, out_w, out_h);
+    free(buf);
+    return err;
+}
+
+// Nearest-neighbor "cover" resize (scale to fill dst, crop excess, centered)
+// of a whole in-RAM RGB888 buffer. Only used by image_processor_compose_pair_to_rgb() below -
+// everything else in this file resizes as part of the row-streaming pipeline instead.
+static uint8_t *resize_image(uint8_t *src, int src_w, int src_h, int dst_w, int dst_h)
+{
+    uint8_t *dst = (uint8_t *) heap_caps_malloc((size_t) dst_w * dst_h * 3, MALLOC_CAP_SPIRAM);
+    if (!dst) {
+        ESP_LOGE(TAG, "Failed to allocate resize buffer");
+        return NULL;
+    }
+
+    float scale_x = (float) dst_w / src_w;
+    float scale_y = (float) dst_h / src_h;
+    float scale = fmaxf(scale_x, scale_y);
+
+    int scaled_w = (int) (src_w * scale);
+    int scaled_h = (int) (src_h * scale);
+
+    int offset_x = (scaled_w - dst_w) / 2;
+    int offset_y = (scaled_h - dst_h) / 2;
+
+    for (int y = 0; y < dst_h; y++) {
+        for (int x = 0; x < dst_w; x++) {
+            float scaled_x = x + offset_x;
+            float scaled_y = y + offset_y;
+
+            float src_x_f = scaled_x / scale;
+            float src_y_f = scaled_y / scale;
+
+            int src_x = (int) src_x_f;
+            int src_y = (int) src_y_f;
+
+            if (src_x >= src_w)
+                src_x = src_w - 1;
+            if (src_y >= src_h)
+                src_y = src_h - 1;
+            if (src_x < 0)
+                src_x = 0;
+            if (src_y < 0)
+                src_y = 0;
+
+            int dst_idx = (y * dst_w + x) * 3;
+            int src_idx = (src_y * src_w + src_x) * 3;
+
+            dst[dst_idx] = src[src_idx];
+            dst[dst_idx + 1] = src[src_idx + 1];
+            dst[dst_idx + 2] = src[src_idx + 2];
+        }
+    }
+
+    return dst;
+}
+
+// Resize/rotate-to-fit a whole in-RAM RGB888 buffer to the panel's native
+// resolution, then apply CDR + dithering - the same per-row primitives
+// (cdr_apply_row / dither_row) the main row-streaming pipeline uses, just
+// driven in a loop here since the caller already has a complete buffer
+// rather than a row source. Keeps composed-pair/thumbnail output visually
+// consistent with every other image the device displays, using the same
+// measured-palette calibration.
+static esp_err_t process_rgb_buffer_core(uint8_t *rgb_buffer, int width, int height,
+                                         dither_algorithm_t dither_algorithm, uint8_t **out_buffer,
+                                         int *out_width, int *out_height)
+{
+    ESP_LOGI(TAG, "Processing RGB buffer: %dx%d", width, height);
+
+    uint8_t *resized = NULL;
+    uint8_t *rotated = NULL;
+    uint8_t *final_image = rgb_buffer;
+    int final_width = width;
+    int final_height = height;
+
+    bool image_is_portrait = height > width;
+    bool board_is_portrait = BOARD_HAL_DISPLAY_HEIGHT > BOARD_HAL_DISPLAY_WIDTH;
+    bool needs_rotation = image_is_portrait != board_is_portrait;
+
+    // STEP 1: Resize for target orientation
+    int target_width, target_height;
+    if (needs_rotation) {
+        target_width = (width * BOARD_HAL_DISPLAY_WIDTH) / height;
+        target_height = BOARD_HAL_DISPLAY_WIDTH;
+    } else {
+        target_width = BOARD_HAL_DISPLAY_WIDTH;
+        target_height = BOARD_HAL_DISPLAY_HEIGHT;
+    }
+
+    if (final_width != target_width || final_height != target_height) {
+        ESP_LOGI(TAG, "Resizing image to %dx%d", target_width, target_height);
+        resized = resize_image(final_image, final_width, final_height, target_width, target_height);
+        if (!resized) {
+            ESP_LOGE(TAG, "Failed to resize image to %dx%d", target_width, target_height);
+            return ESP_FAIL;
+        }
+        if (final_image != rgb_buffer)
+            heap_caps_free(final_image);
+        final_image = resized;
+        final_width = target_width;
+        final_height = target_height;
+    }
+
+    // STEP 2: Rotate
+    if (needs_rotation) {
+        ESP_LOGI(TAG, "Rotating image by 90 degrees");
+        size_t rotated_size = (size_t) final_width * final_height * 3;
+        rotated = (uint8_t *) heap_caps_malloc(rotated_size, MALLOC_CAP_SPIRAM);
+        if (!rotated) {
+            ESP_LOGE(TAG, "Failed to allocate rotation buffer of %zu bytes", rotated_size);
+            if (final_image != rgb_buffer)
+                heap_caps_free(final_image);
+            return ESP_FAIL;
+        }
+
+        for (int y = 0; y < final_height; y++) {
+            for (int x = 0; x < final_width; x++) {
+                int src_idx = (y * final_width + x) * 3;
+                int dst_x = final_height - 1 - y;
+                int dst_y = x;
+                int dst_idx = (dst_y * final_height + dst_x) * 3;
+                rotated[dst_idx] = final_image[src_idx];
+                rotated[dst_idx + 1] = final_image[src_idx + 1];
+                rotated[dst_idx + 2] = final_image[src_idx + 2];
+            }
+        }
+        if (final_image != rgb_buffer)
+            heap_caps_free(final_image);
+        final_image = rotated;
+        int temp = final_width;
+        final_width = final_height;
+        final_height = temp;
+    }
+
+    // STEP 3: Final fit check
+    if (final_width != BOARD_HAL_DISPLAY_WIDTH || final_height != BOARD_HAL_DISPLAY_HEIGHT) {
+        uint8_t *final_resized = resize_image(final_image, final_width, final_height,
+                                              BOARD_HAL_DISPLAY_WIDTH, BOARD_HAL_DISPLAY_HEIGHT);
+        if (!final_resized) {
+            ESP_LOGE(TAG, "Failed to final resize image to %dx%d", BOARD_HAL_DISPLAY_WIDTH,
+                     BOARD_HAL_DISPLAY_HEIGHT);
+            if (final_image != rgb_buffer)
+                heap_caps_free(final_image);
+            return ESP_FAIL;
+        }
+        if (final_image != rgb_buffer)
+            heap_caps_free(final_image);
+        final_image = final_resized;
+        final_width = BOARD_HAL_DISPLAY_WIDTH;
+        final_height = BOARD_HAL_DISPLAY_HEIGHT;
+    }
+
+    // Apply fast CDR + dithering, row by row, via the shared engine.
+    cdr_state_t cdr;
+    cdr_init(&cdr);
+
+    dither_state_t dither_st;
+    esp_err_t derr = dither_init(&dither_st, final_width, dither_algorithm);
+    if (derr != ESP_OK) {
+        if (final_image != rgb_buffer)
+            heap_caps_free(final_image);
+        return derr;
+    }
+
+    for (int y = 0; y < final_height; y++) {
+        uint8_t *row = &final_image[(size_t) y * final_width * 3];
+        cdr_apply_row(&cdr, row, final_width);
+        dither_row(&dither_st, row);
+    }
+    dither_free(&dither_st);
+
+    *out_buffer = final_image;
+    *out_width = final_width;
+    *out_height = final_height;
+    return ESP_OK;
+}
+
+esp_err_t image_processor_compose_pair_to_rgb(const uint8_t *data_a, size_t size_a,
+                                              image_format_t format_a, const uint8_t *data_b,
+                                              size_t size_b, image_format_t format_b,
+                                              bool stack_vertically,
+                                              dither_algorithm_t dither_algorithm,
+                                              image_process_rgb_result_t *result)
+{
+    if (!data_a || !data_b || !result) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    memset(result, 0, sizeof(*result));
+
+    uint8_t *rgb_a = NULL, *rgb_b = NULL;
+    int wa = 0, ha = 0, wb = 0, hb = 0;
+    esp_err_t err;
+
+    if (format_a == IMAGE_FORMAT_JPG) {
+        err = decode_jpg_buffer(data_a, size_a, &rgb_a, &wa, &ha);
+    } else if (format_a == IMAGE_FORMAT_PNG) {
+        err = decode_png_buffer(data_a, size_a, &rgb_a, &wa, &ha);
+    } else if (format_a == IMAGE_FORMAT_EPD_GZ) {
+        err = decode_epdgz_buffer(data_a, size_a, &rgb_a, &wa, &ha);
+    } else {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (format_b == IMAGE_FORMAT_JPG) {
+        err = decode_jpg_buffer(data_b, size_b, &rgb_b, &wb, &hb);
+    } else if (format_b == IMAGE_FORMAT_PNG) {
+        err = decode_png_buffer(data_b, size_b, &rgb_b, &wb, &hb);
+    } else if (format_b == IMAGE_FORMAT_EPD_GZ) {
+        err = decode_epdgz_buffer(data_b, size_b, &rgb_b, &wb, &hb);
+    } else {
+        heap_caps_free(rgb_a);
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    if (err != ESP_OK) {
+        heap_caps_free(rgb_a);
+        return err;
+    }
+
+    int half_w = stack_vertically ? BOARD_HAL_DISPLAY_WIDTH : BOARD_HAL_DISPLAY_WIDTH / 2;
+    int half_h = stack_vertically ? BOARD_HAL_DISPLAY_HEIGHT / 2 : BOARD_HAL_DISPLAY_HEIGHT;
+
+    uint8_t *resized_a = resize_image(rgb_a, wa, ha, half_w, half_h);
+    heap_caps_free(rgb_a);
+    uint8_t *resized_b = resize_image(rgb_b, wb, hb, half_w, half_h);
+    heap_caps_free(rgb_b);
+
+    if (!resized_a || !resized_b) {
+        ESP_LOGE(TAG, "Failed to resize one or both images for pair composition");
+        if (resized_a)
+            heap_caps_free(resized_a);
+        if (resized_b)
+            heap_caps_free(resized_b);
+        return ESP_ERR_NO_MEM;
+    }
+
+    uint8_t *canvas = (uint8_t *) heap_caps_malloc(
+        (size_t) BOARD_HAL_DISPLAY_WIDTH * BOARD_HAL_DISPLAY_HEIGHT * 3, MALLOC_CAP_SPIRAM);
+    if (!canvas) {
+        ESP_LOGE(TAG, "Failed to allocate pair composition canvas");
+        heap_caps_free(resized_a);
+        heap_caps_free(resized_b);
+        return ESP_ERR_NO_MEM;
+    }
+
+    int b_off_x = stack_vertically ? 0 : half_w;
+    int b_off_y = stack_vertically ? half_h : 0;
+
+    for (int y = 0; y < half_h; y++) {
+        memcpy(&canvas[(y * BOARD_HAL_DISPLAY_WIDTH) * 3], &resized_a[y * half_w * 3],
+               (size_t) half_w * 3);
+        memcpy(&canvas[((b_off_y + y) * BOARD_HAL_DISPLAY_WIDTH + b_off_x) * 3],
+               &resized_b[y * half_w * 3], (size_t) half_w * 3);
+    }
+
+    heap_caps_free(resized_a);
+    heap_caps_free(resized_b);
+
+    ESP_LOGI(TAG, "Composed %dx%d pair canvas (%s)", BOARD_HAL_DISPLAY_WIDTH,
+             BOARD_HAL_DISPLAY_HEIGHT, stack_vertically ? "stacked" : "side-by-side");
+
+    uint8_t *processed = NULL;
+    int out_w = 0, out_h = 0;
+    err = process_rgb_buffer_core(canvas, BOARD_HAL_DISPLAY_WIDTH, BOARD_HAL_DISPLAY_HEIGHT,
+                                  dither_algorithm, &processed, &out_w, &out_h);
+    if (canvas != processed) {
+        heap_caps_free(canvas);
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    result->rgb_data = processed;
+    result->rgb_size = (size_t) out_w * out_h * 3;
+    result->width = out_w;
+    result->height = out_h;
+    return ESP_OK;
+}
+
+// Blits one glyph from the fixed-width Font24 bitmap font (1bpp, MSB-first,
+// rows packed to ceil(Width/8) bytes) onto an RGB888 buffer.
+static void draw_glyph(uint8_t *rgb, int width, int height, int x, int y, char c, rgb_t color)
+{
+    if (c < ' ' || (unsigned char) c > 0x7E) {
+        return;  // outside the printable ASCII range covered by Font24
+    }
+
+    uint32_t bytes_per_row = Font24.Width / 8 + (Font24.Width % 8 ? 1 : 0);
+    uint32_t char_offset = (uint32_t) (c - ' ') * Font24.Height * bytes_per_row;
+    const uint8_t *ptr = &Font24.table[char_offset];
+
+    for (int row = 0; row < Font24.Height; row++) {
+        for (int col = 0; col < Font24.Width; col++) {
+            if (ptr[col / 8] & (0x80 >> (col % 8))) {
+                int px = x + col, py = y + row;
+                if (px >= 0 && px < width && py >= 0 && py < height) {
+                    int idx = (py * width + px) * 3;
+                    rgb[idx] = color.r;
+                    rgb[idx + 1] = color.g;
+                    rgb[idx + 2] = color.b;
+                }
+            }
+        }
+        ptr += bytes_per_row;
+    }
+}
+
+// True if `c` is a reserved weather-icon marker byte (see
+// WEATHER_ICON_MARKER_BASE's doc comment in weather.h) rather than a
+// printable character.
+static bool is_weather_icon_marker(char c)
+{
+    unsigned char b = (unsigned char) c;
+    return b >= WEATHER_ICON_MARKER_BASE && b < WEATHER_ICON_MARKER_BASE + WEATHER_ICON_COUNT;
+}
+
+// Pixel width render_text_bar()/image_processor_draw_overlay_bar()/
+// image_processor_draw_text() advance by for one byte of a line -
+// Font24.Width for a normal character, WEATHER_ICON_WIDTH for a
+// weather-icon marker byte. Single source of truth so the
+// centering/truncation math below and the actual draw loop can never
+// disagree. One icon size (24px, matching Font24.Height) is used
+// everywhere - both the photo overlay bar and agenda_renderer.c's Calendar
+// day-divider weather chip, which shares a fixed row height with the rest
+// of that grid and can't grow it.
+static int glyph_advance_width(char c)
+{
+    return is_weather_icon_marker(c) ? WEATHER_ICON_WIDTH : Font24.Width;
+}
+
+// Sums glyph_advance_width() over a whole line - the pixel-accurate
+// replacement for the old `strlen(line) * Font24.Width` (still exactly
+// equal to that for any line with no icon markers, i.e. every line type
+// except weather-in-icon-mode).
+static int measure_line_width(const char *line)
+{
+    int w = 0;
+    for (const char *p = line; *p != '\0'; p++) {
+        w += glyph_advance_width(*p);
+    }
+    return w;
+}
+
+// Traffic-light severity color per icon id, shown instead of the plain
+// foreground color when config_manager_get_weather_icon_colored() is on
+// (and the board can actually show color - see board_is_grayscale() below).
+// A fixed per-icon-id table rather than a live per-WMO-code lookup: the one
+// case that would otherwise need dynamic coloring - thunderstorm with vs.
+// without hail - already gets its own icon id in weather_icons_data.h (both
+// icon sets draw the same glyph for both, since neither has a distinct hail
+// icon) specifically so this can stay a simple static table indexed the
+// same way as the bitmap tables themselves. See docs/DIFF.md's weather-icon
+// entry for the full WMO-code-to-color mapping this mirrors.
+//
+// -1 = "neutral" (partly cloudy/overcast/snow grains) - deliberately NOT a
+// literal black constant: both call sites (the overlay bar's default
+// black-background bar, and Agenda mode's day-divider chip, which can be
+// either polarity depending on the chosen page background) already pass in
+// whichever of black/white actually contrasts with THEIR OWN background as
+// `default_color` - a fixed "Black" here went invisible against a black
+// background in either context (confirmed live: an Agenda chip on a dark
+// background swallowed a black icon whole). Falling through to
+// `default_color` for the neutral categories reuses that same
+// already-contrast-safe choice instead of guessing a color of our own.
+static bool weather_icon_color_for_id(int icon_id, rgb_t *out)
+{
+    // palette[]: 0=Black 1=White 2=Yellow 3=Red 5=Blue 6=Green
+    static const int color_by_icon_id[WEATHER_ICON_COUNT] = {
+        6,   // 0  clear                    -> Green
+        6,   // 1  mostly_clear             -> Green
+        -1,  // 2  partly_cloudy            -> neutral (caller's own color)
+        -1,  // 3  overcast                 -> neutral
+        2,   // 4  fog                      -> Yellow
+        3,   // 5  icy_fog                  -> Red
+        5,   // 6  rain_light               -> Blue (distinguishes it from
+             //    "good weather" green now that snow's own light tier is
+             //    also blue - shape tells the two apart, not color)
+        2,   // 7  rain_moderate            -> Yellow
+        3,   // 8  rain_heavy               -> Red
+        2,   // 9  freezing_drizzle_light   -> Yellow
+        3,   // 10 freezing_drizzle         -> Red
+        5,   // 11 snow_light               -> Blue
+        2,   // 12 snow_moderate            -> Yellow
+        3,   // 13 snow_heavy               -> Red
+        -1,  // 14 snow_grains              -> neutral
+        2,   // 15 thunderstorm             -> Yellow
+        3,   // 16 thunderstorm_hail        -> Red
+    };
+    int idx = (icon_id >= 0 && icon_id < WEATHER_ICON_COUNT) ? color_by_icon_id[icon_id] : -1;
+    if (idx < 0) {
+        return false;
+    }
+    *out = palette[idx];
+    return true;
+}
+
+// Blits one weather-condition icon (1bpp, MSB-first, WEATHER_ICON_WIDTH x
+// WEATHER_ICON_HEIGHT, from main/weather_icons_data.h) onto an RGB888
+// buffer - structurally identical to draw_glyph() above, just indexing the
+// currently-selected icon set's table instead of Font24. `icon_id` is
+// 0-based (the caller has already subtracted WEATHER_ICON_MARKER_BASE from
+// the marker byte). `default_color` is used as-is unless colored-icon mode
+// is on and the board can show color, in which case
+// weather_icon_color_for_id() overrides it - UNLESS that override would be
+// invisible against `avoid_bg` (non-NULL only for a caller whose actual
+// background isn't guaranteed plain black/white, e.g. agenda_renderer.c's
+// shift-model-colored day header - every other caller passes NULL, since a
+// fixed traffic-light hue can never collide with a plain black/white
+// background by construction). Falls back to `default_color` in that case,
+// same as the neutral-category fallback already does - it's already
+// guaranteed contrast-safe against this exact background by the caller.
+static void draw_weather_icon(uint8_t *rgb, int width, int height, int x, int y, int icon_id,
+                              rgb_t default_color, const rgb_t *avoid_bg)
+{
+    if (icon_id < 0 || icon_id >= WEATHER_ICON_COUNT) {
+        return;
+    }
+    const char *icon_set = config_manager_get_weather_icon_set();
+    const uint8_t *const *table =
+        (strcmp(icon_set, "metno") == 0) ? weather_icon_table_metno : weather_icon_table_flaticon;
+    const uint8_t *bitmap = table[icon_id];
+    rgb_t color = default_color;
+    if (!s_agenda_mono_icon_mode && config_manager_get_weather_icon_colored() &&
+        !board_is_grayscale()) {
+        weather_icon_color_for_id(icon_id, &color);  // no-op (color stays default_color) if neutral
+        if (avoid_bg && color.r == avoid_bg->r && color.g == avoid_bg->g &&
+            color.b == avoid_bg->b) {
+            color = default_color;
+        }
+    }
+
+    uint32_t bytes_per_row = WEATHER_ICON_WIDTH / 8 + (WEATHER_ICON_WIDTH % 8 ? 1 : 0);
+    for (int row = 0; row < WEATHER_ICON_HEIGHT; row++) {
+        const uint8_t *ptr = &bitmap[row * bytes_per_row];
+        for (int col = 0; col < WEATHER_ICON_WIDTH; col++) {
+            if (ptr[col / 8] & (0x80 >> (col % 8))) {
+                int px = x + col, py = y + row;
+                if (px >= 0 && px < width && py >= 0 && py < height) {
+                    int idx = (py * width + px) * 3;
+                    rgb[idx] = color.r;
+                    rgb[idx + 1] = color.g;
+                    rgb[idx + 2] = color.b;
+                }
+            }
+        }
+    }
+}
+
+// Exported general-purpose primitives (agenda_renderer.c's grid layout is
+// the first caller that draws onto a from-scratch canvas rather than a
+// decoded photo, so unlike the overlay/caption/badge helpers above - each
+// already fine as file-private, purpose-built shapes - these two needed a
+// real public surface instead of yet another inline copy).
+void image_processor_fill_rect(uint8_t *rgb_buffer, int width, int height, int x, int y, int w,
+                               int h, uint8_t r, uint8_t g, uint8_t b)
+{
+    int x0 = x < 0 ? 0 : x;
+    int y0 = y < 0 ? 0 : y;
+    int x1 = (x + w > width) ? width : x + w;
+    int y1 = (y + h > height) ? height : y + h;
+    for (int py = y0; py < y1; py++) {
+        for (int px = x0; px < x1; px++) {
+            int idx = (py * width + px) * 3;
+            rgb_buffer[idx] = r;
+            rgb_buffer[idx + 1] = g;
+            rgb_buffer[idx + 2] = b;
+        }
+    }
+}
+
+// Shared by both public entry points below - `avoid_bg` is only non-NULL
+// via image_processor_draw_text_on_bg(), see draw_weather_icon()'s comment
+// for why most callers don't need it.
+static void draw_text_impl(uint8_t *rgb_buffer, int width, int height, int x, int y,
+                           const char *ascii_text, rgb_t color, const rgb_t *avoid_bg)
+{
+    if (!ascii_text) {
+        return;
+    }
+    int cx = x;
+    for (const char *p = ascii_text; *p != '\0'; p++) {
+        if (is_weather_icon_marker(*p)) {
+            draw_weather_icon(rgb_buffer, width, height, cx, y,
+                              (unsigned char) *p - WEATHER_ICON_MARKER_BASE, color, avoid_bg);
+            cx += WEATHER_ICON_WIDTH;
+            continue;
+        }
+        draw_glyph(rgb_buffer, width, height, cx, y, *p, color);
+        cx += Font24.Width;
+    }
+}
+
+void image_processor_draw_text(uint8_t *rgb_buffer, int width, int height, int x, int y,
+                               const char *ascii_text, uint8_t r, uint8_t g, uint8_t b)
+{
+    draw_text_impl(rgb_buffer, width, height, x, y, ascii_text, (rgb_t){r, g, b}, NULL);
+}
+
+void image_processor_draw_text_on_bg(uint8_t *rgb_buffer, int width, int height, int x, int y,
+                                     const char *ascii_text, uint8_t r, uint8_t g, uint8_t b,
+                                     uint8_t bg_r, uint8_t bg_g, uint8_t bg_b)
+{
+    rgb_t bg = {bg_r, bg_g, bg_b};
+    draw_text_impl(rgb_buffer, width, height, x, y, ascii_text, (rgb_t){r, g, b}, &bg);
+}
+
+int image_processor_measure_text_width(const char *ascii_text)
+{
+    return ascii_text ? measure_line_width(ascii_text) : 0;
+}
+
+void image_processor_draw_text_runs(uint8_t *rgb_buffer, int width, int height, int x, int y,
+                                    const char *ascii_text, const image_processor_text_run_t *runs,
+                                    int run_count, uint8_t default_r, uint8_t default_g,
+                                    uint8_t default_b)
+{
+    if (!ascii_text) {
+        return;
+    }
+    rgb_t default_color = {default_r, default_g, default_b};
+    int cx = x;
+    int index = 0;
+    for (const char *p = ascii_text; *p != '\0'; p++, index++) {
+        rgb_t color = default_color;
+        for (int i = 0; i < run_count; i++) {
+            if (index >= runs[i].start && index < runs[i].start + runs[i].length) {
+                color = (rgb_t){runs[i].r, runs[i].g, runs[i].b};
+                break;
+            }
+        }
+        draw_glyph(rgb_buffer, width, height, cx, y, *p, color);
+        cx += Font24.Width;
+    }
+}
+
+#define CAPTION_MAX_LINES 3
+// Single source of truth for the per-line char buffer size is
+// OVERLAY_LINE_MAX_CHARS (image_processor.h - public, since
+// image_processor_wrap_text() hands wrapped lines back to callers using it).
+#define CAPTION_LINE_MAX_CHARS OVERLAY_LINE_MAX_CHARS
+#define CAPTION_LINE_PADDING 4
+// Weather (1 line) + headlines (up to 3 lines) share one overlay bar.
+#define OVERLAY_MAX_LINES 4
+
+// Telegram captions are UTF-8; Font24 only has bitmap glyphs for ASCII
+// (space..~). Transliterate the German umlauts/sz-ligature to ASCII digraphs
+// (still legible) and silently drop every other non-ASCII code point (emoji,
+// other accents, ...) - not worth carrying a Unicode-capable bitmap font for.
+static void sanitize_caption_ascii(const char *utf8, char *out, size_t out_len)
+{
+    size_t o = 0;
+    const unsigned char *p = (const unsigned char *) utf8;
+
+    while (*p != '\0' && o + 1 < out_len) {
+        unsigned char b0 = p[0];
+
+        if (b0 < 0x80) {
+            out[o++] = (char) b0;
+            p++;
+            continue;
+        }
+
+        uint32_t cp = 0;
+        int extra;
+        if ((b0 & 0xE0) == 0xC0) {
+            cp = b0 & 0x1F;
+            extra = 1;
+        } else if ((b0 & 0xF0) == 0xE0) {
+            cp = b0 & 0x0F;
+            extra = 2;
+        } else if ((b0 & 0xF8) == 0xF0) {
+            cp = b0 & 0x07;
+            extra = 3;
+        } else {
+            p++;  // stray continuation/invalid byte, skip
+            continue;
+        }
+
+        bool valid = true;
+        for (int i = 0; i < extra; i++) {
+            unsigned char cb = p[1 + i];
+            if ((cb & 0xC0) != 0x80) {
+                valid = false;
+                break;
+            }
+            cp = (cp << 6) | (cb & 0x3F);
+        }
+        if (!valid) {
+            p++;
+            continue;
+        }
+        p += 1 + extra;
+
+        const char *sub = NULL;
+        switch (cp) {
+        case 0x00E4:
+            sub = "ae";
+            break;  // ä
+        case 0x00F6:
+            sub = "oe";
+            break;  // ö
+        case 0x00FC:
+            sub = "ue";
+            break;  // ü
+        case 0x00C4:
+            sub = "Ae";
+            break;  // Ä
+        case 0x00D6:
+            sub = "Oe";
+            break;  // Ö
+        case 0x00DC:
+            sub = "Ue";
+            break;  // Ü
+        case 0x00DF:
+            sub = "ss";
+            break;  // ß
+        default:
+            break;  // everything else (accents, emoji, symbols, ...) dropped
+        }
+        for (const char *s = sub; s && *s != '\0' && o + 1 < out_len; s++) {
+            out[o++] = *s;
+        }
+    }
+    out[o] = '\0';
+}
+
+// Fills a solid horizontal bar (top or bottom edge, full `width`) and
+// centers each of `line_count` pre-built, already-fits-the-width lines
+// within `usable_width` (<= width - the caption bar always passes `width`
+// itself; the overlay bar passes a narrower value to reserve room for the
+// top-right climate badges, see image_processor_add_overlay_to_file()).
+// Shared by image_processor_draw_caption() (word-wrapped single string,
+// bottom-anchored) and image_processor_draw_overlay_bar() (independent
+// pre-truncated lines, top-anchored) so the two can never visually collide
+// on the same image.
+static void render_text_bar(uint8_t *rgb_buffer, int width, int height,
+                            char lines[][CAPTION_LINE_MAX_CHARS], int line_count, bool anchor_top,
+                            int usable_width, rgb_t bg, rgb_t fg)
+{
+    int bar_height = line_count * (Font24.Height + CAPTION_LINE_PADDING) + CAPTION_LINE_PADDING;
+    if (bar_height > height) {
+        bar_height = height;
+    }
+    int bar_top = anchor_top ? 0 : (height - bar_height);
+
+    for (int y = bar_top; y < bar_top + bar_height; y++) {
+        for (int x = 0; x < width; x++) {
+            int idx = (y * width + x) * 3;
+            rgb_buffer[idx] = bg.r;
+            rgb_buffer[idx + 1] = bg.g;
+            rgb_buffer[idx + 2] = bg.b;
+        }
+    }
+
+    for (int i = 0; i < line_count; i++) {
+        int text_width = measure_line_width(lines[i]);
+        int x = (usable_width - text_width) / 2;
+        if (x < CAPTION_LINE_PADDING) {
+            x = CAPTION_LINE_PADDING;
+        }
+        int y = bar_top + CAPTION_LINE_PADDING + i * (Font24.Height + CAPTION_LINE_PADDING);
+        for (const char *p = lines[i]; *p != '\0'; p++) {
+            if (is_weather_icon_marker(*p)) {
+                // NULL avoid_bg: this bar's own background is always plain
+                // black/white (overlay_invert_colors), never one of the
+                // traffic-light hues - no collision possible here.
+                draw_weather_icon(rgb_buffer, width, height, x, y,
+                                  (unsigned char) *p - WEATHER_ICON_MARKER_BASE, fg, NULL);
+                x += WEATHER_ICON_WIDTH;
+                continue;
+            }
+            draw_glyph(rgb_buffer, width, height, x, y, *p, fg);
+            x += Font24.Width;
+        }
+    }
+}
+
+// Greedy word-wraps already-ASCII-sanitized `text` into up to `max_lines`
+// lines that fit within `width` pixels, truncating the last line with a
+// single "~" if there's leftover text. Returns the number of lines produced
+// (0 if nothing renderable, e.g. `width` too narrow for even one character).
+// Shared by image_processor_draw_caption() and the public
+// image_processor_wrap_text().
+static int wrap_ascii_text(const char *text, int width, int max_lines,
+                           char out_lines[][CAPTION_LINE_MAX_CHARS])
+{
+    int chars_per_line = (width - 2 * CAPTION_LINE_PADDING) / Font24.Width;
+    if (chars_per_line < 1 || max_lines < 1) {
+        return 0;
+    }
+    if (chars_per_line > CAPTION_LINE_MAX_CHARS - 1) {
+        chars_per_line = CAPTION_LINE_MAX_CHARS - 1;
+    }
+
+    int line_count = 0;
+    char current[CAPTION_LINE_MAX_CHARS] = {0};
+    size_t current_len = 0;
+
+    const char *word_start = text;
+    while (*word_start != '\0' && line_count < max_lines) {
+        const char *word_end = word_start;
+        while (*word_end != '\0' && *word_end != ' ')
+            word_end++;
+        size_t word_len = (size_t) (word_end - word_start);
+        if (word_len > CAPTION_LINE_MAX_CHARS - 1) {
+            word_len = CAPTION_LINE_MAX_CHARS - 1;  // clip an absurdly long "word"
+        }
+
+        size_t needed = current_len + (current_len > 0 ? 1 : 0) + word_len;
+        if ((int) needed > chars_per_line && current_len > 0) {
+            strncpy(out_lines[line_count], current, CAPTION_LINE_MAX_CHARS - 1);
+            out_lines[line_count][CAPTION_LINE_MAX_CHARS - 1] = '\0';
+            line_count++;
+            current_len = 0;
+            current[0] = '\0';
+            if (line_count >= max_lines) {
+                break;
+            }
+        }
+        if (current_len > 0) {
+            current[current_len++] = ' ';
+        }
+        memcpy(current + current_len, word_start, word_len);
+        current_len += word_len;
+        current[current_len] = '\0';
+
+        word_start = (*word_end == ' ') ? word_end + 1 : word_end;
+    }
+    if (line_count < max_lines && current_len > 0) {
+        strncpy(out_lines[line_count], current, CAPTION_LINE_MAX_CHARS - 1);
+        out_lines[line_count][CAPTION_LINE_MAX_CHARS - 1] = '\0';
+        line_count++;
+    }
+
+    if (line_count == 0) {
+        return 0;
+    }
+
+    // Mark truncation with a single "~" (not "..." - costs 3 characters
+    // where a tilde costs 1, freeing 2 more characters for real content on
+    // space-constrained callers like agenda_renderer.c's Calendar event
+    // rows) if there's leftover text. Font24 covers printable ASCII up to
+    // 0x7E ('~') exactly, so this is the widest single "more text follows"
+    // glyph actually available - a real ellipsis character (U+2026) has no
+    // bitmap glyph in this font at all.
+    if (*word_start != '\0') {
+        char *last = out_lines[line_count - 1];
+        size_t len = strlen(last);
+        size_t max_len = (size_t) chars_per_line;
+
+        if (len + 1 <= max_len) {
+            // The whole-word pass above left this line short of chars_per_line
+            // (the next word didn't fit whole, so it was dropped entirely) -
+            // rather than leaving that room blank, fill it with as many
+            // leading characters of the next word as fit before the marker.
+            // Whole-word wrapping is the right choice for a normal wrapped
+            // line, but this is already known to be the truncated tail, so a
+            // partial word beats no word at all for helping the user
+            // identify the entry (e.g. "10:00 [1h] Fahrradw~" instead of
+            // "10:00 [1h]..." with the entire summary silently dropped).
+            size_t avail = max_len - len - 1;  // -1 reserves room for "~"
+            if (len > 0 && avail > 0) {
+                last[len++] = ' ';
+                avail--;
+            }
+            size_t take = 0;
+            while (take < avail && word_start[take] != '\0' && word_start[take] != ' ') {
+                take++;
+            }
+            memcpy(last + len, word_start, take);
+            len += take;
+        } else {
+            len = (max_len > 1) ? max_len - 1 : 0;
+        }
+        last[len] = '\0';
+        strcat(last, "~");
+    }
+
+    return line_count;
+}
+
+void image_processor_draw_caption(uint8_t *rgb_buffer, int width, int height, const char *caption,
+                                  bool invert_colors)
+{
+    if (!rgb_buffer || !caption || caption[0] == '\0') {
+        return;
+    }
+
+    char ascii_caption[CAPTION_LINE_MAX_CHARS * CAPTION_MAX_LINES];
+    sanitize_caption_ascii(caption, ascii_caption, sizeof(ascii_caption));
+    if (ascii_caption[0] == '\0') {
+        return;  // nothing renderable left (e.g. an emoji-only caption)
+    }
+
+    char lines[CAPTION_MAX_LINES][CAPTION_LINE_MAX_CHARS];
+    int line_count = wrap_ascii_text(ascii_caption, width, CAPTION_MAX_LINES, lines);
+    if (line_count == 0) {
+        return;
+    }
+
+    // Output in the exact theoretical palette values (matches what the
+    // dithering step already wrote) so the image stays a valid "processed"
+    // buffer: black bar, white text by default, swapped when invert_colors
+    // is set (Web UI toggle - independent of the overlay bar's own color
+    // setting, though callers typically pass the same value through).
+    rgb_t bg = invert_colors ? palette[1] : palette[0];
+    rgb_t fg = invert_colors ? palette[0] : palette[1];
+    render_text_bar(rgb_buffer, width, height, lines, line_count, false, width, bg, fg);
+}
+
+int image_processor_wrap_text(const char *text, int width, int max_lines,
+                              char out_lines[][OVERLAY_LINE_MAX_CHARS])
+{
+    if (!text || !out_lines || max_lines < 1 || width <= 0) {
+        return 0;
+    }
+    char ascii[OVERLAY_LINE_MAX_CHARS * 4];
+    sanitize_caption_ascii(text, ascii, sizeof(ascii));
+    if (ascii[0] == '\0') {
+        return 0;
+    }
+    return wrap_ascii_text(ascii, width, max_lines, out_lines);
+}
+
+void image_processor_draw_overlay_bar(uint8_t *rgb_buffer, int width, int height,
+                                      const char *const *lines, int line_count, bool invert_colors,
+                                      int right_margin_px)
+{
+    if (!rgb_buffer || !lines || line_count <= 0) {
+        return;
+    }
+    if (line_count > OVERLAY_MAX_LINES) {
+        line_count = OVERLAY_MAX_LINES;
+    }
+    if (right_margin_px < 0) {
+        right_margin_px = 0;
+    }
+    int usable_width = width - right_margin_px;
+
+    int max_line_width = usable_width - 2 * CAPTION_LINE_PADDING;
+    if (max_line_width < Font24.Width) {
+        return;  // display too narrow for this font, skip silently
+    }
+
+    // Each input line stands alone (weather line, or one headline) - sanitize
+    // and truncate-with-ellipsis independently, no word-wrap across lines.
+    char built_lines[OVERLAY_MAX_LINES][CAPTION_LINE_MAX_CHARS];
+    int built_count = 0;
+    for (int i = 0; i < line_count; i++) {
+        if (!lines[i] || lines[i][0] == '\0') {
+            continue;
+        }
+        char ascii_line[CAPTION_LINE_MAX_CHARS];
+        sanitize_caption_ascii(lines[i], ascii_line, sizeof(ascii_line));
+        if (ascii_line[0] == '\0') {
+            continue;
+        }
+        if (measure_line_width(ascii_line) > max_line_width) {
+            // Walk the line accumulating pixel width, cutting as soon as the
+            // *next* unit (plus the "..." about to be appended) would
+            // overflow - replaces a plain strlen()-based char-count cutoff,
+            // which assumed every character was Font24.Width wide (wrong
+            // once a weather-icon marker byte, wider than a character, is
+            // present - see glyph_advance_width()).
+            int ellipsis_width = 3 * Font24.Width;
+            int w = 0;
+            size_t cut = 0;
+            for (const char *p = ascii_line; *p != '\0'; p++) {
+                int next_w = w + glyph_advance_width(*p);
+                if (next_w + ellipsis_width > max_line_width) {
+                    break;
+                }
+                w = next_w;
+                cut++;
+            }
+            ascii_line[cut] = '\0';
+            strcat(ascii_line, "...");
+        }
+        strncpy(built_lines[built_count], ascii_line, CAPTION_LINE_MAX_CHARS - 1);
+        built_lines[built_count][CAPTION_LINE_MAX_CHARS - 1] = '\0';
+        built_count++;
+    }
+
+    if (built_count == 0) {
+        return;
+    }
+
+    // Default: black bar, white text - swapped when invert_colors is set
+    // (Web UI toggle). Still the exact theoretical palette values either
+    // way, so the result stays a valid "processed" buffer.
+    rgb_t bg = invert_colors ? palette[1] : palette[0];
+    rgb_t fg = invert_colors ? palette[0] : palette[1];
+    render_text_bar(rgb_buffer, width, height, built_lines, built_count, true, usable_width, bg,
+                    fg);
+}
+
+void image_processor_draw_battery_badge(uint8_t *rgb_buffer, int width, int height,
+                                        int battery_percent)
+{
+    if (!rgb_buffer || width <= 0 || height <= 0) {
+        return;
+    }
+    if (battery_percent < 0) {
+        battery_percent = 0;
+    } else if (battery_percent > 99) {
+        battery_percent = 99;  // keep the badge's fixed text length ("BATT NN%")
+    }
+
+    char text[16];
+    snprintf(text, sizeof(text), "BATT %d%%", battery_percent);
+    int text_len = (int) strlen(text);
+
+    // Sized to just this short string, not the full display width - the
+    // whole point versus render_text_bar()'s always-full-width bar.
+    int badge_width = text_len * Font24.Width + 2 * CAPTION_LINE_PADDING;
+    int badge_height = Font24.Height + 2 * CAPTION_LINE_PADDING;
+    if (badge_width > width) {
+        badge_width = width;
+    }
+    if (badge_height > height) {
+        badge_height = height;
+    }
+
+    // Red on color-capable (spectra6) boards, black on grayscale-only (gc16)
+    // boards where "red" isn't a real color - white text either way, same
+    // theoretical-palette convention as the caption/overlay bar above.
+    rgb_t bg = board_is_grayscale() ? palette[0] : palette[3];
+    rgb_t fg = palette[1];
+
+    for (int y = 0; y < badge_height; y++) {
+        for (int x = 0; x < badge_width; x++) {
+            int idx = (y * width + x) * 3;
+            rgb_buffer[idx] = bg.r;
+            rgb_buffer[idx + 1] = bg.g;
+            rgb_buffer[idx + 2] = bg.b;
+        }
+    }
+
+    int tx = CAPTION_LINE_PADDING;
+    int ty = CAPTION_LINE_PADDING;
+    for (const char *p = text; *p != '\0'; p++) {
+        draw_glyph(rgb_buffer, width, height, tx, ty, *p, fg);
+        tx += Font24.Width;
+    }
+}
+
+// Bad=Red, Super=Green; Good stands in for the report's "orange" since this
+// board's real palette (see `palette[]` above) has no true orange.
+// Grayscale-only boards can't represent any of these distinctly, so they
+// all collapse to the same black badge as the battery badge above.
+static rgb_t climate_badge_color(climate_category_t category)
+{
+    if (board_is_grayscale()) {
+        return palette[0];
+    }
+    switch (category) {
+    case CLIMATE_CATEGORY_BAD:
+        return palette[3];
+    case CLIMATE_CATEGORY_SUPER:
+        return palette[6];
+    case CLIMATE_CATEGORY_GOOD:
+    default:
+        return palette[2];
+    }
+}
+
+// White text reads fine on Red/Green/the grayscale badge's Black, but not on
+// Good's Yellow background - too little contrast to read on the actual
+// e-paper panel (confirmed live). Black text instead, only for that one case.
+static rgb_t climate_badge_text_color(climate_category_t category)
+{
+    if (!board_is_grayscale() && category == CLIMATE_CATEGORY_GOOD) {
+        return palette[0];
+    }
+    return palette[1];
+}
+
+// Pixel width one climate badge will occupy for the given text, box padding
+// included - shared by draw_one_climate_badge() (the actual draw) and
+// image_processor_add_overlay_to_file() (which needs this ahead of time, to
+// tell the overlay bar how much room to reserve on the right so its own
+// text doesn't run underneath the badge - see right_margin_px).
+static int climate_badge_width(const char *text)
+{
+    return (int) strlen(text) * Font24.Width + 2 * CAPTION_LINE_PADDING;
+}
+
+// Draws one badge anchored so its RIGHT edge sits at `right_edge_x` -
+// returns the x coordinate the next (further left) badge should use as its
+// own right edge, so image_processor_draw_climate_badges() can chain two
+// without overlap. Otherwise identical box+glyph-loop shape to
+// image_processor_draw_battery_badge() above.
+static int draw_one_climate_badge(uint8_t *rgb_buffer, int width, int height, int right_edge_x,
+                                  const char *text, rgb_t bg, rgb_t fg)
+{
+    int badge_width = climate_badge_width(text);
+    int badge_height = Font24.Height + 2 * CAPTION_LINE_PADDING;
+    if (badge_width > width) {
+        badge_width = width;
+    }
+    if (badge_height > height) {
+        badge_height = height;
+    }
+
+    int box_x = right_edge_x - badge_width;
+    if (box_x < 0) {
+        box_x = 0;
+    }
+
+    for (int y = 0; y < badge_height; y++) {
+        for (int x = 0; x < badge_width; x++) {
+            int idx = (y * width + (box_x + x)) * 3;
+            rgb_buffer[idx] = bg.r;
+            rgb_buffer[idx + 1] = bg.g;
+            rgb_buffer[idx + 2] = bg.b;
+        }
+    }
+
+    int tx = box_x + CAPTION_LINE_PADDING;
+    int ty = CAPTION_LINE_PADDING;
+    for (const char *p = text; *p != '\0'; p++) {
+        draw_glyph(rgb_buffer, width, height, tx, ty, *p, fg);
+        tx += Font24.Width;
+    }
+    return box_x - CAPTION_LINE_PADDING;  // small gap before the next badge
+}
+
+void image_processor_draw_climate_badges(uint8_t *rgb_buffer, int width, int height, bool has_temp,
+                                         const char *temp_text, climate_category_t temp_category,
+                                         bool has_hum, const char *hum_text,
+                                         climate_category_t hum_category)
+{
+    if (!rgb_buffer || width <= 0 || height <= 0) {
+        return;
+    }
+    int right_edge_x = width;
+    if (has_hum && hum_text && hum_text[0] != '\0') {
+        right_edge_x = draw_one_climate_badge(rgb_buffer, width, height, right_edge_x, hum_text,
+                                              climate_badge_color(hum_category),
+                                              climate_badge_text_color(hum_category));
+    }
+    if (has_temp && temp_text && temp_text[0] != '\0') {
+        draw_one_climate_badge(rgb_buffer, width, height, right_edge_x, temp_text,
+                               climate_badge_color(temp_category),
+                               climate_badge_text_color(temp_category));
+    }
+}
+
+void image_processor_sanitize_ascii(const char *utf8, char *out, size_t out_len)
+{
+    sanitize_caption_ascii(utf8, out, out_len);
+}
+
+// Shared decode -> draw -> re-encode body for both file-level overlay
+// wrappers below - `draw` receives the decoded RGB buffer and does the
+// actual compositing (caption word-wrap, or overlay-bar line layout).
+static esp_err_t apply_text_overlay_to_file(const char *png_path,
+                                            void (*draw)(uint8_t *, int, int, const void *),
+                                            const void *draw_arg)
+{
+    FILE *fp = fopen(png_path, "rb");
+    if (!fp) {
+        ESP_LOGE(TAG, "Failed to open %s for text overlay", png_path);
+        return ESP_FAIL;
+    }
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    uint8_t *file_buffer = (uint8_t *) heap_caps_malloc(file_size, MALLOC_CAP_SPIRAM);
+    if (!file_buffer) {
+        fclose(fp);
+        return ESP_ERR_NO_MEM;
+    }
+    size_t read_bytes = fread(file_buffer, 1, file_size, fp);
+    fclose(fp);
+    if (read_bytes != (size_t) file_size) {
+        heap_caps_free(file_buffer);
+        return ESP_FAIL;
+    }
+
+    uint8_t *rgb_buffer = NULL;
+    int width = 0, height = 0;
+    esp_err_t err = decode_png_buffer(file_buffer, file_size, &rgb_buffer, &width, &height);
+    heap_caps_free(file_buffer);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    draw(rgb_buffer, width, height, draw_arg);
+
+    err = write_png_file(png_path, rgb_buffer, width, height);
+    heap_caps_free(rgb_buffer);
+    return err;
+}
+
+typedef struct {
+    const char *caption;
+    bool invert_colors;
+} caption_draw_arg_t;
+
+static void caption_draw_trampoline(uint8_t *rgb_buffer, int width, int height, const void *arg)
+{
+    const caption_draw_arg_t *a = (const caption_draw_arg_t *) arg;
+    image_processor_draw_caption(rgb_buffer, width, height, a->caption, a->invert_colors);
+}
+
+esp_err_t image_processor_add_caption_to_file(const char *png_path, const char *caption,
+                                              bool invert_colors)
+{
+    if (!caption || caption[0] == '\0') {
+        return ESP_OK;
+    }
+    if (!png_path) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    caption_draw_arg_t arg = {.caption = caption, .invert_colors = invert_colors};
+    return apply_text_overlay_to_file(png_path, caption_draw_trampoline, &arg);
+}
+
+typedef struct {
+    const char *const *lines;
+    int line_count;
+    bool invert_colors;
+    int right_margin_px;
+} overlay_draw_arg_t;
+
+static void overlay_draw_trampoline(uint8_t *rgb_buffer, int width, int height, const void *arg)
+{
+    const overlay_draw_arg_t *a = (const overlay_draw_arg_t *) arg;
+    image_processor_draw_overlay_bar(rgb_buffer, width, height, a->lines, a->line_count,
+                                     a->invert_colors, a->right_margin_px);
+}
+
+esp_err_t image_processor_add_overlay_to_file(char *path, const char *const *lines, int line_count,
+                                              bool invert_colors, bool draw_battery_badge,
+                                              int battery_percent, const char *exif_caption,
+                                              bool draw_climate_temp, const char *climate_temp_text,
+                                              climate_category_t climate_temp_category,
+                                              bool draw_climate_hum, const char *climate_hum_text,
+                                              climate_category_t climate_hum_category)
+{
+    bool has_lines = lines && line_count > 0;
+    bool has_exif_caption = exif_caption && exif_caption[0] != '\0';
+    if (!has_lines && !draw_battery_badge && !has_exif_caption && !draw_climate_temp &&
+        !draw_climate_hum) {
+        return ESP_OK;
+    }
+    if (!path) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // Unlike apply_text_overlay_to_file() (PNG-only, used for captions -
+    // every existing caller already guarantees a PNG source), this dispatches
+    // on actual content so it also works on an already-rendered EPDGZ
+    // Storage/Auto-Rotate album image - see overlay_epdgz_enabled.
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        ESP_LOGE(TAG, "Failed to open %s for overlay", path);
+        return ESP_FAIL;
+    }
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    uint8_t *file_buffer = (uint8_t *) heap_caps_malloc(file_size, MALLOC_CAP_SPIRAM);
+    if (!file_buffer) {
+        fclose(fp);
+        return ESP_ERR_NO_MEM;
+    }
+    size_t read_bytes = fread(file_buffer, 1, file_size, fp);
+    fclose(fp);
+    if (read_bytes != (size_t) file_size) {
+        heap_caps_free(file_buffer);
+        return ESP_FAIL;
+    }
+
+    image_format_t format = image_processor_detect_format(path);
+    uint8_t *rgb_buffer = NULL;
+    int width = 0, height = 0;
+    esp_err_t err = (format == IMAGE_FORMAT_EPD_GZ)
+                        ? decode_epdgz_buffer(file_buffer, file_size, &rgb_buffer, &width, &height)
+                        : decode_png_buffer(file_buffer, file_size, &rgb_buffer, &width, &height);
+    heap_caps_free(file_buffer);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (has_lines) {
+        // Reserve room for whichever climate badges are about to be drawn
+        // (below), so their box doesn't overwrite this bar's own text -
+        // the text truncates ahead of it instead. See right_margin_px's
+        // doc comment.
+        int climate_margin = 0;
+        if (draw_climate_temp && climate_temp_text && climate_temp_text[0] != '\0') {
+            climate_margin += climate_badge_width(climate_temp_text);
+        }
+        if (draw_climate_hum && climate_hum_text && climate_hum_text[0] != '\0') {
+            climate_margin += climate_badge_width(climate_hum_text);
+        }
+        if (climate_margin > 0 && draw_climate_temp && draw_climate_hum && climate_temp_text &&
+            climate_temp_text[0] != '\0' && climate_hum_text && climate_hum_text[0] != '\0') {
+            climate_margin += CAPTION_LINE_PADDING;  // gap between the two badges
+        }
+        overlay_draw_arg_t arg = {.lines = lines,
+                                  .line_count = line_count,
+                                  .invert_colors = invert_colors,
+                                  .right_margin_px = climate_margin};
+        overlay_draw_trampoline(rgb_buffer, width, height, &arg);
+    }
+    if (draw_battery_badge) {
+        // Drawn after the overlay bar above (if any) so it visually sits in
+        // front of it, inset into the left edge - see the doc comment.
+        image_processor_draw_battery_badge(rgb_buffer, width, height, battery_percent);
+    }
+    if (draw_climate_temp || draw_climate_hum) {
+        // Top-right corner - independent of the top-left battery badge
+        // above, can never collide with it.
+        image_processor_draw_climate_badges(
+            rgb_buffer, width, height, draw_climate_temp, climate_temp_text, climate_temp_category,
+            draw_climate_hum, climate_hum_text, climate_hum_category);
+    }
+    if (has_exif_caption) {
+        // Bottom-anchored (image_processor_draw_caption()), so it can never
+        // collide with the top-anchored overlay bar or the top-left battery
+        // badge drawn above. Same opt-in-on-top-of-the-overlay-setting color
+        // inversion convention already used for a Telegram photo's own
+        // caption (see telegram_bot.c's telegram_caption_invert_colors()).
+        bool invert_caption = config_manager_get_caption_invert_colors_enabled() && invert_colors;
+        image_processor_draw_caption(rgb_buffer, width, height, exif_caption, invert_caption);
+    }
+
+    image_format_t actual_format = format;
+    err = image_processor_write_rgb_to_fmt(rgb_buffer, width, height, path, format, &actual_format);
+    heap_caps_free(rgb_buffer);
+    if (err == ESP_OK && actual_format != format) {
+        // EPDGZ requested but fell back to PNG (deflate state OOM) - already
+        // written under a ".png"-extensioned path, same fallback correction
+        // telegram_bot.c's compose_pair_and_save()/finalize_telegram_image()
+        // apply for the identical contract.
+        char *ext = strrchr(path, '.');
+        if (ext) {
+            strcpy(ext, ".png");
+        }
+    }
+    return err;
+}
+
+esp_err_t image_processor_write_rgb_to_png(const uint8_t *rgb_buffer, int width, int height,
+                                           const char *output_path)
+{
+    if (!rgb_buffer || !output_path || width <= 0 || height <= 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return write_png_file(output_path, (uint8_t *) rgb_buffer, width, height);
+}
+
+esp_err_t image_processor_write_rgb_to_fmt(const uint8_t *rgb_buffer, int width, int height,
+                                           const char *output_path, image_format_t out_format,
+                                           image_format_t *out_actual_format)
+{
+    if (!rgb_buffer || !output_path || width <= 0 || height <= 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (out_actual_format) {
+        *out_actual_format = IMAGE_FORMAT_PNG;
+    }
+
+    if (out_format != IMAGE_FORMAT_EPD_GZ) {
+        return write_png_file(output_path, (uint8_t *) rgb_buffer, width, height);
+    }
+
+    esp_err_t err = write_epdgz_file(output_path, (uint8_t *) rgb_buffer, width, height);
+    if (err != ESP_ERR_NO_MEM) {
+        if (err == ESP_OK && out_actual_format) {
+            *out_actual_format = IMAGE_FORMAT_EPD_GZ;
+        }
+        return err;
+    }
+
+    ESP_LOGW(TAG, "Not enough memory for EPDGZ encoding - falling back to PNG");
+    char png_path[320];
+    with_png_extension(output_path, png_path, sizeof(png_path));
+    return write_png_file(png_path, (uint8_t *) rgb_buffer, width, height);
+}
+
+static esp_err_t read_file_into_buffer(const char *path, uint8_t **out_data, long *out_size)
+{
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        ESP_LOGE(TAG, "Failed to open %s", path);
+        return ESP_FAIL;
+    }
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    if (file_size <= 0) {
+        fclose(fp);
+        return ESP_FAIL;
+    }
+
+    uint8_t *buf = (uint8_t *) heap_caps_malloc((size_t) file_size, MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        fclose(fp);
+        return ESP_ERR_NO_MEM;
+    }
+    size_t read_bytes = fread(buf, 1, (size_t) file_size, fp);
+    fclose(fp);
+    if (read_bytes != (size_t) file_size) {
+        heap_caps_free(buf);
+        return ESP_FAIL;
+    }
+    *out_data = buf;
+    *out_size = file_size;
+    return ESP_OK;
+}
+
+// Nearest-neighbor downsample of a decoded RGB888 buffer, written out as a
+// PNG - a grid/chat preview doesn't need anything fancier, and this keeps
+// the extra CPU/RAM cost minimal. Shared by both thumbnail entry points
+// below; frees neither buffer.
+static esp_err_t make_thumbnail_from_rgb(const uint8_t *src_rgb, int src_width, int src_height,
+                                         int max_dimension, const char *output_path)
+{
+    int dst_width, dst_height;
+    if (src_width >= src_height) {
+        dst_width = max_dimension;
+        dst_height = (int) ((int64_t) src_height * max_dimension / src_width);
+    } else {
+        dst_height = max_dimension;
+        dst_width = (int) ((int64_t) src_width * max_dimension / src_height);
+    }
+    if (dst_width < 1) {
+        dst_width = 1;
+    }
+    if (dst_height < 1) {
+        dst_height = 1;
+    }
+
+    uint8_t *dst_rgb =
+        (uint8_t *) heap_caps_malloc((size_t) dst_width * dst_height * 3, MALLOC_CAP_SPIRAM);
+    if (!dst_rgb) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    for (int y = 0; y < dst_height; y++) {
+        int src_y = (int) ((int64_t) y * src_height / dst_height);
+        for (int x = 0; x < dst_width; x++) {
+            int src_x = (int) ((int64_t) x * src_width / dst_width);
+            const uint8_t *sp = &src_rgb[(size_t) (src_y * src_width + src_x) * 3];
+            uint8_t *dp = &dst_rgb[(size_t) (y * dst_width + x) * 3];
+            dp[0] = sp[0];
+            dp[1] = sp[1];
+            dp[2] = sp[2];
+        }
+    }
+
+    esp_err_t err = write_png_file(output_path, dst_rgb, dst_width, dst_height);
+    heap_caps_free(dst_rgb);
+    return err;
+}
+
+esp_err_t image_processor_make_thumbnail(const char *source_path, int max_dimension,
+                                         const char *output_path)
+{
+    if (!source_path || !output_path || max_dimension <= 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t *file_buffer = NULL;
+    long file_size = 0;
+    esp_err_t err = read_file_into_buffer(source_path, &file_buffer, &file_size);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    // Despite the name, the source isn't always PNG - a composed Telegram
+    // orientation pair can now be saved as EPDGZ too (telegram_image_format),
+    // so this dispatches on actual content the same way
+    // image_processor_compose_pair_to_rgb() does, rather than assuming PNG.
+    image_format_t format = image_processor_detect_format(source_path);
+    uint8_t *src_rgb = NULL;
+    int src_width = 0, src_height = 0;
+    if (format == IMAGE_FORMAT_EPD_GZ) {
+        err = decode_epdgz_buffer(file_buffer, file_size, &src_rgb, &src_width, &src_height);
+    } else {
+        err = decode_png_buffer(file_buffer, file_size, &src_rgb, &src_width, &src_height);
+    }
+    heap_caps_free(file_buffer);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = make_thumbnail_from_rgb(src_rgb, src_width, src_height, max_dimension, output_path);
+    heap_caps_free(src_rgb);
+    return err;
+}
+
+esp_err_t image_processor_make_thumbnail_from_original(const char *source_path,
+                                                       image_format_t format, int max_dimension,
+                                                       const char *output_path)
+{
+    if (!source_path || !output_path || max_dimension <= 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (format != IMAGE_FORMAT_JPG && format != IMAGE_FORMAT_PNG) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    uint8_t *file_buffer = NULL;
+    long file_size = 0;
+    esp_err_t err = read_file_into_buffer(source_path, &file_buffer, &file_size);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    uint8_t *src_rgb = NULL;
+    int src_width = 0, src_height = 0;
+    err = (format == IMAGE_FORMAT_JPG)
+              ? decode_jpg_buffer(file_buffer, file_size, &src_rgb, &src_width, &src_height)
+              : decode_png_buffer(file_buffer, file_size, &src_rgb, &src_width, &src_height);
+    heap_caps_free(file_buffer);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = make_thumbnail_from_rgb(src_rgb, src_width, src_height, max_dimension, output_path);
+    heap_caps_free(src_rgb);
+    return err;
+}
+#endif

@@ -2,6 +2,11 @@
 
 #include <string.h>
 
+#include "feature_config.h"
+
+#if FEATURE_WIFI_RESILIENCE
+#include "board_hal.h"
+#endif
 #include "config.h"
 #include "config_manager.h"
 #include "esp_event.h"
@@ -14,6 +19,9 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/err.h"
+#if FEATURE_OFFLINE_HOTSPOT
+#include "lwip/ip4_addr.h"
+#endif
 #include "lwip/sys.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -34,6 +42,9 @@ static const char *TAG = "wifi_manager";
 
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
+#if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
+static int s_max_retries = 5;
+#endif
 static bool s_is_connected = false;
 // Reconnect policy, shared between wifi_manager_connect()'s caller and the
 // event handler (which runs on the event-loop task), so guarded by
@@ -56,11 +67,24 @@ static int s_auth_rejects = 0;  // guarded by s_policy_lock too
 
 // Disconnect reasons that mean the AP turned the credentials down, as opposed
 // to it being absent or out of range (NO_AP_FOUND, BEACON_TIMEOUT, ...). A
+#if FEATURE_WIFI_RESILIENCE
+// wrong WPA2 passphrase surfaces as a 4-way handshake timeout or a MIC
+// failure; MIC_FAILURE and 802_1X_AUTH_FAILED are kept alongside upstream's
+// original 3-reason set (see wifi_manager_last_failure_is_credential_reject()'s
+// own history) so this fork's cold-boot credential-wipe decision in main.c
+// doesn't narrow which disconnect reasons it treats as a genuine rejection.
+#else
 // wrong WPA2 passphrase surfaces as a 4-way handshake timeout.
+#endif
 static bool is_auth_rejection(uint8_t reason)
 {
     return reason == WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT || reason == WIFI_REASON_AUTH_FAIL ||
+#if FEATURE_WIFI_RESILIENCE
+           reason == WIFI_REASON_HANDSHAKE_TIMEOUT || reason == WIFI_REASON_MIC_FAILURE ||
+           reason == WIFI_REASON_802_1X_AUTH_FAILED;
+#else
            reason == WIFI_REASON_HANDSHAKE_TIMEOUT;
+#endif
 }
 static esp_netif_t *s_sta_netif = NULL;
 
@@ -93,8 +117,17 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
         // silent DHCP server indefinitely, but not an AP that keeps refusing
         // the password: that gets the same number of attempts as a normal
         // connect, then WIFI_FAIL_BIT so the owner of the retry can react.
+#if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
+        // The non-keep_trying budget is s_max_retries (default WIFI_MAX_RETRY,
+        // overridable via wifi_manager_set_max_retries() - e.g. Telegram power
+        // save uses a lower budget to give up faster on a bad link).
+#endif
         bool retry = !s_give_up && (s_keep_trying ? s_auth_rejects <= WIFI_MAX_RETRY
+#if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
+                                                  : s_retry_num < s_max_retries);
+#else
                                                   : s_retry_num < WIFI_MAX_RETRY);
+#endif
         if (retry) {
             s_retry_num++;
             esp_wifi_connect();
@@ -108,7 +141,11 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
         // Waiters on WIFI_CONNECTED_BIT (e.g. main.c's late_wifi_task) must
         // see the link as down again, not a stale bit from an earlier IP.
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+#if FORK_FIXES
+        ESP_LOGI(TAG, "connect to the AP fail (reason %d)", disc ? disc->reason : -1);
+#else
         ESP_LOGI(TAG, "connect to the AP fail");
+#endif
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
@@ -236,6 +273,22 @@ esp_err_t wifi_manager_apply_ip_config(void)
     return ESP_OK;
 }
 
+#if FORK_FIXES
+// Sets one DNS server slot (MAIN/BACKUP/FALLBACK) to a plain dotted-quad
+// IPv4 address. Used both for the user's optional DNS override (MAIN) and
+// the always-on public-DNS safety net below (BACKUP/FALLBACK).
+static void set_dns_server_slot(esp_netif_dns_type_t slot, const char *ip_str)
+{
+    esp_netif_dns_info_t dns_info = {0};
+    if (esp_netif_str_to_ip4(ip_str, &dns_info.ip.u_addr.ip4) != ESP_OK) {
+        ESP_LOGE(TAG, "Invalid DNS server: %s", ip_str);
+        return;
+    }
+    dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+    esp_netif_set_dns_info(s_sta_netif, slot, &dns_info);
+}
+
+#endif
 // Apply the DNS override (if configured). Called after GOT_IP so it takes
 // precedence over DHCP-provided servers in DHCP mode; in static mode it is the
 // only DNS source (defaults to the gateway when unset).
@@ -245,10 +298,28 @@ static void apply_dns_override(void)
     if ((dns == NULL || dns[0] == '\0') && config_manager_get_ip_mode() == IP_MODE_STATIC) {
         dns = config_manager_get_static_gateway();
     }
+#if FORK_FIXES
+    if (dns != NULL && dns[0] != '\0') {
+        set_dns_server_slot(ESP_NETIF_DNS_MAIN, dns);
+        ESP_LOGI(TAG, "DNS server set to: %s", dns);
+#else
     if (dns == NULL || dns[0] == '\0') {
         return;
+#endif
     }
 
+#if FORK_FIXES
+    // lwIP already cycles through DNS_MAIN -> DNS_BACKUP -> DNS_FALLBACK on a
+    // query timeout (dns.c), but this project never populated the latter two,
+    // so a single flaky DNS server (typically the router's own, via DHCP) had
+    // no automatic recovery - observed in the field as a transient failure to
+    // resolve *any* hostname (Telegram and the weather API alike) for one
+    // whole wake cycle. Always seed BACKUP/FALLBACK with well-known public
+    // resolvers regardless of DHCP/override, at no cost when the primary
+    // server is healthy (they're only ever queried after it times out).
+    set_dns_server_slot(ESP_NETIF_DNS_BACKUP, "1.1.1.1");    // Cloudflare
+    set_dns_server_slot(ESP_NETIF_DNS_FALLBACK, "8.8.8.8");  // Google
+#else
     esp_netif_dns_info_t dns_info = {0};
     if (esp_netif_str_to_ip4(dns, &dns_info.ip.u_addr.ip4) != ESP_OK) {
         ESP_LOGE(TAG, "Invalid DNS server: %s", dns);
@@ -257,6 +328,7 @@ static void apply_dns_override(void)
     dns_info.ip.type = ESP_IPADDR_TYPE_V4;
     esp_netif_set_dns_info(s_sta_netif, ESP_NETIF_DNS_MAIN, &dns_info);
     ESP_LOGI(TAG, "DNS server set to: %s", dns);
+#endif
 }
 
 esp_err_t wifi_manager_connect(const char *ssid, const char *password)
@@ -282,6 +354,33 @@ esp_err_t wifi_manager_connect(const char *ssid, const char *password)
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
+#if FEATURE_WIFI_RESILIENCE
+
+    // Associating with an AP draws a brief high-current TX burst that a
+    // marginal battery/PMIC rail may not sustain without a voltage dip severe
+    // enough to glitch a concurrent SPI flash/PSRAM read (a real ESP32 failure
+    // mode: it can trigger a CPU exception without ever tripping the brownout
+    // detector's own reset) - or, on Waveshare PhotoPainter boards with the
+    // original AXP2101 PMIC, contribute to the well-documented brownout/reset
+    // loop specifically seen when USB and battery are both connected at once
+    // (see waveshareteam/ESP32-S3-PhotoPainter#5 - fixed in the v2 hardware
+    // revision, which replaced the AXP2101 with a TG28 PMIC). Gated on
+    // battery presence rather than "USB absent": the risky case is any state
+    // with a battery in the loop, including USB+battery together, not just
+    // battery-only - USB-only (no battery at all) has no rail to protect and
+    // keeps full TX power/range. Capping measurably lowers that peak, at some
+    // cost to range. Best-effort: failure here shouldn't block connecting at
+    // default power. User-facing on/off switch (default on) for boards/users
+    // that would rather keep full range - see NVS_WIFI_TX_POWER_CAP_ENABLED_KEY.
+    if (config_manager_get_wifi_tx_power_cap_enabled() && board_hal_is_battery_connected()) {
+        esp_err_t tx_err = esp_wifi_set_max_tx_power(WIFI_BATTERY_MAX_TX_POWER_QUARTER_DBM);
+        if (tx_err != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to cap TX power for battery operation: %s",
+                     esp_err_to_name(tx_err));
+        }
+    }
+
+#endif
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));  // Enable power save at boot/connect
 
     xSemaphoreTake(s_policy_lock, portMAX_DELAY);
@@ -306,7 +405,11 @@ esp_err_t wifi_manager_connect(const char *ssid, const char *password)
         }
         return ESP_OK;
     } else if (bits & WIFI_FAIL_BIT) {
+#if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
+        ESP_LOGW(TAG, "Failed to connect to SSID:%s after %d attempts", ssid, s_max_retries + 1);
+#else
         ESP_LOGW(TAG, "Failed to connect to SSID:%s after %d attempts", ssid, WIFI_MAX_RETRY + 1);
+#endif
         return ESP_FAIL;
     }
 
@@ -333,6 +436,23 @@ esp_err_t wifi_manager_connect(const char *ssid, const char *password)
     return ESP_ERR_TIMEOUT;
 }
 
+#if FEATURE_WIFI_RESILIENCE
+bool wifi_manager_last_failure_is_credential_reject(void)
+{
+    // Mirrors the `rejected` check wifi_manager_connect() itself uses to
+    // decide its own ESP_FAIL-vs-ESP_ERR_TIMEOUT return - exposed separately
+    // for callers (this fork's cold-boot connect loop in main.c) that need to
+    // tell "credentials rejected" apart from "retries exhausted for some
+    // other reason" even though both currently return ESP_FAIL from
+    // wifi_manager_connect() itself. Meaningless if the last attempt
+    // succeeded (s_auth_rejects is reset to 0 on WIFI_EVENT_STA_CONNECTED).
+    xSemaphoreTake(s_policy_lock, portMAX_DELAY);
+    bool rejected = s_auth_rejects > 0;
+    xSemaphoreGive(s_policy_lock);
+    return rejected;
+}
+
+#endif
 void wifi_manager_stop_connecting(void)
 {
     // Stop the event handler from reconnecting on its own and power the radio
@@ -372,6 +492,113 @@ esp_err_t wifi_manager_disconnect(void)
     return esp_wifi_disconnect();
 }
 
+#if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
+void wifi_manager_set_max_retries(int max_retries)
+{
+    s_max_retries = max_retries;
+}
+
+#endif
+#if FEATURE_OFFLINE_HOTSPOT
+static bool s_ap_hotspot_active = false;
+
+// On-demand offline hotspot: reconfigures the already-created AP netif
+// (s_ap_hotspot_active) exactly like wifi_provisioning_start_ap() does for
+// first-time setup - same open/no-password auth, same channel, same static
+// 192.168.4.1 - but deliberately does NOT start a second httpd like that
+// function does. main/http_server.c's server is netif-agnostic (binds
+// INADDR_ANY, no STA-specific code anywhere in it - verified 2026-09-20)
+// and is already running in every normal operating mode, so switching the
+// underlying WiFi mode to AP is enough on its own to make the exact same
+// full web UI (gallery, upload, settings, Agenda config - everything)
+// reachable at http://192.168.4.1 with no server restart and no new
+// handlers. Drops any existing STA connection, matching this feature's
+// "step away from the real network into a standalone hotspot" framing
+// (github.com/aitjcize/esp32-photoframe#90) - call
+// wifi_manager_stop_ap_hotspot() to return to normal STA operation.
+esp_err_t wifi_manager_start_ap_hotspot(char *ssid_out, size_t ssid_out_len)
+{
+    ESP_LOGI(TAG, "Starting on-demand AP hotspot (full web UI, no WiFi network)");
+    s_is_connected = false;
+    esp_wifi_stop();
+
+    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_AP);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    const char *ap_ssid = get_setup_ap_ssid();
+    wifi_config_t wifi_config = {
+        .ap = {.channel = 1, .password = "", .max_connection = 4, .authmode = WIFI_AUTH_OPEN},
+    };
+    strncpy((char *) wifi_config.ap.ssid, ap_ssid, sizeof(wifi_config.ap.ssid));
+    wifi_config.ap.ssid_len = strlen(ap_ssid);
+
+    err = esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = esp_wifi_start();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100));  // let the netif come up before reconfiguring it
+
+    esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    if (!ap_netif) {
+        ESP_LOGE(TAG, "Failed to get AP netif handle");
+        return ESP_FAIL;
+    }
+    esp_netif_dhcps_stop(ap_netif);
+    esp_netif_ip_info_t ip_info;
+    IP4_ADDR(&ip_info.ip, 192, 168, 4, 1);
+    IP4_ADDR(&ip_info.gw, 192, 168, 4, 1);
+    IP4_ADDR(&ip_info.netmask, 255, 255, 255, 0);
+    esp_err_t ip_err = esp_netif_set_ip_info(ap_netif, &ip_info);
+    esp_netif_dhcps_start(ap_netif);
+    if (ip_err != ESP_OK) {
+        return ip_err;
+    }
+
+    s_ap_hotspot_active = true;
+    if (ssid_out && ssid_out_len > 0) {
+        strncpy(ssid_out, ap_ssid, ssid_out_len - 1);
+        ssid_out[ssid_out_len - 1] = '\0';
+    }
+    ESP_LOGI(TAG, "AP hotspot active - SSID: %s, web UI at http://192.168.4.1", ap_ssid);
+    return ESP_OK;
+}
+
+bool wifi_manager_is_ap_hotspot_active(void)
+{
+    return s_ap_hotspot_active;
+}
+
+// Returns to normal STA operation: reconnects with saved credentials if any
+// exist (best-effort, bounded timeout - a failure here just leaves the
+// device with WiFi off, exactly as if this had been a cold boot with a
+// flaky network, not a new failure mode). Safe to call even if the hotspot
+// was never started.
+esp_err_t wifi_manager_stop_ap_hotspot(void)
+{
+    if (!s_ap_hotspot_active) {
+        return ESP_OK;
+    }
+    ESP_LOGI(TAG, "Stopping AP hotspot, returning to normal WiFi operation");
+    s_ap_hotspot_active = false;
+    esp_wifi_stop();
+    esp_wifi_set_mode(WIFI_MODE_STA);
+
+    char ssid[WIFI_SSID_MAX_LEN] = {0};
+    char password[WIFI_PASS_MAX_LEN] = {0};
+    if (wifi_manager_load_credentials(ssid, password) == ESP_OK && ssid[0] != '\0') {
+        return wifi_manager_connect(ssid, password);
+    }
+    return ESP_OK;  // offline mode or no saved credentials - staying WiFi-off is correct
+}
+
+#endif
 bool wifi_manager_is_connected(void)
 {
     return s_is_connected;
@@ -476,6 +703,29 @@ int wifi_manager_scan(wifi_ap_record_t *results, int max_results)
             ESP_LOGE(TAG, "Failed to set APSTA mode: %s", esp_err_to_name(err));
             return 0;
         }
+#if FORK_FIXES
+        // Switching to APSTA starts the STA netif, which fires
+        // WIFI_EVENT_STA_START - and event_handler() above unconditionally
+        // calls esp_wifi_connect() on that event. If a wifi_config is still
+        // set from an earlier connection attempt (e.g. the provisioning
+        // page's own "test this SSID/password" call), that auto-triggers a
+        // real association attempt right as this function wants to scan,
+        // and esp_wifi_scan_start() below fails outright with
+        // ESP_ERR_WIFI_STATE ("STA is connecting, scan are not allowed") -
+        // confirmed live in the debug log (2026-09). The earlier fix here
+        // (a settle delay alone, no disconnect) only ever masked this by
+        // accident, whenever the stale connection attempt happened to fail
+        // on its own within the delay window - explaining why "0 APs found"
+        // could still recur intermittently even after that fix.
+        // esp_wifi_disconnect() cancels that auto-triggered attempt outright
+        // (ESP_ERR_WIFI_NOT_CONNECT if there was nothing to cancel is
+        // expected and harmless) so the scan gets the radio to itself.
+        esp_wifi_disconnect();
+        // The STA driver isn't fully up the instant esp_wifi_set_mode()
+        // returns either - a short settle delay lets it finish coming up
+        // before scanning, on top of the disconnect above.
+        vTaskDelay(pdMS_TO_TICKS(150));
+#endif
     }
 
     // Start blocking scan on all channels

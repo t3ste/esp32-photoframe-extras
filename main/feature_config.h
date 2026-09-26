@@ -88,6 +88,12 @@
 #define FEATURE_OTA_CHANNEL 0
 #endif
 
+#ifdef CONFIG_FEATURE_WIFI_RESILIENCE
+#define FEATURE_WIFI_RESILIENCE 1
+#else
+#define FEATURE_WIFI_RESILIENCE 0
+#endif
+
 #ifdef CONFIG_FEATURE_FACECROP
 #define FEATURE_FACECROP 1
 #else
@@ -113,10 +119,22 @@
 #define FORK_WEATHER 0
 #endif
 
+#ifdef CONFIG_FORK_CLIMATE_CORE
+#define FORK_CLIMATE_CORE 1
+#else
+#define FORK_CLIMATE_CORE 0
+#endif
+
 #ifdef CONFIG_FORK_EXIF
 #define FORK_EXIF 1
 #else
 #define FORK_EXIF 0
+#endif
+
+#ifdef CONFIG_FORK_AUDIO_HAL
+#define FORK_AUDIO_HAL 1
+#else
+#define FORK_AUDIO_HAL 0
 #endif
 
 #ifdef CONFIG_FORK_IMAGE_PIPELINE
@@ -124,6 +142,17 @@
 #else
 #define FORK_IMAGE_PIPELINE 0
 #endif
+
+// True as soon as any optional feature or the general fixes are built in. Code
+// that every feature relies on but that upstream does not need is gated with it:
+// the config JSON handler (apply_config_from_json() in utils.c) collects errors
+// instead of stopping at the first bad field, and the deep-sleep wake path runs on
+// a task with a larger stack.
+#define FORK_ANY                                                                               \
+    (FORK_FIXES || FEATURE_TELEGRAM || FEATURE_OVERLAYS || FEATURE_AGENDA || FEATURE_CHIMES || \
+     FEATURE_CLIMATE || FEATURE_ALARMCLOCK || FEATURE_VOICE_STOP || FEATURE_BATTERY_HISTORY || \
+     FEATURE_DISPLAY_HISTORY || FEATURE_HTTPS || FEATURE_OFFLINE_HOTSPOT ||                    \
+     FEATURE_ERROR_BANNER || FEATURE_OTA_CHANNEL || FEATURE_WIFI_RESILIENCE || FEATURE_FACECROP)
 
 // Second line of defence behind build.py and Kconfig: the Kconfig capability
 // symbols mirror the board headers, and this makes a disagreement a build error.

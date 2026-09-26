@@ -1,3 +1,8 @@
+#include "feature_config.h"
+
+#if FORK_ANY
+#include <stdint.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -5,8 +10,21 @@
 #include <time.h>
 #include <unistd.h>
 
+#if FEATURE_AGENDA
+#include "agenda_manager.h"
+#endif
+#if FORK_ANY
+#include "alarm_manager.h"
+#include "alarm_setting_ui.h"
+#endif
 #include "album_manager.h"
 #include "board_hal.h"
+#if FEATURE_CHIMES
+#include "chime.h"
+#endif
+#if FEATURE_CLIMATE
+#include "climate_history.h"
+#endif
 #include "color_palette.h"
 #include "config.h"
 #include "config_manager.h"
@@ -23,6 +41,9 @@
 #include "esp_vfs_dev.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#if FEATURE_DISPLAY_HISTORY
+#include "history_manager.h"
+#endif
 
 // External RTC support
 #ifdef CONFIG_EXT_RTC_ENABLED
@@ -41,6 +62,9 @@
 #include "processing_settings.h"
 #include "splash_screen.h"
 #include "storage.h"
+#if FEATURE_TELEGRAM
+#include "telegram_bot.h"
+#endif
 #include "utils.h"
 #include "wifi_manager.h"
 #include "wifi_provisioning.h"
@@ -152,9 +176,113 @@ static void forget_wifi_and_reprovision(void)
         nvs_close(nvs_handle);
     }
     ESP_LOGI(TAG, "Restarting to enter provisioning mode...");
+#if FEATURE_CHIMES
+    // Fires before the credentials are gone for good and the device reboots into
+    // provisioning - the 2s delay below gives a short beep enough headroom to play.
+    chime_play_if_enabled(CHIME_EVENT_WIFI_REPROVISION);
+#endif
     vTaskDelay(pdMS_TO_TICKS(2000));
     esp_restart();
 }
+
+#if FEATURE_WIFI_RESILIENCE
+// A single failed attempt isn't enough to conclude that the saved credentials are
+// wrong: a router that is mid-reboot, brief congestion or a slow DHCP server fail
+// exactly like a wrong password but clear up within seconds. So a cold boot whose
+// connect failed retries up to WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS times - unless
+// the AP itself rejected the credentials (wifi_manager_last_failure_is_credential_reject()),
+// which no retry with the same password can fix.
+//
+// When every attempt failed without a rejection (e.g. WIFI_REASON_AUTH_EXPIRE /
+// CONNECTION_FAIL on a weak signal) the credentials are not wiped right away either:
+//  - with the extended retry (default on) the running attempt count survives reboots
+//    in NVS and the boot is retried after a longer pause, up to
+//    WIFI_COLD_BOOT_EXTENDED_MAX_TOTAL_ATTEMPTS attempts in total;
+//  - with "reprovision on failure" switched off the credentials are kept for good:
+//    the device sleeps until its next scheduled wake, or - without deep sleep - goes on
+//    trying in the background, like a connect that merely timed out.
+// A genuine rejection is unaffected and still leads to reprovisioning.
+#define WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS 3
+#define WIFI_COLD_BOOT_CONNECT_RETRY_DELAY_MS 3000
+#define WIFI_COLD_BOOT_EXTENDED_MAX_TOTAL_ATTEMPTS 10
+#define WIFI_COLD_BOOT_REBOOT_BACKOFF_MS 60000
+
+// Called after the first connect attempt of a cold boot returned ESP_FAIL. Returns what
+// the boot continues with: ESP_OK (a retry connected), ESP_ERR_TIMEOUT (a retry was
+// merely slow, or the credentials are kept: keep trying in the background) or ESP_FAIL
+// (reprovision). Restarts or sleeps instead of returning where the policy says so.
+static esp_err_t cold_boot_wifi_retry(void)
+{
+    bool extended_retry = config_manager_get_wifi_extended_retry_enabled();
+    int total_attempts = extended_retry ? config_manager_get_wifi_coldboot_fail_count() : 0;
+    bool credential_reject = false;
+    esp_err_t err = ESP_FAIL;
+
+    for (int attempt = 1;; attempt++) {
+        credential_reject = wifi_manager_last_failure_is_credential_reject();
+        if (credential_reject) {
+            ESP_LOGW(TAG, "WiFi credentials rejected by AP (attempt %d/%d) - not retrying", attempt,
+                     WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS);
+            break;
+        }
+        total_attempts++;
+        if (attempt >= WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS) {
+            break;
+        }
+        ESP_LOGW(TAG,
+                 "WiFi connect attempt %d/%d failed (not a credential rejection) - "
+                 "retrying in %d ms",
+                 attempt, WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS,
+                 WIFI_COLD_BOOT_CONNECT_RETRY_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(WIFI_COLD_BOOT_CONNECT_RETRY_DELAY_MS));
+        err = connect_to_wifi();
+        if (err != ESP_FAIL) {
+            break;
+        }
+    }
+
+    if (err == ESP_OK) {
+        if (extended_retry) {
+            config_manager_set_wifi_coldboot_fail_count(0);  // clean slate after a real success
+        }
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_TIMEOUT) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    if (!credential_reject && extended_retry &&
+        total_attempts < WIFI_COLD_BOOT_EXTENDED_MAX_TOTAL_ATTEMPTS) {
+        config_manager_set_wifi_coldboot_fail_count(total_attempts);
+        ESP_LOGW(TAG,
+                 "WiFi still unreachable after %d/%d total attempts (not a credential "
+                 "rejection) - retrying after a longer pause instead of reprovisioning",
+                 total_attempts, WIFI_COLD_BOOT_EXTENDED_MAX_TOTAL_ATTEMPTS);
+        vTaskDelay(pdMS_TO_TICKS(WIFI_COLD_BOOT_REBOOT_BACKOFF_MS));
+        esp_restart();
+    }
+
+    if (extended_retry) {
+        config_manager_set_wifi_coldboot_fail_count(0);  // giving up on this cycle anyway
+    }
+    if (!credential_reject && !config_manager_get_wifi_reprovision_on_fail_enabled()) {
+        ESP_LOGW(TAG,
+                 "WiFi still unreachable after %d attempt(s) (not a credential rejection) - "
+                 "reprovisioning is disabled, keeping saved credentials",
+                 total_attempts);
+        if (config_manager_get_deep_sleep_enabled()) {
+            ESP_LOGI(TAG,
+                     "Deep sleep is enabled - sleeping until the next scheduled wake "
+                     "instead of reprovisioning");
+            power_manager_enter_sleep();  // schedules the next timer wake itself; never returns
+        }
+        ESP_LOGI(TAG, "Deep sleep is disabled - carrying on without WiFi, still trying");
+        wifi_manager_keep_reconnecting();
+        return ESP_ERR_TIMEOUT;
+    }
+    return ESP_FAIL;
+}
+#endif
 
 // Network-dependent part of an interactive boot, run once WiFi has an IP:
 // inline from app_main when the connect succeeded on time, or from
@@ -193,8 +321,17 @@ static void startup_online_work(void)
     // Notify HA that device is online (HA will poll for all data via REST API).
     // This is the always-on / cold-boot path, so the rotation-gate response
     // isn't used here.
+#if FORK_FIXES
+    // Gated on ha_is_configured() so a disabled/unconfigured integration doesn't even log
+    // an intent to notify - ha_notify_online() itself already no-ops in that case.
+    if (ha_is_configured()) {
+        ESP_LOGI(TAG, "Sending online notification to Home Assistant");
+        ha_notify_online(NULL);
+    }
+#else
     ESP_LOGI(TAG, "Sending online notification to Home Assistant");
     ha_notify_online(NULL);
+#endif
 
     // Delay OTA check to avoid competing with boot-time network activity
     vTaskDelay(pdMS_TO_TICKS(10000));
@@ -227,6 +364,37 @@ static void late_wifi_task(void *arg)
     vTaskDelete(NULL);
 }
 
+#if FEATURE_OFFLINE_HOTSPOT
+// On-demand offline hotspot toggle (github.com/aitjcize/esp32-photoframe#90),
+// triggered by a >=3s BOOT hold (button_task below) or POST
+// /api/wifi/hotspot/{start,stop} (http_server.c, for a Settings-page button
+// when there's no physical access). Entering it shows the same WiFi QR code
+// the first-time-setup splash uses (splash_screen_display() - the SSID
+// scheme is identical, see get_setup_ap_ssid()) so a phone can join without
+// typing anything, and extends the auto-sleep timeout the same way OOBE
+// does so an upload session isn't cut short mid-way. The web UI itself needs
+// no changes at all - main/http_server.c is netif-agnostic and already
+// running; only the underlying WiFi mode switches (wifi_manager.c).
+static void toggle_ap_hotspot_mode(void)
+{
+    if (wifi_manager_is_ap_hotspot_active()) {
+        ESP_LOGI(TAG, "Boot button held - exiting offline hotspot mode");
+        wifi_manager_stop_ap_hotspot();
+        power_manager_set_auto_sleep_timeout(AUTO_SLEEP_TIMEOUT_SEC);
+        return;
+    }
+    ESP_LOGI(TAG,
+             "Boot button held - entering offline hotspot mode (full web UI, no WiFi network)");
+    char ssid[33] = {0};
+    if (wifi_manager_start_ap_hotspot(ssid, sizeof(ssid)) == ESP_OK) {
+        power_manager_set_auto_sleep_timeout(OOBE_AUTO_SLEEP_TIMEOUT_SEC);
+        splash_screen_display();
+    } else {
+        ESP_LOGE(TAG, "Failed to start offline hotspot");
+    }
+}
+#endif
+
 static void button_task(void *arg)
 {
     bool last_boot_state = 1;  // Default distinct from current to avoid triggers if NC
@@ -254,9 +422,47 @@ static void button_task(void *arg)
                 uint32_t duration = (xTaskGetTickCount() - boot_press_time) * portTICK_PERIOD_MS;
 
                 if (duration > 50 && duration < 3000) {
+#if FEATURE_ALARMCLOCK
+                    power_manager_reset_sleep_timer();
+                    if (alarm_setting_ui_is_active()) {
+                        // Short BOOT press rolls the hour while the
+                        // alarm-setting UI owns input - see
+                        // alarm_setting_ui.h's own doc comment.
+                        alarm_setting_ui_handle_boot_short_press();
+                    } else {
+                        ESP_LOGI(TAG, "Boot button pressed, resetting sleep timer");
+                    }
+#else
                     ESP_LOGI(TAG, "Boot button pressed, resetting sleep timer");
                     power_manager_reset_sleep_timer();
+#endif
                 }
+#if FEATURE_ALARMCLOCK || FEATURE_OFFLINE_HOTSPOT
+                else if (duration >= 3000) {
+#if FEATURE_ALARMCLOCK
+                    if (alarm_setting_ui_is_active()) {
+                        // Reserved for the future voice-enrollment entry
+                        // gesture - suppresses the normal hotspot toggle
+                        // below so the two long-press meanings can't
+                        // collide while the alarm-setting UI is active.
+                        alarm_setting_ui_handle_boot_long_press();
+                    } else
+#endif
+                    {
+#if FEATURE_OFFLINE_HOTSPOT
+                        // Long-hold BOOT toggles the on-demand offline
+                        // hotspot (github.com/aitjcize/esp32-photoframe#90) -
+                        // no existing BOOT behavior used >=3s before this,
+                        // and it's a different GPIO from ROTATE, so this
+                        // can't collide with rotation-on-wake. Also
+                        // reachable by holding BOOT through a BOOT-button
+                        // wake from deep sleep, since button_task starts
+                        // fresh on that wake path too.
+                        toggle_ap_hotspot_mode();
+#endif
+                    }
+                }
+#endif
             }
             last_boot_state = current_boot_state;
         }
@@ -264,6 +470,49 @@ static void button_task(void *arg)
         if (BOARD_HAL_ROTATE_KEY != GPIO_NUM_NC) {
             current_key_state = gpio_get_level(BOARD_HAL_ROTATE_KEY);
 
+#if FEATURE_ALARMCLOCK
+            // Handle KEY button - trigger rotation (or, while the
+            // alarm-setting UI is active, roll the minute / enter-exit that
+            // UI on a long press - see alarm_setting_ui.h).
+            // A press that stops a ringing alarm belongs to the alarm: it must
+            // neither rotate the image nor count towards the long-press UI.
+            bool key_consumed = false;
+            if (current_key_state == 0 && last_key_state == 1) {
+                key_consumed = alarm_manager_key_pressed();
+            }
+            key_consumed = key_consumed || alarm_manager_key_swallowed(current_key_state);
+
+            if (key_consumed) {
+                // nothing more to do for this press
+            } else if (current_key_state == 0 && last_key_state == 1) {
+                key_press_time = xTaskGetTickCount();
+            } else if (current_key_state == 0 && last_key_state == 0) {
+                // Still held - let the setting UI know how long, so it can
+                // play its "you can let go now" cue while still held rather
+                // than only after release.
+                uint32_t held_ms = (xTaskGetTickCount() - key_press_time) * portTICK_PERIOD_MS;
+                alarm_setting_ui_on_key_held(held_ms);
+            } else if (current_key_state == 1 && last_key_state == 0) {
+                uint32_t duration = (xTaskGetTickCount() - key_press_time) * portTICK_PERIOD_MS;
+
+                if (duration > 50 && duration < 3000) {
+                    power_manager_reset_sleep_timer();
+                    if (alarm_setting_ui_is_active()) {
+                        alarm_setting_ui_handle_key_short_press();
+                    } else {
+                        ESP_LOGI(TAG, "Key button pressed, triggering rotation");
+                        trigger_image_rotation();
+                        ha_notify_update();
+                    }
+                } else if (duration >= 3000) {
+                    power_manager_reset_sleep_timer();
+                    // Enter/exit the alarm-setting UI - a no-op if that
+                    // press just stopped a ringing alarm instead (see the
+                    // function's own doc comment).
+                    alarm_setting_ui_handle_key_long_press();
+                }
+            }
+#else
             // Handle KEY button - trigger rotation
             if (current_key_state == 0 && last_key_state == 1) {
                 key_press_time = xTaskGetTickCount();
@@ -277,8 +526,14 @@ static void button_task(void *arg)
                     ha_notify_update();
                 }
             }
+#endif
             last_key_state = current_key_state;
         }
+
+#if FEATURE_ALARMCLOCK
+        alarm_setting_ui_tick();
+
+#endif
 
         if (BOARD_HAL_CLEAR_KEY != GPIO_NUM_NC) {
             bool current_clear_state = gpio_get_level(BOARD_HAL_CLEAR_KEY);
@@ -346,12 +601,33 @@ static void log_wall_clock(const char *label)
 
 void deep_sleep_wake_main(wakeup_source_t wakeup_src)
 {
+#if FEATURE_CLIMATE
+    // Every real wake gets a climate reading, regardless of whether this
+    // cycle ends up rotating/rendering anything - board_hal_init() already
+    // ran in app_main() before this task was created, so the I2C sensor is
+    // ready, and this needs neither WiFi nor a corrected clock. Deliberately
+    // ahead of every early-sleep-return branch below (the "woke too early"
+    // checks, the agenda/HA-veto sleeps) - see climate_history_record()'s
+    // own debounce for why calling it this often is still cheap.
+    climate_history_record();
+
+#endif
     bool is_button_wake = (wakeup_src == WAKEUP_SOURCE_ROTATE_BUTTON);
     // Check rotation mode and HA configuration
     rotation_mode_t rotation_mode = config_manager_get_rotation_mode();
     bool ha_configured = ha_is_configured();
     bool wifi_connected = false;
 
+#if FEATURE_TELEGRAM
+    // Telegram power-save mode's fast-path optimizations (shorter WiFi
+    // connect budget, skipped hold-window) apply only to an automatic timer
+    // wake - never a manual button press, which always keeps the full retry
+    // budget/window as a deliberate escape hatch to reach the web UI.
+    bool telegram_power_save_active = (rotation_mode == ROTATION_MODE_TELEGRAM) &&
+                                      config_manager_get_telegram_power_save_enabled() &&
+                                      !is_button_wake;
+
+#endif
     // Early-wake check before spending power on WiFi: on boards with an
     // external RTC the corrected time is already restored at this point, so
     // a wake that fired early due to RTC drift can go back to sleep for the
@@ -367,13 +643,85 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         // Won't reach here after sleep
     }
 
+#if FEATURE_ALARMCLOCK
+    // Alarm wake: rings and goes straight back to sleep, entirely ahead of
+    // the WiFi-bring-up block below - unlike an agenda wake (which still
+    // wants WiFi), the alarm clock's whole point is to need nothing but the
+    // speaker for this cycle (docs/ALARMCLOCK_USER_GUIDE.md: no internet
+    // connection, auto-rotate or other modes). A manual button press never
+    // counts as an alarm wake, same reasoning as agenda_wake below.
+    bool alarm_wake = !is_button_wake && wakeup_src == WAKEUP_SOURCE_TIMER &&
+                      alarm_manager_is_enabled() && alarm_manager_wake_matches_now();
+    if (alarm_wake) {
+        ESP_LOGI(TAG, "Alarm wake matched - ringing, skipping WiFi/rotation/agenda entirely");
+        power_manager_reset_sleep_timer();
+        alarm_manager_run();
+        ESP_LOGI(TAG, "Alarm handling complete, going back to sleep");
+        power_manager_enter_sleep();
+        // Won't reach here after sleep
+    }
+
+#endif
+#if FEATURE_AGENDA
+    // Whether THIS wake is an agenda (ToDo + Calendar) wake, decided once
+    // here (not re-derived later) since it also affects the WiFi-init
+    // decision immediately below - agenda mode always needs WiFi, since
+    // ToDo/Calendar are fetched fresh over HTTP every cycle, independent of
+    // rotation_mode/HA configuration. A manual ROTATE button press never
+    // counts as an agenda wake - it always means "rotate the photo now."
+    bool agenda_wake = !is_button_wake && wakeup_src == WAKEUP_SOURCE_TIMER &&
+                       agenda_manager_is_enabled() && agenda_manager_wake_matches_now();
+
+#endif
+#if FEATURE_TELEGRAM || FEATURE_AGENDA
+    // Initialize WiFi if needed (URL/Telegram modes always need it, SD card mode only if HA
+    // configured, agenda mode always does)
+    const char *wifi_reason = "HA battery post";
+    bool wifi_needed = ha_configured;
+    if (rotation_mode == ROTATION_MODE_URL) {
+        wifi_needed = true;
+        wifi_reason = "URL rotation";
+    }
+#if FEATURE_TELEGRAM
+    if (rotation_mode == ROTATION_MODE_TELEGRAM) {
+        wifi_needed = true;
+        wifi_reason = "Telegram rotation";
+    }
+#endif
+#if FEATURE_AGENDA
+    if (agenda_wake) {
+        wifi_needed = true;
+        wifi_reason = "agenda mode";
+    }
+#endif
+    if (wifi_needed) {
+        ESP_LOGI(TAG, "Initializing WiFi for %s", wifi_reason);
+#else
     // Initialize WiFi if needed (URL mode always needs it, SD card mode only if HA configured)
     if (rotation_mode == ROTATION_MODE_URL || ha_configured) {
         ESP_LOGI(TAG, "Initializing WiFi for %s",
                  rotation_mode == ROTATION_MODE_URL ? "URL rotation" : "HA battery post");
+#endif
         ESP_ERROR_CHECK(wifi_manager_init());
 
+#if FEATURE_TELEGRAM
+        if (telegram_power_save_active) {
+            // wifi_manager_connect() no longer takes a per-call timeout (it's
+            // bounded internally by WIFI_CONNECT_TIMEOUT_MS) - power save's
+            // "give up faster" intent is now expressed purely through fewer
+            // retries, which also shortens the effective wait in practice
+            // (the event handler sets WIFI_FAIL_BIT sooner).
+            wifi_manager_set_max_retries(TELEGRAM_POWER_SAVE_WIFI_MAX_RETRIES);
+        }
+#endif
+#if FORK_ANY
+        esp_err_t connect_err = connect_to_wifi();
+        utils_handle_wifi_connect_result(connect_err == ESP_OK);
+
+        if (connect_err == ESP_OK) {
+#else
         if (connect_to_wifi() == ESP_OK) {
+#endif
             wifi_connected = true;
             ESP_LOGI(TAG, "WiFi connected");
         } else {
@@ -392,6 +740,22 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         // the trustworthy anchor on RTC-less boards.
         ESP_LOGI(TAG, "Checking periodic tasks...");
         periodic_tasks_check_and_run();
+#if FEATURE_AGENDA
+
+        // Re-derive whether this is still an agenda wake now that the clock
+        // may have just been corrected by SNTP - mirrors the early_seconds
+        // recheck just below for the same RTC-less-board reason. The
+        // WiFi-bring-up decision above necessarily used the pre-sync clock
+        // (SNTP itself needs WiFi already connected, so that half of the
+        // asymmetry can't be fixed within the same wake) - this only
+        // catches the other half: a stale pre-sync clock that wrongly
+        // matched the agenda cron, which the corrected clock says it
+        // shouldn't have. A wake that WiFi never came up for because the
+        // stale clock said "no match" can't be recovered here either way.
+        if (agenda_wake) {
+            agenda_wake = agenda_manager_wake_matches_now();
+        }
+#endif
     }
 
     // Re-check now that the clock is as corrected as it will get (NTP sync
@@ -404,6 +768,28 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         // Won't reach here after sleep
     }
 
+#if FEATURE_AGENDA
+    // An agenda wake takes over the display exclusively for ToDo/Calendar
+    // content and skips the entire photo pipeline below (HA veto ask,
+    // trigger_image_rotation(), Telegram command drain, post-rotate HTTP
+    // hold window) - none of that applies when no photo is being shown
+    // this cycle. If the normal rotate schedule happens to match the exact
+    // same minute, the agenda wake wins; the rotate schedule simply fires
+    // on its own next natural boundary next time around (no makeup logic -
+    // same "just skip, don't special-case a retry" spirit already used for
+    // an HA-vetoed rotation below).
+    if (agenda_wake) {
+        ESP_LOGI(TAG,
+                 "Agenda wake matched - rendering ToDo/Calendar screen, skipping photo rotation");
+        power_manager_reset_sleep_timer();
+        agenda_manager_run(wifi_connected);
+        utils_finalize_internet_health();
+        ESP_LOGI(TAG, "Agenda render complete, going back to sleep");
+        power_manager_enter_sleep();
+        // Won't reach here after sleep
+    }
+
+#endif
     // Whether this wake should actually rotate. Home Assistant can veto a
     // scheduled rotation (e.g. nobody home / night) via the notify response.
     bool should_rotate = true;
@@ -434,6 +820,9 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         // is up but we couldn't ask HA, so don't rotate. (A total WiFi failure
         // never reaches here, so it rotates as normal.)
         esp_err_t notify_err = ha_notify_online(is_button_wake ? NULL : &should_rotate);
+#if FEATURE_ERROR_BANNER
+        utils_record_internet_attempt(notify_err == ESP_OK);
+#endif
         if (!is_button_wake && notify_err != ESP_OK) {
             ESP_LOGW(TAG, "Could not reach Home Assistant to check rotation; skipping");
             utils_set_last_fetch_error("Could not reach Home Assistant to check rotation");
@@ -462,9 +851,24 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
     power_manager_reset_sleep_timer();
     power_manager_record_network_wake(trigger_image_rotation() == ESP_OK);
 
+#if FEATURE_TELEGRAM
+    // Telegram mode: run any "/" commands queued during the poll above (e.g.
+    // /status, /restart, /clear) now that the newest image has been
+    // displayed, and before we notify HA / open the config window / sleep.
+    // (The emergency "/telegram_reset" case already went straight to sleep
+    // from inside trigger_image_rotation() and never reaches this point.)
+    if (rotation_mode == ROTATION_MODE_TELEGRAM) {
+        telegram_bot_run_pending_commands();
+    }
+
+#endif
     // Notify HA that data has been updated (after both OTA check and rotation)
     if (wifi_connected && ha_configured) {
+#if FEATURE_ERROR_BANNER
+        utils_record_internet_attempt(ha_notify_update() == ESP_OK);
+#else
         ha_notify_update();
+#endif
     }
 
     // Keep the HTTP server up briefly so a late config change — or a server-side
@@ -472,7 +876,17 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
     // that asked us to wait (X-Post-Rotate-Wait-Sec, meaning it wants to pull our
     // config) extends it, and gets a window even without HA — URL-mode frames
     // don't start the server before rotating, so we start it on demand here.
+#if FEATURE_TELEGRAM
+    // Telegram power-save mode skips this ambient baseline window entirely (it
+    // exists to let a server/HA reach the device after the fact, not to serve
+    // an active in-progress request) - but still honors an explicit
+    // server_wait below, since that reflects a real, in-progress interaction.
+    int hold_sec = telegram_power_save_active          ? 0
+                   : (wifi_connected && ha_configured) ? HA_CONFIG_WINDOW_SEC
+                                                       : 0;
+#else
     int hold_sec = (wifi_connected && ha_configured) ? HA_CONFIG_WINDOW_SEC : 0;
+#endif
     int server_wait = utils_get_post_rotate_wait_sec();
     if (server_wait > hold_sec) {
         hold_sec = server_wait;
@@ -484,12 +898,50 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         ESP_LOGI(TAG, "HTTP server window closed");
     }
 
+#if FEATURE_ERROR_BANNER
+    // Tally this cycle's internet-dependent attempts (weather/headlines/
+    // Telegram/HA/URL fetch, wherever any of those were actually enabled) -
+    // a no-op if none of them applied this cycle. Separate from
+    // utils_handle_wifi_connect_result() above: that one only catches WiFi
+    // itself failing to associate, not "WiFi connected fine but every
+    // internet-bound request failed anyway" (e.g. a transient DNS outage).
+    utils_finalize_internet_health();
+
+#endif
     // Go back to sleep (offline notification sent inside power_manager_enter_sleep)
     ESP_LOGI(TAG, "Auto-rotate complete, going back to sleep");
     power_manager_enter_sleep();
     // Won't reach here after sleep
 }
 
+#if FORK_ANY
+// Runs deep_sleep_wake_main() on a dedicated task with a generously-sized
+// stack, instead of the small ESP-IDF "main" task (CONFIG_ESP_MAIN_TASK_STACK_SIZE
+// is back to 6144 - the value already validated upstream for this task's own
+// remaining work, "WiFi and HTTP client operations" - now that the heavy
+// rotation pipeline no longer runs there). 12288 bytes matches the size that
+// used to be applied globally for every build (coredump-confirmed sufficient,
+// see commit 4bbaa64's stack-overflow fix) - just relocated to a task that
+// only exists for the duration of one wake cycle, rather than a permanent
+// cost every build pays whether or not it's ever needed. Applies to every
+// rotation mode, not just Telegram: Storage mode's own orientation-pairing
+// image composition (compose_rotation_pair() in display_manager.c) is a
+// similarly non-trivial operation and shouldn't have to independently
+// re-prove it fits in a smaller shared stack.
+//
+// deep_sleep_wake_main() never returns in normal operation - every path ends
+// in power_manager_enter_sleep() -> esp_deep_sleep_start(), which resets the
+// chip before this task (or anything else) runs again. The vTaskDelete(NULL)
+// below is defensive cleanup for the otherwise-unreachable case where it
+// somehow does return.
+static void deep_sleep_wake_task(void *arg)
+{
+    wakeup_source_t wakeup_src = (wakeup_source_t) (intptr_t) arg;
+    deep_sleep_wake_main(wakeup_src);
+    vTaskDelete(NULL);
+}
+
+#endif
 #if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
 // Dev builds only: if the previous boot stored a core dump (panic), log the
 // crashed task + backtrace so it lands in the persistent debug log, then clear
@@ -502,8 +954,20 @@ static void log_coredump_summary(void)
     }
     esp_core_dump_summary_t summary;
     if (esp_core_dump_get_summary(&summary) == ESP_OK) {
+#if FORK_FIXES
+        ESP_LOGE(TAG, "COREDUMP: task '%s' crashed at PC 0x%08x (%u frames%s)", summary.exc_task,
+                 (unsigned) summary.exc_pc, (unsigned) summary.exc_bt_info.depth,
+                 summary.exc_bt_info.corrupted ? ", CORRUPTED" : "");
+        // exc_cause/exc_vaddr distinguish a null/dangling-pointer access
+        // (LoadProhibited=28/StoreProhibited=29, exc_vaddr = the bad address)
+        // from other fault classes - not previously logged, so every past
+        // crash summary only had the backtrace to go on.
+        ESP_LOGE(TAG, "COREDUMP   exc_cause=%u exc_vaddr=0x%08x",
+                 (unsigned) summary.ex_info.exc_cause, (unsigned) summary.ex_info.exc_vaddr);
+#else
         ESP_LOGE(TAG, "COREDUMP: task '%s' crashed at PC 0x%08x (%u frames)", summary.exc_task,
                  (unsigned) summary.exc_pc, (unsigned) summary.exc_bt_info.depth);
+#endif
         for (uint32_t i = 0; i < summary.exc_bt_info.depth; i++) {
             ESP_LOGE(TAG, "COREDUMP   bt[%u] 0x%08x", (unsigned) i,
                      (unsigned) summary.exc_bt_info.bt[i]);
@@ -567,11 +1031,41 @@ void app_main(void)
     // None of these depend on the RTC or the AXP2101 power-rail delay.
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+#if FORK_FIXES
+        // This wipes the ENTIRE NVS partition (WiFi credentials, Telegram
+        // token, every setting) - loud and unmistakable in the log on
+        // purpose. A round of field reports of WiFi needing reprovisioning
+        // after a reflash that never touched the NVS region at 0x9000 was
+        // investigated against this exact mechanism (2026-09) and ruled out
+        // for those specific incidents (nvs_get_stats() below showed 465/756
+        // entries free at the time, and the real cause was found instead in
+        // main.c's cold-boot WiFi-connect-failure handling - see
+        // WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS below). Kept as cheap,
+        // permanent health telemetry regardless, since a genuinely exhausted
+        // NVS partition would still hit this path eventually over a long
+        // enough real-world device lifetime. `ret` here is the specific
+        // ESP-IDF error that triggered the erase - logged before it's
+        // overwritten below.
+        ESP_LOGE(TAG, "*** NVS init failed (%s) - erasing ENTIRE NVS partition ***",
+                 esp_err_to_name(ret));
+#endif
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
 
+#if FORK_FIXES
+    // Diagnostic only (see the erase-on-failure block above): free/used NVS
+    // entry counts on every boot, so a slow drift toward exhaustion is
+    // visible in the debug log well before it actually triggers an erase.
+    nvs_stats_t nvs_stats;
+    if (nvs_get_stats(NULL, &nvs_stats) == ESP_OK) {
+        ESP_LOGI(TAG, "NVS stats: %d used, %d free, %d total entries (%d namespaces)",
+                 (int) nvs_stats.used_entries, (int) nvs_stats.free_entries,
+                 (int) nvs_stats.total_entries, (int) nvs_stats.namespace_count);
+    }
+
+#endif
     ESP_ERROR_CHECK(config_manager_init());
 
     // Start mirroring console logs to storage if debug logging is enabled.
@@ -673,6 +1167,10 @@ void app_main(void)
 
     ESP_ERROR_CHECK(album_manager_init());
 
+#if FEATURE_DISPLAY_HISTORY
+    ESP_ERROR_CHECK(history_manager_init());
+
+#endif
     // Check wake-up source
     wakeup_source_t wakeup_src = power_manager_get_wakeup_source();
     ESP_LOGI(TAG, "Wake-up source: %d", wakeup_src);
@@ -680,7 +1178,10 @@ void app_main(void)
     switch (wakeup_src) {
     case WAKEUP_SOURCE_CLEAR_BUTTON:
         ESP_LOGI(TAG, "CLEAR button wakeup detected - clearing display and sleeping");
-        board_hal_init();             // Ensure HAL is active
+        board_hal_init();  // Ensure HAL is active
+#if FEATURE_CLIMATE
+        climate_history_record();  // Every physical wake gets a reading too
+#endif
         display_manager_init();       // Initialize display
         display_manager_clear();      // Clear screen
         power_manager_enter_sleep();  // Go back to sleep
@@ -688,11 +1189,88 @@ void app_main(void)
         break;
 
     case WAKEUP_SOURCE_TIMER:
+#if FORK_ANY
+        ESP_LOGI(TAG, "Entering deep sleep wake path (timer)");
+        // 16384, not 12288: a live coredump showed button_task overflowing at
+        // 12288 running this same pipeline (trigger_image_rotation(), even
+        // for a small ~23KB photo - the overflow tracks call depth, not
+        // image size) - matched here to rotation_timer_task's own
+        // (apparently sufficient) 16384 for the identical call, see
+        // power_manager.c. See trigger_image_rotation()'s own stack
+        // high-water-mark log (utils.c) for real numbers on this build.
+        xTaskCreate(deep_sleep_wake_task, "deep_sleep_wake", 16384, (void *) (intptr_t) wakeup_src,
+                    5, NULL);
+        // Returning (rather than `break`) hands off exclusively to the new
+        // task - falling through to the cold-boot/BOOT_BUTTON setup code
+        // below would otherwise run concurrently with it (duplicate WiFi/HTTP
+        // server init racing the same state). This wake path always ends in
+        // deep sleep (chip reset) from within that task, so there is nothing
+        // left for the main task to do.
+        return;
+
+    case WAKEUP_SOURCE_ROTATE_BUTTON: {
+#if FEATURE_ALARMCLOCK
+        // Deep sleep itself can't distinguish a short from a long KEY press -
+        // EXT1 wakes the instant the pin goes low, before any hold duration
+        // is knowable, and by default every KEY wake meant exactly one thing
+        // (rotate now). The alarm-setting UI needs a long press here to
+        // instead mean "enter setting mode", so measure the hold first.
+        bool long_press = false;
+        if (BOARD_HAL_ROTATE_KEY != GPIO_NUM_NC) {
+            // The 3s threshold is measured from esp_timer_get_time()'s own
+            // origin (chip reset/wake), NOT from when this loop starts -
+            // deep sleep wake is itself a full reboot triggered by the
+            // button's falling edge, so time-since-boot already equals
+            // time-since-the-press-began. Measuring from loop-start instead
+            // made "3s" actually require ~5.5-6s of real holding: the
+            // board_hal/config_manager/power_manager init above this switch
+            // already burns ~2.4-2.9s of boot time before this code runs.
+            while (gpio_get_level(BOARD_HAL_ROTATE_KEY) == 0) {
+                if (esp_timer_get_time() >= 3000000) {
+                    long_press = true;
+                    break;
+                }
+                vTaskDelay(pdMS_TO_TICKS(20));
+            }
+            if (long_press) {
+                // The 3s threshold is already confirmed at this point - fire
+                // the "enter setting mode" action now, then wait for the
+                // actual release before falling through to the normal awake
+                // path below, so button_task (started further down, same as
+                // a BOOT-button wake) sees a clean fresh press cycle
+                // afterward instead of a stale "already down" GPIO state
+                // with no press-start timestamp of its own.
+                alarm_setting_ui_handle_key_long_press();
+                while (gpio_get_level(BOARD_HAL_ROTATE_KEY) == 0) {
+                    vTaskDelay(pdMS_TO_TICKS(20));
+                }
+            }
+        }
+        if (long_press) {
+            ESP_LOGI(TAG, "Long KEY press on wake - entering alarm-setting UI instead of rotating");
+            // Falls through to the shared BOOT_BUTTON path below. The actual
+            // WiFi *connection attempt* is skipped further down (see the
+            // offline-mode check), but wifi_manager_init() and
+            // wifi_provisioning_init() themselves must still run:
+            // http_server_init() sits on top of the lwIP/tcpip_thread
+            // machinery those calls bring up.
+            break;
+        }
+#endif
+        ESP_LOGI(TAG, "Entering deep sleep wake path (rotate button, short press)");
+        // See WAKEUP_SOURCE_TIMER's own comment above on this same
+        // xTaskCreate() call for why 16384 (not the smaller default).
+        xTaskCreate(deep_sleep_wake_task, "deep_sleep_wake", 16384, (void *) (intptr_t) wakeup_src,
+                    5, NULL);
+        return;  // see WAKEUP_SOURCE_TIMER's own comment above on why return, not break
+    }
+#else
     case WAKEUP_SOURCE_ROTATE_BUTTON:
         ESP_LOGI(TAG, "Entering deep sleep wake path (timer or rotate button)");
         deep_sleep_wake_main(wakeup_src);
         // Won't reach here after sleep
         break;
+#endif
 
     case WAKEUP_SOURCE_BOOT_BUTTON:
         ESP_LOGI(TAG, "BOOT button wakeup detected - starting WiFi and HTTP server");
@@ -779,7 +1357,34 @@ void app_main(void)
         }
     }
 
+#if FORK_ANY
+    esp_err_t wifi_err = ESP_OK;
+    // No WiFi this boot on purpose: offline mode, or the alarm-setting UI (both need no
+    // network - see below). Neither the connect state machine nor the late-WiFi task apply.
+    bool wifi_skipped = alarm_setting_ui_is_active();
+#if FEATURE_OFFLINE_HOTSPOT
+    // Offline mode (github.com/aitjcize/esp32-photoframe#90): the user deliberately
+    // configured this device with no WiFi network at all, so skip the entire connect /
+    // retry / reprovision state machine - there is nothing to connect to. The on-demand
+    // hotspot (long BOOT hold, wifi_manager_start_ap_hotspot()) remains available
+    // regardless of this setting for offline photo management.
+    wifi_skipped = wifi_skipped || config_manager_get_offline_mode_enabled();
+#endif
+    if (wifi_skipped) {
+        // wifi_manager_init()/wifi_provisioning_init() above still ran, so this only skips
+        // the connection attempt, not the network stack http_server_init() needs.
+        ESP_LOGI(TAG, "Offline mode enabled or alarm-setting UI active - skipping WiFi connect");
+        goto wifi_setup_done;
+    }
+    wifi_err = connect_to_wifi();
+#else
     esp_err_t wifi_err = connect_to_wifi();
+#endif
+#if FEATURE_WIFI_RESILIENCE
+    if (wifi_err == ESP_FAIL) {
+        wifi_err = cold_boot_wifi_retry();
+    }
+#endif
     if (wifi_err == ESP_OK) {
         // Check and run periodic tasks (OTA check, SNTP sync if due)
         // Note: If RTC was invalid at boot, sntp_sync was already forced via
@@ -808,13 +1413,41 @@ void app_main(void)
         forget_wifi_and_reprovision();
     }
 
+#if FORK_ANY
+wifi_setup_done:
+    // 16384: the KEY button calls trigger_image_rotation() directly on this
+    // task - the same heavy rotation pipeline (Telegram fetch/JPEG decode/
+    // processing/overlay compositing) also run from deep_sleep_wake_task()
+    // and rotation_timer_task(). 8192 (the original value) and 12288 both
+    // overflowed in practice - a live coredump caught 12288 overflowing on a
+    // ~23KB photo, so this isn't about image size. Matched to
+    // rotation_timer_task's own 16384 for the identical call (power_manager.c).
+    xTaskCreate(button_task, "button_task", 16384, NULL, 5, NULL);
+
+    // The alarm-setting UI is a pure button+audio interaction with no WiFi
+    // connection ever attempted on this path - nothing could reach an HTTP
+    // server here, so starting one is pure overhead, unlike the genuine
+    // offline-mode case (which keeps it running so the on-demand AP hotspot
+    // can still serve the web UI later).
+    if (!alarm_setting_ui_is_active()) {
+        ESP_ERROR_CHECK(http_server_init());
+        http_server_set_ready();
+    }
+#else
     xTaskCreate(button_task, "button_task", 8192, NULL, 5, NULL);
 
     ESP_ERROR_CHECK(http_server_init());
     http_server_set_ready();
+#endif
 
     ESP_LOGI(TAG, "PhotoFrame started successfully");
 
+#if FORK_ANY
+    if (wifi_skipped) {
+        return;  // nothing to wait for: this boot runs without a network on purpose
+    }
+
+#endif
     if (wifi_err == ESP_OK) {
         startup_online_work();
     } else {

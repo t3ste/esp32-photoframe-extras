@@ -1,3 +1,13 @@
 # Enabled by `build.py --with fixes` (see docs/FEATURE_FLAGS_PLAN.md).
 # Feature-specific sdkconfig lines belong in this file.
 CONFIG_FORK_FIXES=y
+
+# All sockets share one lwIP pool: HTTP server (10) + listen/control sockets + outgoing
+# connections (weather, OTA, ...). With 16 the pool ran dry as soon as a browser held
+# many keep-alive connections (httpd 'error in accept (23)' == ENFILE).
+CONFIG_LWIP_MAX_SOCKETS=24
+CONFIG_LWIP_MAX_ACTIVE_TCP=24
+
+# mbedTLS: allocate through malloc() so the 16 KiB + 4 KiB TLS buffers can go to PSRAM
+# instead of failing with -0x008D (out of memory) once internal RAM is fragmented.
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y

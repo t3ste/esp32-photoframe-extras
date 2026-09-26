@@ -14,6 +14,7 @@ A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently 
 - 🖼️ **Image Server**: [Companion server](https://github.com/aitjcize/esp32-photoframe-server) with many photo sources — Google Photos, Immich, Synology Photos, Unsplash, Pexels, Telegram bot, URL proxy, and AI generation — plus date/time and weather overlays
 - 🏠 **Home Assistant Ready**: [Companion integration](https://github.com/aitjcize/ha-esp32-photoframe) available
 - 🔌 **RESTful API**: Full programmatic control ([API docs](docs/API.md))
+- 🧩 **Optional build features**: Telegram, agenda, overlays, alarm clock, HTTPS and more, each switched on with `python build.py --with <feature>`; without any option this is the upstream firmware ([feature list](docs/FEATURES.md))
 
 ## Ecosystem
 

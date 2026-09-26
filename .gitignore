@@ -37,3 +37,6 @@ demo/seeedstudio_reterminal_e1002
 
 # Scratch trees of scripts/verify_baseline.py
 .verify/
+
+# Side-by-side configurations of scripts/feature_matrix.py
+build-matrix/

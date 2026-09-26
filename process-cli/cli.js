@@ -6,7 +6,7 @@ import path from "path";
 import os from "os";
 import http from "http";
 import { fileURLToPath } from "url";
-import { createCanvas } from "canvas";
+import { createCanvas } from "@napi-rs/canvas";
 import FormData from "form-data";
 import {
   generateThumbnail,
@@ -16,13 +16,30 @@ import {
   getPresetNames,
   getDefaultParams,
 } from "@aitjcize/epaper-image-convert";
-import { processImagePipeline } from "./utils.js";
+import { processImagePipeline, loadOrientedCanvas } from "./utils.js";
 import { createImageServer } from "./server.js";
+import {
+  captureDatePathFor,
+  extractCaptureDate,
+  writeCaptureDateFile,
+} from "./capture-date.js";
+import {
+  normalizeTargetGeometry,
+  getBoardProfile,
+  getFaceDetector,
+  analyzeFaceCrop,
+  buildMetadata,
+  writeMetadataFile,
+  metadataPathFor,
+  orientationFromDims,
+} from "./face-crop/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const THUMBNAIL_MAX_DIM = 400;
+const CLI_VERSION = "1.0.0";
+const GENERATOR_VERSION = `esp32-photoframe-cli@${CLI_VERSION}`;
 
 // Get default parameters from the library
 const DEFAULT_PARAMS = {
@@ -556,6 +573,20 @@ function isImageFile(filename) {
   ].includes(ext);
 }
 
+/**
+ * Classifies a photo's OWN orientation (before any auto-rotation to match a
+ * display target) as "landscape", "portrait", or "square", based on its
+ * EXIF-corrected pixel dimensions - i.e. however a person would describe the
+ * photo looking at it, not the raw sensor dimensions before EXIF rotation is
+ * applied. Only used for --split-by-orientation's folder routing.
+ *
+ * @throws if the image can't be loaded/decoded at all.
+ */
+async function classifyOriginalOrientation(imagePath) {
+  const canvas = await loadOrientedCanvas(imagePath, { autoOrient: false });
+  return orientationFromDims(canvas.width, canvas.height);
+}
+
 // Process all images in a folder structure (albums)
 async function processFolderStructure(
   inputDir,
@@ -563,6 +594,7 @@ async function processFolderStructure(
   options,
   devicePalette,
   uploadHost = null,
+  splitByOrientation = false,
 ) {
   console.log(`\nProcessing folder structure: ${inputDir}`);
   console.log(`Output directory: ${outputDir}\n`);
@@ -612,24 +644,50 @@ async function processFolderStructure(
       const baseName = path.basename(imageFile, path.extname(imageFile));
       const fmt = options.format || "epdgz";
       const ext = fmt === "bmp" ? ".bmp" : fmt === "png" ? ".png" : ".epdgz";
-      const outputFile = path.join(albumOutputPath, `${baseName}${ext}`);
-      const outputThumb = path.join(albumOutputPath, `${baseName}.jpg`);
+
+      console.log(`  [${i + 1}/${imageFiles.length}] Processing: ${imageFile}`);
+
+      let albumSubdir = albumOutputPath;
+      if (splitByOrientation) {
+        let orientation;
+        try {
+          orientation = await classifyOriginalOrientation(inputPath);
+        } catch (error) {
+          console.warn(
+            `  WARNING: could not read ${imageFile} (${error.message}) - copying original into "unknown"`,
+          );
+          const unknownDir = path.join(albumOutputPath, "unknown");
+          fs.mkdirSync(unknownDir, { recursive: true });
+          try {
+            fs.copyFileSync(inputPath, path.join(unknownDir, imageFile));
+          } catch (copyError) {
+            console.error(
+              `  ERROR copying ${imageFile} into "unknown": ${copyError.message}`,
+            );
+          }
+          totalErrors++;
+          continue;
+        }
+        albumSubdir = path.join(albumOutputPath, orientation);
+        fs.mkdirSync(albumSubdir, { recursive: true });
+      }
+      const outputBasePath = path.join(albumSubdir, baseName);
 
       try {
-        console.log(
-          `  [${i + 1}/${imageFiles.length}] Processing: ${imageFile}`,
-        );
-        await processImageFile(
+        const rendered = await processImageFile(
           inputPath,
-          outputFile,
-          outputThumb,
+          outputBasePath,
+          ext,
           options,
           devicePalette,
         );
         totalProcessed++;
 
-        // Upload if requested
-        if (uploadHost) {
+        // Upload if requested (rendered is empty for --metadata-only, and
+        // never has more than one entry here - --crop-output both is
+        // rejected together with --upload earlier)
+        if (uploadHost && rendered.length > 0) {
+          const { outputFile, outputThumb } = rendered[0];
           try {
             await uploadToDevice(
               uploadHost,
@@ -661,17 +719,17 @@ async function processFolderStructure(
   console.log(`Output directory: ${outputDir}`);
 }
 
-async function processImageFile(
+// Renders one variant (a specific scaleMode/cropRect combination) to
+// `outputFile` (+ its thumbnail at `outputThumb`), via the shared library
+// pipeline.
+async function renderVariant(
   inputPath,
-  outputBmp,
+  outputFile,
   outputThumb,
   processingOptions,
-  devicePalette = null,
+  devicePalette,
+  { scaleMode, cropRect },
 ) {
-  console.log(`Processing: ${inputPath}`);
-
-  // Use shared processing pipeline with verbose logging (library handles parameter logging)
-  // Skip rotation when rendering measured palette for easier preview viewing
   const { canvas, originalCanvas } = await processImagePipeline(
     inputPath,
     processingOptions,
@@ -682,54 +740,243 @@ async function processImageFile(
       verbose: processingOptions.verbose || true,
       autoOrient: processingOptions.autoOrient || false,
       orientation: processingOptions.orientation || "landscape",
-      scaleMode: processingOptions.scaleMode || "cover",
+      scaleMode,
       backgroundColor: processingOptions.backgroundColor || "white",
       usePerceivedOutput: processingOptions.usePerceivedOutput || false,
       grayscale: processingOptions.grayscale || false,
+      cropRect,
     },
   );
 
   const ctx = canvas.getContext("2d");
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-  // 5. Write output file
   const format = processingOptions.format || "epdgz";
   if (format === "epdgz") {
-    console.log(`  Writing EPDGZ: ${outputBmp}`);
+    console.log(`  Writing EPDGZ: ${outputFile}`);
     const epdBuffer = await createEPDGZ(canvas, {
       grayscale: processingOptions.grayscale || false,
     });
-    fs.writeFileSync(outputBmp, epdBuffer);
+    fs.writeFileSync(outputFile, epdBuffer);
   } else if (format === "png") {
-    const outputPng = outputBmp.replace(/\.bmp$/, ".png");
-    console.log(`  Writing PNG: ${outputPng}`);
+    console.log(`  Writing PNG: ${outputFile}`);
     const pngBuffer = await createPNG(canvas);
-    fs.writeFileSync(outputPng, pngBuffer);
+    fs.writeFileSync(outputFile, pngBuffer);
   } else if (format === "bmp") {
-    console.log(`  Writing BMP: ${outputBmp}`);
-    writeBMP(imageData, outputBmp);
+    console.log(`  Writing BMP: ${outputFile}`);
+    writeBMP(imageData, outputFile);
   } else {
     throw new Error(
       `Unsupported format: ${format}. Use 'epdgz', 'png', or 'bmp'`,
     );
   }
 
-  // 6. Generate thumbnail if requested (from EXIF-corrected source, not processed image)
   if (processingOptions.generateThumbnail && outputThumb) {
     console.log(`  Generating thumbnail: ${outputThumb}`);
-
-    // Generate thumbnail from original source (clean, unprocessed)
+    // Generate thumbnail from this variant's own clean, unprocessed source -
+    // e.g. the "fit" variant's thumbnail correctly shows the full letterboxed
+    // photo, not the "cover" variant's crop.
     const thumbCanvas = generateThumbnail(
       originalCanvas,
       THUMBNAIL_MAX_DIM,
       createCanvas,
     );
-
     const buffer = thumbCanvas.toBuffer("image/jpeg", { quality: 0.8 });
     fs.writeFileSync(outputThumb, buffer);
   }
+}
+
+// Draws face bounding boxes (blue) and, only when cropRect is given, the
+// recommended crop rectangle (red) onto a fresh full-size copy of
+// sourceCanvas - never mutates sourceCanvas itself, and never resizes/crops/
+// dithers anything, so this is purely a debug/visualization aid (--crop-preview).
+// Line width scales with image size so boxes stay visible on very large photos.
+function drawCropPreview(sourceCanvas, faces, cropRect) {
+  const preview = createCanvas(sourceCanvas.width, sourceCanvas.height);
+  const ctx = preview.getContext("2d");
+  ctx.drawImage(sourceCanvas, 0, 0);
+
+  const lineWidth = Math.max(
+    3,
+    Math.round(Math.max(sourceCanvas.width, sourceCanvas.height) / 400),
+  );
+  ctx.lineWidth = lineWidth;
+
+  if (cropRect) {
+    ctx.strokeStyle = "red";
+    ctx.strokeRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
+  }
+
+  ctx.strokeStyle = "blue";
+  for (const face of faces) {
+    ctx.strokeRect(face.x, face.y, face.w, face.h);
+  }
+
+  return preview;
+}
+
+/**
+ * Processes one source image: optional face detection + metadata, then one
+ * or more rendered variants depending on processingOptions.faceCrop.cropOutput
+ * ("cropped" | "uncropped" | "both") - or a single plain render, unchanged
+ * from before this feature existed, when face-crop isn't enabled at all.
+ *
+ * @param {string} inputPath
+ * @param {string} outputBasePath - Output path with no extension (directory +
+ *   basename + any user --suffix already applied) - variant suffixes
+ *   (".cover"/".fit") and the metadata's ".facecrop.json" are appended here.
+ * @param {string} ext - Output image extension, e.g. ".png".
+ * @param {Object} processingOptions
+ * @param {Object} [devicePalette]
+ * @returns {Promise<Array<{outputFile: string, outputThumb: string}>>} The
+ *   rendered variant(s) - empty when --metadata-only skipped rendering.
+ */
+async function processImageFile(
+  inputPath,
+  outputBasePath,
+  ext,
+  processingOptions,
+  devicePalette = null,
+) {
+  console.log(`Processing: ${inputPath}`);
+
+  // Unconditional (not gated behind --detect-faces or any other flag) -
+  // capturing the EXIF date here, once, at processing time is the only
+  // chance to ever recover it: the original is generally never kept on the
+  // device, and the rendered output (PNG/EPDGZ/BMP) never carries EXIF. A
+  // no-op (no sidecar written) when the source has none - see
+  // capture-date.js for why this is a separate sidecar from .facecrop.json.
+  const captureDate = extractCaptureDate(inputPath);
+  if (captureDate) {
+    const captureDatePath = captureDatePathFor(`${outputBasePath}${ext}`);
+    writeCaptureDateFile(captureDatePath, captureDate);
+    console.log(`  Wrote capture-date sidecar: ${captureDatePath}`);
+  }
+
+  let recommendedCrop = null;
+  if (processingOptions.faceCrop?.enabled) {
+    const {
+      target,
+      marginPercent,
+      detector,
+      engineName,
+      metadataOnly,
+      cropPreview,
+    } = processingOptions.faceCrop;
+
+    const orientedCanvas = await loadOrientedCanvas(inputPath, {
+      autoOrient: processingOptions.autoOrient || false,
+      displayWidth: processingOptions.displayWidth,
+      displayHeight: processingOptions.displayHeight,
+      verbose: processingOptions.verbose || true,
+    });
+    const imageData = orientedCanvas
+      .getContext("2d")
+      .getImageData(0, 0, orientedCanvas.width, orientedCanvas.height);
+
+    console.log(`  Detecting faces (${engineName})...`);
+    const analyzed = await analyzeFaceCrop({
+      detector,
+      imageData,
+      target,
+      marginPercent,
+      engineName,
+    });
+    console.log(`  Found ${analyzed.faces.length} face(s)`);
+
+    const metadata = buildMetadata({
+      sourcePath: path.basename(inputPath),
+      image: { width: orientedCanvas.width, height: orientedCanvas.height },
+      target,
+      faces: analyzed.faces,
+      recommendedCrop: analyzed.recommendedCrop,
+      strategy: analyzed.strategy,
+      generatorVersion: GENERATOR_VERSION,
+    });
+    // Always named after the plain base path (never a .cover/.fit variant
+    // suffix) - one metadata file describes the source image regardless of
+    // how many rendered variants exist for it.
+    const metadataPath = metadataPathFor(`${outputBasePath}${ext}`);
+    writeMetadataFile(metadataPath, metadata);
+    console.log(`  Wrote face-crop metadata: ${metadataPath}`);
+
+    if (metadataOnly) {
+      console.log(`Done! (metadata only)`);
+      return [];
+    }
+
+    if (cropPreview) {
+      const coverPreview = drawCropPreview(
+        orientedCanvas,
+        analyzed.faces,
+        analyzed.recommendedCrop,
+      );
+      const fitPreview = drawCropPreview(orientedCanvas, analyzed.faces, null);
+      const coverPreviewPath = `${outputBasePath}_test.cover.jpg`;
+      const fitPreviewPath = `${outputBasePath}_test.fit.jpg`;
+      fs.writeFileSync(
+        coverPreviewPath,
+        coverPreview.toBuffer("image/jpeg", { quality: 0.9 }),
+      );
+      fs.writeFileSync(
+        fitPreviewPath,
+        fitPreview.toBuffer("image/jpeg", { quality: 0.9 }),
+      );
+      console.log(`  Wrote crop preview: ${coverPreviewPath}`);
+      console.log(`  Wrote crop preview: ${fitPreviewPath}`);
+      console.log(`Done! (crop preview only)`);
+      return [];
+    }
+
+    recommendedCrop = analyzed.recommendedCrop;
+  }
+
+  // Which variant(s) to render. Without --detect-faces, this is exactly the
+  // single render this CLI has always produced - scaleMode/cropRect
+  // untouched, zero behavior change.
+  let variants;
+  if (!processingOptions.faceCrop?.enabled) {
+    variants = [
+      {
+        suffix: "",
+        scaleMode: processingOptions.scaleMode || "cover",
+        cropRect: null,
+      },
+    ];
+  } else {
+    const cropOutput = processingOptions.faceCrop.cropOutput;
+    if (cropOutput === "uncropped") {
+      variants = [{ suffix: "", scaleMode: "fit", cropRect: null }];
+    } else if (cropOutput === "both") {
+      variants = [
+        { suffix: ".cover", scaleMode: "cover", cropRect: recommendedCrop },
+        { suffix: ".fit", scaleMode: "fit", cropRect: null },
+      ];
+    } else {
+      // "cropped" (default)
+      variants = [
+        { suffix: "", scaleMode: "cover", cropRect: recommendedCrop },
+      ];
+    }
+  }
+
+  const rendered = [];
+  for (const variant of variants) {
+    const outputFile = `${outputBasePath}${variant.suffix}${ext}`;
+    const outputThumb = `${outputBasePath}${variant.suffix}.jpg`;
+    await renderVariant(
+      inputPath,
+      outputFile,
+      outputThumb,
+      processingOptions,
+      devicePalette,
+      variant,
+    );
+    rendered.push({ outputFile, outputThumb });
+  }
 
   console.log(`Done!`);
+  return rendered;
 }
 
 // CLI setup
@@ -738,7 +985,7 @@ const program = new Command();
 program
   .name("photoframe-process")
   .description("ESP32 PhotoFrame image processing CLI")
-  .version("1.0.0")
+  .version(CLI_VERSION)
   .argument(
     "<input>",
     "Input image file or directory with album subdirectories",
@@ -751,6 +998,15 @@ program
   )
   .option("-v, --verbose", "Enable verbose logging")
   .option("--format <format>", "Output format: epdgz, png, or bmp", "epdgz")
+  .option(
+    "--split-by-orientation",
+    "Folder mode only: route each album's output into landscape/portrait/square " +
+      "subfolders based on the ORIGINAL photo's own width vs. height (before any " +
+      "auto-rotation to match the display), e.g. album/landscape/photo1.epdgz, " +
+      "album/portrait/photo2.epdgz. A photo that can't be decoded at all is copied " +
+      "unmodified into an album/unknown/ subfolder instead of just being skipped " +
+      "with an error.",
+  )
   .option(
     "--grayscale",
     "Pack output as 16-level grayscale (GC16 / IT8951 panels)",
@@ -857,6 +1113,74 @@ program
   )
   .option("--compress-dynamic-range", "Compress dynamic range to display range")
   .option("--no-compress-dynamic-range", "Disable dynamic range compression")
+  .option(
+    "--detect-faces",
+    "Detect faces and write a <name>.facecrop.json metadata file next to the output " +
+      "(see docs/FACE_CROP.md); also steers the rendered image's crop toward keeping large faces visible",
+  )
+  .option(
+    "--metadata-only",
+    "With --detect-faces: write only the <name>.facecrop.json file, skip generating the rendered output image",
+  )
+  .option(
+    "--crop-output <mode>",
+    "With --detect-faces (ignored if --metadata-only is also given): which rendered image(s) to " +
+      "produce - 'cropped' (default: one face-aware-cropped image, cover mode), 'uncropped' (one " +
+      "full/letterboxed image, fit mode, no crop applied - metadata is still written), or 'both' " +
+      "(<name>.cover.<ext> and <name>.fit.<ext> side by side, so the firmware can later pick the " +
+      "right one for its Cover/Fit setting without rendering anything itself - see docs/FACE_CROP.md)",
+    "cropped",
+  )
+  .option(
+    "--board <id>",
+    "Target board id for face-crop geometry (see boards/boards.json); also sets " +
+      "the display resolution unless --resolution/--dimension/--display-width/--display-height override it",
+  )
+  .option(
+    "--resolution <WxH>",
+    "Target display resolution in pixels, e.g. 800x480 (alias of --dimension, also used as the face-crop target)",
+  )
+  .option(
+    "--display-size-mm <WxH>",
+    "Physical display size in mm, e.g. 160x96 - used only to help auto-derive orientation for face-crop",
+  )
+  .option(
+    "--crop-preview",
+    "With --detect-faces: instead of a real (cropped/dithered) render, draws the detected face " +
+      "boxes (blue) and the recommended crop rectangle (red) onto a full, unmodified copy of the " +
+      "source image, for visually sanity-checking face detection/the crop heuristic before " +
+      "committing to a batch render - <name>_test.cover.jpg (boxes + crop rectangle) and " +
+      "<name>_test.fit.jpg (boxes only, since fit mode never crops), always JPEG regardless of " +
+      "the target output format. The image itself is never actually cropped/resized/dithered. " +
+      "Overrides --crop-output; conflicts with --metadata-only and --upload/--direct.",
+  )
+  .option(
+    "--face-margin <percent>",
+    "Safety margin added around each detected face, as a fraction of its own size",
+    parseFloat,
+    0.12,
+  )
+  .option(
+    "--face-min-score <value>",
+    "Minimum face detection confidence to keep a face (0.0-1.0)",
+    parseFloat,
+    0.75,
+  )
+  .option(
+    "--face-model-dir <dir>",
+    "Local directory with a previously downloaded face detection model, for fully offline use (see docs/FACE_CROP.md)",
+  )
+  .option(
+    "--face-detect-tiles <n>",
+    "Split each image into an NxN grid of overlapping tiles and additionally run face detection " +
+      "on each one, to catch small/distant faces that whole-image detection misses (the detector's " +
+      "fixed input size shrinks the whole photo down regardless of resolution, so small faces can " +
+      "vanish before whole-image detection ever sees them). 1 = disabled (default, original " +
+      "behavior). Each increment roughly multiplies processing time per photo by n²+1 - try 2 or 3 " +
+      "first. Duplicate detections of the same face across tiles are merged automatically.",
+    (v) => parseInt(v, 10),
+    1,
+  )
   .action(async (input, options) => {
     let outputDir;
     let useTmpDir = false;
@@ -884,6 +1208,8 @@ program
       }
 
       // Parse dimension if provided
+      const dimensionExplicit =
+        program.getOptionValueSource("dimension") === "cli";
       if (options.dimension) {
         const match = options.dimension.match(/^(\d+)x(\d+)$/);
         if (match) {
@@ -894,6 +1220,43 @@ program
             `Error: Invalid dimension format "${options.dimension}". Use WxH (e.g. 800x480)`,
           );
           process.exit(1);
+        }
+      }
+
+      // --resolution is an alias of --dimension (also the face-crop target's
+      // pixel size) - parsed the same way, applied after --dimension so it
+      // wins if both happen to be given.
+      const resolutionExplicit =
+        program.getOptionValueSource("resolution") === "cli";
+      if (options.resolution) {
+        const match = options.resolution.match(/^(\d+)x(\d+)$/);
+        if (match) {
+          options.displayWidth = parseInt(match[1]);
+          options.displayHeight = parseInt(match[2]);
+        } else {
+          console.error(
+            `Error: Invalid resolution format "${options.resolution}". Use WxH (e.g. 800x480)`,
+          );
+          process.exit(1);
+        }
+      }
+
+      // --board provides default display dimensions, but only when no more
+      // specific sizing flag was explicitly given (--resolution/--dimension/
+      // --display-width/--display-height all take precedence).
+      if (options.board && !dimensionExplicit && !resolutionExplicit) {
+        const displayWidthExplicit =
+          program.getOptionValueSource("displayWidth") === "cli";
+        const displayHeightExplicit =
+          program.getOptionValueSource("displayHeight") === "cli";
+        if (!displayWidthExplicit && !displayHeightExplicit) {
+          const profile = getBoardProfile(options.board);
+          if (!profile) {
+            console.error(`Error: Unknown --board "${options.board}"`);
+            process.exit(1);
+          }
+          options.displayWidth = profile.width;
+          options.displayHeight = profile.height;
         }
       }
 
@@ -1075,6 +1438,115 @@ program
             grayscale: options.grayscale || false,
           };
 
+      // Face-aware crop metadata setup (opt-in via --detect-faces). Loading
+      // the detector happens once here, before any per-image work, so a
+      // batch run only pays the model-load cost once.
+      let faceCropContext = null;
+      if (options.metadataOnly && !options.detectFaces) {
+        console.error("Error: --metadata-only requires --detect-faces");
+        process.exit(1);
+      }
+      const cropOutputExplicit =
+        program.getOptionValueSource("cropOutput") === "cli";
+      if (cropOutputExplicit && !options.detectFaces) {
+        console.error("Error: --crop-output requires --detect-faces");
+        process.exit(1);
+      }
+      if (!["cropped", "uncropped", "both"].includes(options.cropOutput)) {
+        console.error(
+          `Error: Invalid --crop-output "${options.cropOutput}". Use 'cropped', 'uncropped', or 'both'`,
+        );
+        process.exit(1);
+      }
+      if (cropOutputExplicit && options.metadataOnly) {
+        console.warn(
+          "Warning: --crop-output is ignored because --metadata-only skips all rendered images",
+        );
+      }
+      if (options.cropPreview && !options.detectFaces) {
+        console.error("Error: --crop-preview requires --detect-faces");
+        process.exit(1);
+      }
+      if (options.cropPreview && options.metadataOnly) {
+        console.error(
+          "Error: --crop-preview conflicts with --metadata-only (one skips rendering, the other requires it)",
+        );
+        process.exit(1);
+      }
+      if (options.cropPreview && (options.upload || options.direct)) {
+        console.error(
+          "Error: --crop-preview produces debug-only images and can't be used with --upload/--direct",
+        );
+        process.exit(1);
+      }
+      if (options.cropPreview && cropOutputExplicit) {
+        console.warn(
+          "Warning: --crop-output is ignored because --crop-preview overrides it",
+        );
+      }
+      if (options.detectFaces) {
+        let target;
+        try {
+          const orientationExplicit =
+            program.getOptionValueSource("orientation") === "cli";
+          target = normalizeTargetGeometry({
+            board: options.board,
+            resolution: options.resolution,
+            displaySizeMm: options.displaySizeMm,
+            orientation: orientationExplicit ? options.orientation : "auto",
+            fallbackWidth: options.displayWidth,
+            fallbackHeight: options.displayHeight,
+          });
+        } catch (error) {
+          console.error(`Error: ${error.message}`);
+          process.exit(1);
+        }
+        for (const warning of target.warnings) {
+          console.warn(`Warning: ${warning}`);
+        }
+        console.log(
+          `Face-aware crop target: ${target.width}x${target.height} (${target.orientation})` +
+            (target.board ? `, board=${target.board}` : ""),
+        );
+
+        console.log("Loading face detection model (blazeface)...");
+        const detector = await getFaceDetector("blazeface", {
+          scoreThreshold: options.faceMinScore,
+          modelDir: options.faceModelDir,
+          tileGrid: options.faceDetectTiles,
+        });
+        console.log("Face detection model ready");
+
+        faceCropContext = {
+          enabled: true,
+          metadataOnly: !!options.metadataOnly,
+          cropOutput: options.cropOutput,
+          cropPreview: !!options.cropPreview,
+          target,
+          marginPercent: options.faceMargin,
+          detector,
+          engineName: "blazeface",
+        };
+      }
+      processOptions.faceCrop = faceCropContext;
+
+      // --crop-output both produces two images (<name>.cover.<ext> and
+      // <name>.fit.<ext>) - --upload/--direct only ever send one image, so
+      // reject the ambiguous combination up front rather than silently
+      // picking one.
+      if (
+        faceCropContext &&
+        !faceCropContext.metadataOnly &&
+        faceCropContext.cropOutput === "both" &&
+        (options.upload || options.direct)
+      ) {
+        console.error(
+          "Error: --crop-output both produces two images and can't be used with --upload/--direct " +
+            "(process to disk with -o instead, then upload the file you want manually)",
+        );
+        process.exit(1);
+      }
+
       // Check if --serve mode is enabled
       if (options.serve) {
         const inputStats = fs.statSync(inputPath);
@@ -1121,7 +1593,20 @@ program
         process.exit(1);
       }
 
+      if (options.splitByOrientation && !isDirectory) {
+        console.error(
+          "Error: --split-by-orientation requires a directory input (album folder mode)",
+        );
+        process.exit(1);
+      }
+
       if (options.upload || options.direct) {
+        if (faceCropContext) {
+          console.warn(
+            "Warning: --detect-faces metadata is written into the temporary directory used by " +
+              "--upload/--direct and will be deleted with it afterward, not uploaded to the device",
+          );
+        }
         outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "photoframe-"));
         useTmpDir = true;
         console.log(`Using temporary directory: ${outputDir}`);
@@ -1150,6 +1635,7 @@ program
           processOptions,
           devicePalette,
           options.upload ? options.host : null,
+          !!options.splitByOrientation,
         );
       } else {
         // Process single file
@@ -1158,13 +1644,12 @@ program
         const format = processOptions.format || "epdgz";
         const ext =
           format === "bmp" ? ".bmp" : format === "png" ? ".png" : ".epdgz";
-        const outputFile = path.join(outputDir, `${baseName}${suffix}${ext}`);
-        const outputThumb = path.join(outputDir, `${baseName}${suffix}.jpg`);
+        const outputBasePath = path.join(outputDir, `${baseName}${suffix}`);
 
-        await processImageFile(
+        const rendered = await processImageFile(
           inputPath,
-          outputFile,
-          outputThumb,
+          outputBasePath,
+          ext,
           processOptions,
           devicePalette,
         );
@@ -1177,6 +1662,15 @@ program
             );
             process.exit(1);
           }
+          if (rendered.length === 0) {
+            console.error(
+              `Error: --metadata-only produced no image to ${options.direct ? "display" : "upload"}`,
+            );
+            process.exit(1);
+          }
+          // --crop-output both was already rejected together with --upload/
+          // --direct earlier, so exactly one variant exists here.
+          const { outputFile, outputThumb } = rendered[0];
           if (!fs.existsSync(outputFile)) {
             console.error(`Error: Output file not found: ${outputFile}`);
             process.exit(1);

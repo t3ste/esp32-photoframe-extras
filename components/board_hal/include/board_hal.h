@@ -2,6 +2,9 @@
 
 #include <hal/gpio_types.h>
 #include <stdbool.h>
+#if defined(CONFIG_FEATURE_VOICE_STOP)
+#include <stddef.h>
+#endif
 #include <stdint.h>
 #include <time.h>
 
@@ -55,22 +58,49 @@ typedef enum {
 #define BOARD_HAL_DISPLAY_TYPE "spectra6"
 #endif
 
-// Optional hardware. A board with an ES8311/PA speaker path defines
-// BOARD_HAL_HAS_SPEAKER 1 in its own header (see board_waveshare_photopainter_73.h)
-// before including this file; likewise BOARD_HAL_HAS_MICROPHONE for an onboard
-// microphone. main/feature_config.h rejects features whose hardware is missing.
+// Boards with an ES8311/PA speaker path define BOARD_HAL_HAS_SPEAKER 1 in their own
+// header (see board_waveshare_photopainter_73.h) before including this file.
 #ifndef BOARD_HAL_HAS_SPEAKER
 #define BOARD_HAL_HAS_SPEAKER 0
 #endif
 
+// Boards with an onboard microphone (ADC -> I2S DIN) define
+// BOARD_HAL_HAS_MICROPHONE 1 in their own header, next to the speaker pins.
 #ifndef BOARD_HAL_HAS_MICROPHONE
 #define BOARD_HAL_HAS_MICROPHONE 0
 #endif
 
-// True if the board's Kconfig entry selects a climate sensor driver at all
-// (components/board_hal/Kconfig). No per-board header needs to set it. Whether
-// the sensor answers on a given unit is a runtime question
-// (board_hal_get_temperature()/get_humidity()).
+#if defined(CONFIG_FEATURE_VOICE_STOP)
+// The voice features - microphone level meter, speaker/microphone self-test and
+// stopping a ringing alarm by a spoken word - belong to the Alarm Clock. They
+// exist only in an Alarm Clock firmware (FEATURE_ALARMCLOCK, see
+// build.py --alarmclock) for a board that has both a speaker (the alarm) and a
+// microphone; everywhere else the code is not compiled in at all. A board with
+// a speaker but no microphone gets the plain alarm (stopped with KEY) without
+// any of it.
+#if defined(CONFIG_FEATURE_ALARMCLOCK) && BOARD_HAL_HAS_SPEAKER && BOARD_HAL_HAS_MICROPHONE
+#define BOARD_HAL_VOICE_ENABLED 1
+#else
+#define BOARD_HAL_VOICE_ENABLED 0
+#endif
+
+// board_hal_mic_capture*() discards this many frames after start-up while the
+// microphone front end settles; the first block handed to the callback is that
+// far into a played tone sequence.
+#define BOARD_HAL_MIC_SETTLE_FRAMES 2560
+
+#endif
+// True if this board's Kconfig entry selects any climate sensor driver
+// component at all (components/board_hal/Kconfig - SENSOR_DRIVER_SHTC3 for
+// waveshare_photopainter_73, SENSOR_DRIVER_SHT40 for the xiao_ee03/
+// reterminal_e100x boards, SENSOR_DRIVER_SHT3X for the m5stack_m5paper_v11
+// board; xiao_ee02 selects none of these). Unlike BOARD_HAL_HAS_SPEAKER this
+// doesn't need a per-board header to set it - the Kconfig `select` already
+// says whether the driver layer exists at all. Whether the sensor actually
+// responds on a given physical unit is still a separate runtime question
+// (board_hal_get_temperature()/get_humidity()) - this only lets
+// main/climate.c's dead weight compile out entirely on a board where the
+// answer can never be anything but "no sensor".
 #if defined(CONFIG_SENSOR_DRIVER_SHTC3) || defined(CONFIG_SENSOR_DRIVER_SHT40) || \
     defined(CONFIG_SENSOR_DRIVER_SHT3X)
 #define BOARD_HAL_HAS_CLIMATE_SENSOR 1
@@ -196,6 +226,138 @@ typedef enum {
  */
 void board_hal_led_set(board_hal_led_t led, bool on);
 
+#if defined(CONFIG_FORK_AUDIO_HAL)
+/**
+ * @brief Whether this board has an on-device speaker / DAC path
+ *
+ * PhotoPainter 7.3" exposes ES8311 + NS4150B PA. Other boards return false.
+ */
+bool board_hal_has_speaker(void);
+
+// Short, synthesized (no WAV/melody file) beep patterns for the Chimes feature -
+// one built-in tone per severity, not a per-event sound library.
+typedef enum {
+    BOARD_HAL_CHIME_SUCCESS,  // 1 short beep
+    BOARD_HAL_CHIME_WARNING,  // 2 short beeps
+    BOARD_HAL_CHIME_ERROR,    // 3 short beeps
+} board_hal_chime_kind_t;
+
+/**
+ * @brief Play a short synthesized beep pattern on the onboard speaker
+ *
+ * Waveshare PhotoPainter: ES8311 DAC over I2S with PA GPIO enable, tones
+ * generated on-device (no WAV/melody data). Other boards return
+ * ESP_ERR_NOT_SUPPORTED.
+ *
+ * @param kind Which of the 3 built-in patterns to play
+ * @param volume_percent 0-100, linearly mapped to the codec's DAC volume
+ *        register - applies equally to every kind (urgency is conveyed by
+ *        which pattern/how often it repeats, not by loudness)
+ * @return ESP_OK on success, ESP_ERR_NOT_SUPPORTED if no speaker, or another
+ *         error if the codec / I2S path failed
+ */
+esp_err_t board_hal_play_beep_pattern(board_hal_chime_kind_t kind, uint8_t volume_percent);
+
+#endif
+#if defined(CONFIG_FEATURE_ALARMCLOCK)
+/**
+ * @brief Play the repeating bedside-alarm tone until stopped or time runs out
+ *
+ * Fixed note sequence G4-C5-E5-C5 (392/523/659/523 Hz), 300ms each, followed
+ * by a 5s silent pause, repeating - see docs/ALARMCLOCK_FEASIBILITY.md. Unlike
+ * board_hal_play_beep_pattern() this can run for minutes, so it needs a way
+ * to stop early: @p should_stop is polled once per note and several times
+ * during each silent pause (not just once every 5s), so a stop request is
+ * noticed within roughly one polling interval, not a hard real-time
+ * deadline. Blocking; shares the same serializing mutex as
+ * board_hal_play_beep_pattern() (the two can't run at once).
+ *
+ * @param volume_percent 0-100, same DAC volume mapping as board_hal_play_beep_pattern()
+ * @param total_duration_ms Give up and stop after this long even if should_stop() never fires
+ * @param should_stop Polled periodically during playback; returning true stops the alarm early.
+ *        May be NULL to only ever stop via total_duration_ms.
+ * @param notes_hz The four melody notes (Hz), repeated; NULL = G4 C5 E5 C5
+ * @param ramp_ms Volume ramp-up: 0 = full volume at once, otherwise the volume rises from about
+ *        -22 dB to the set volume over this time (see alarm_ramp.h)
+ * @return ESP_OK on success (whether it ended via timeout or should_stop()), ESP_ERR_NOT_SUPPORTED
+ *         if no speaker, or another error if the codec / I2S path failed
+ */
+esp_err_t board_hal_play_alarm(uint8_t volume_percent, uint32_t total_duration_ms,
+                               bool (*should_stop)(void), const float notes_hz[4],
+                               uint32_t ramp_ms);
+
+#endif
+#if defined(CONFIG_FEATURE_VOICE_STOP)
+/**
+ * @brief True if the microphone / voice features are available in this build
+ * (BOARD_HAL_VOICE_ENABLED: Alarm Clock firmware on a board with speaker and microphone)
+ */
+bool board_hal_has_microphone(void);
+
+/**
+ * @brief Called with each captured block: interleaved signed 16-bit stereo
+ * (L,R,L,R,...) at 16 kHz. Return false to stop the capture early.
+ */
+typedef bool (*board_hal_mic_block_cb_t)(const int16_t *samples, size_t frames, void *user);
+
+/**
+ * @brief Capture microphone audio for up to @p duration_ms, handing each ~16 ms
+ * block to @p on_block. Blocking; shares the audio mutex with the chimes and
+ * the alarm (they can't run at once). The speaker amplifier stays off.
+ *
+ * @return ESP_OK, ESP_ERR_NOT_SUPPORTED if no microphone, ESP_ERR_TIMEOUT if
+ *         the audio path is busy, or another error if the codec / I2S path failed
+ */
+esp_err_t board_hal_mic_capture(uint32_t duration_ms, board_hal_mic_block_cb_t on_block,
+                                void *user);
+
+#endif
+#if defined(CONFIG_FORK_AUDIO_HAL)
+// One note in a board_hal_play_notes() sequence: `freq_hz` 0 plays
+// `duration_ms` of silence instead of a tone (used for the gap between
+// beeps in a counted sequence).
+typedef struct {
+    float freq_hz;
+    int duration_ms;
+} board_hal_note_t;
+
+/**
+ * @brief Play an arbitrary sequence of tones/silences within one audio session
+ *
+ * General-purpose primitive behind the alarm-setting button UI's feedback
+ * sounds (hour/minute counted beeps at different pitches, the midnight/
+ * on-the-hour long tones, the armed/disarmed confirmation sequences - see
+ * docs/ALARMCLOCK_FEASIBILITY.md) - unlike calling board_hal_play_beep_pattern()
+ * once per note, the whole sequence plays inside a single opened session, so
+ * the ~250ms PA settle delay (see audio_chime.c's own comment on this) is
+ * paid once for the whole sequence, not once per note - several short beeps
+ * "hintereinander folgend" would otherwise have an audible gap before each one.
+ *
+ * @param notes Sequence to play in order
+ * @param count Number of entries in `notes`
+ * @param volume_percent 0-100, same DAC volume mapping as board_hal_play_beep_pattern()
+ * @return ESP_OK on success, ESP_ERR_NOT_SUPPORTED if no speaker, or another
+ *         error if the codec / I2S path failed
+ */
+esp_err_t board_hal_play_notes(const board_hal_note_t *notes, int count, uint8_t volume_percent);
+
+#endif
+#if defined(CONFIG_FEATURE_VOICE_STOP)
+/**
+ * @brief Like board_hal_mic_capture(), but the speaker plays @p notes at the same
+ * time (same full-duplex I2S session) - the basis of the speaker/microphone
+ * self-test. After the sequence ends the speaker stays silent while capturing
+ * continues until @p duration_ms. On this board the ES7210's second input
+ * (right channel) hears the speaker amplifier directly.
+ *
+ * @param volume_percent 0-100 speaker volume, same mapping as board_hal_play_notes()
+ */
+esp_err_t board_hal_mic_capture_with_tones(uint32_t duration_ms, board_hal_mic_block_cb_t on_block,
+                                           void *user, const board_hal_note_t *notes,
+                                           int note_count, uint8_t volume_percent,
+                                           uint32_t ramp_ms);
+
+#endif
 #ifdef __cplusplus
 }
 #endif

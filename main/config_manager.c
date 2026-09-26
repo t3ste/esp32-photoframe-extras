@@ -7,6 +7,11 @@
 #include "board_hal.h"
 #include "config.h"
 #include "esp_log.h"
+#include "feature_config.h"
+#if FORK_ANY
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#endif
 #include "nvs.h"
 #include "storage.h"
 
@@ -55,6 +60,151 @@ static char image_etag[HTTP_ETAG_MAX_LEN] = {0};
 // Home Assistant
 static char ha_url[HA_URL_MAX_LEN] = {0};
 
+#if FORK_ANY
+// Telegram Bot
+static char telegram_bot_token[TELEGRAM_BOT_TOKEN_MAX_LEN] = {0};
+static char telegram_chat_id[TELEGRAM_CHAT_ID_MAX_LEN] = {0};
+static int64_t telegram_last_update_id = 0;
+static bool telegram_pairing_enabled = true;
+static bool telegram_low_battery_warned = false;
+static bool telegram_wake_notify_enabled = false;
+
+typedef struct {
+    char path[320];
+    char caption[TELEGRAM_CAPTION_MAX_LEN];
+} telegram_pending_image_t;
+static telegram_pending_image_t telegram_pending_images[TELEGRAM_MAX_PENDING_IMAGES];
+static int telegram_pending_image_count = 0;
+
+static bool telegram_dedup_enabled = false;
+static char telegram_seen_unique_ids[TELEGRAM_DEDUP_MAX_ENTRIES][TELEGRAM_UNIQUE_ID_MAX_LEN];
+static int telegram_seen_id_count = 0;
+
+// Home Assistant
+static bool ha_enabled = false;
+
+// Error overlay / WiFi failure tracking
+static bool error_overlay_enabled = false;
+static int wifi_fail_count = 0;
+
+// WiFi
+static bool wifi_performance_mode_enabled = true;
+static bool wifi_tx_power_cap_enabled = true;
+static bool wifi_extended_retry_enabled = false;
+static int wifi_coldboot_fail_count = 0;
+static bool wifi_reprovision_on_fail_enabled = true;
+static bool offline_mode_enabled = false;
+static bool https_enabled = false;
+static bool rotation_pairing_enabled = false;
+static bool variant_selection_enabled = false;
+static bool telegram_rotation_notify_enabled = false;
+static bool telegram_fallback_rotation_enabled = true;
+static bool telegram_fallback_on_error_enabled = true;
+static bool telegram_keep_originals_enabled = false;
+static char telegram_image_format[TELEGRAM_IMAGE_FORMAT_MAX_LEN] = TELEGRAM_IMAGE_FORMAT_DEFAULT;
+static bool telegram_power_save_enabled = false;
+static bool telegram_power_save_latest_only = false;
+
+// Weather + headline overlays
+static bool weather_overlay_enabled = false;
+static char weather_location_name[WEATHER_LOCATION_NAME_MAX_LEN] = {0};
+static char weather_lat[WEATHER_LATLON_MAX_LEN] = {0};
+static char weather_lon[WEATHER_LATLON_MAX_LEN] = {0};
+static char weather_geocoded_name[WEATHER_LOCATION_NAME_MAX_LEN] = {0};
+static char weather_provider[WEATHER_PROVIDER_MAX_LEN] = WEATHER_PROVIDER_DEFAULT;
+static char weather_last_source[WEATHER_PROVIDER_MAX_LEN] = {0};
+static bool headlines_overlay_enabled = false;
+static char headlines_rss_url[HEADLINES_RSS_URL_MAX_LEN] = {0};
+static uint8_t headlines_count = HEADLINES_COUNT_DEFAULT;
+static uint8_t headlines_wrap_lines = HEADLINES_WRAP_LINES_DEFAULT;
+static bool overlay_invert_colors = false;
+static bool overlay_epdgz_enabled = false;
+static char overlay_language[OVERLAY_LANGUAGE_MAX_LEN] = OVERLAY_LANGUAGE_DEFAULT;
+static bool caption_invert_colors_enabled = false;
+static bool weather_multiline_enabled = false;
+static char weather_icon_set[WEATHER_ICON_SET_MAX_LEN] = WEATHER_ICON_SET_DEFAULT;
+static bool weather_icon_colored = false;
+static bool show_exif_datetime_enabled = false;
+static bool low_battery_overlay_enabled = false;
+static uint8_t low_battery_overlay_threshold = LOW_BATTERY_OVERLAY_THRESHOLD_DEFAULT;
+static bool low_battery_overlay_active = false;
+static bool battery_history_backup_enabled = false;
+
+// Agenda (ToDo + Calendar) - a full-screen display mode, not a photo overlay
+static bool agenda_todo_enabled = false;
+static bool agenda_cal_enabled = false;
+static bool agenda_cal_weather_enabled = false;
+static bool agenda_cal_weather_right_aligned = false;
+static agenda_multiday_mode_t agenda_cal_multiday_mode = AGENDA_MULTIDAY_REPEAT;
+static agenda_time_display_mode_t agenda_cal_time_display_mode = AGENDA_TIME_DISPLAY_OFF;
+static char agenda_cal_name[AGENDA_CAL_NAME_MAX_LEN] = {0};
+static char agenda_cal_name2[AGENDA_CAL_NAME_MAX_LEN] = {0};
+static char agenda_todo_url[AGENDA_TODO_URL_MAX_LEN] = {0};
+static char agenda_cal_url[AGENDA_CAL_URL_MAX_LEN] = {0};
+static char agenda_cal_url2[AGENDA_CAL_URL2_MAX_LEN] = {0};
+static char agenda_todo_etag[HTTP_ETAG_MAX_LEN] = {0};
+static char agenda_cal_etag[HTTP_ETAG_MAX_LEN] = {0};
+static char agenda_cal_etag2[HTTP_ETAG_MAX_LEN] = {0};
+static uint8_t agenda_cal_days = AGENDA_CAL_DAYS_DEFAULT;
+static agenda_cal_layout_mode_t agenda_cal_layout_mode = AGENDA_CAL_LAYOUT_LIST;
+static agenda_shift_model_t agenda_shift_model = AGENDA_SHIFT_MODEL_NONE;
+static char agenda_shift_start[AGENDA_SHIFT_START_MAX_LEN] = {0};
+static uint8_t agenda_color_profile_active = 0;
+static char agenda_cron_rules_store[MAX_CRON_RULES][CRON_RULE_MAX_LEN] = {{0}};
+static int agenda_cron_rule_count = 0;
+// Memoizes config_manager_get_compiled_agenda_cron_rules()'s cron_parse()
+// pass - main.c's agenda-wake decision and power_manager.c's next-wake-time
+// calculation both call it independently within the same wake cycle, which
+// otherwise re-parses the same tiny rule strings twice for no reason.
+// -1 means "stale, recompute on next call"; invalidated by both places that
+// can change agenda_cron_rules_store (agenda_cron_load_from_joined() and
+// config_manager_set_agenda_cron_rules() below).
+static cron_rule_t agenda_cron_compiled[MAX_CRON_RULES];
+static int agenda_cron_compiled_count = -1;
+
+// Alarm clock schedule - only present in a FEATURE_ALARMCLOCK build
+// (main/Kconfig, `build.py --alarmclock`). Every public
+// config_manager_*_alarm_* function below has a stub in the #else branch
+// (empty schedule / no-op setter / default duration) so callers in main.c,
+// power_manager.c, http_server.c, and utils.c never need their own #ifdef -
+// same convention as board_hal_has_speaker() on boards without a speaker.
+#if FORK_ANY
+static char alarm_cron_rules_store[MAX_CRON_RULES][CRON_RULE_MAX_LEN] = {{0}};
+static int alarm_cron_rule_count = 0;
+static cron_rule_t alarm_cron_compiled[MAX_CRON_RULES];
+static int alarm_cron_compiled_count = -1;
+static uint16_t alarm_ring_duration_sec = ALARM_RING_DURATION_DEFAULT_SEC;
+static int alarm_volume = ALARM_VOLUME_DEFAULT;
+static int alarm_ramp_sec = ALARM_RAMP_DEFAULT_SEC;
+static int alarm_tune = 0;
+#endif
+
+static bool agenda_stack_layout = AGENDA_STACK_DEFAULT;
+static char agenda_pri_a_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_PRI_A_DEFAULT;
+static char agenda_pri_b_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_PRI_B_DEFAULT;
+static char agenda_pri_c_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_PRI_C_DEFAULT;
+static char agenda_pri_d_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_PRI_D_DEFAULT;
+static char agenda_due_overdue_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_DUE_OD_DEFAULT;
+static char agenda_due_today_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_DUE_TDY_DEFAULT;
+static char agenda_due_later_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_DUE_LTR_DEFAULT;
+static char agenda_project_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_PROJ_C_DEFAULT;
+static char agenda_context_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_CTX_C_DEFAULT;
+// Three extra ICS sources, no auto-refresh - see NVS_AGENDA_CAL_C_URL_KEY
+// etc. in config.h.
+static bool agenda_cal_c_enabled = false;
+static bool agenda_cal_d_enabled = false;
+static bool agenda_cal_e_enabled = false;
+static char agenda_cal_c_url[AGENDA_CAL_C_URL_MAX_LEN] = {0};
+static char agenda_cal_d_url[AGENDA_CAL_D_URL_MAX_LEN] = {0};
+static char agenda_cal_e_url[AGENDA_CAL_E_URL_MAX_LEN] = {0};
+static char agenda_cal_c_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
+static char agenda_cal_d_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
+static char agenda_cal_e_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
+
+// OTA
+static bool ota_check_enabled = true;
+
+#endif
 // AI API Keys
 static char openai_api_key[AI_API_KEY_MAX_LEN] = {0};
 static char google_api_key[AI_API_KEY_MAX_LEN] = {0};
@@ -68,6 +218,34 @@ static bool debug_log_enabled = false;
 // Config sync
 static int64_t config_last_updated = 0;
 
+#if FORK_ANY
+// Chimes (speaker feedback) - off by default across the board, see config.h.
+static chime_speaker_mode_t chime_speaker_mode = CHIME_SPEAKER_OFF;
+static bool chime_quiet_enabled = false;
+static char chime_quiet_start[CHIME_TIME_STR_MAX_LEN] = CHIME_DEFAULT_QUIET_START;
+static char chime_quiet_end[CHIME_TIME_STR_MAX_LEN] = CHIME_DEFAULT_QUIET_END;
+static bool chime_event_enabled[CHIME_EVENT_COUNT] = {
+    [CHIME_EVENT_ROTATION] = false,      [CHIME_EVENT_TELEGRAM_PHOTO] = false,
+    [CHIME_EVENT_LOW_BATTERY] = true,    [CHIME_EVENT_WIFI_REPROVISION] = true,
+    [CHIME_EVENT_AGENDA_DUE] = false,    [CHIME_EVENT_OTA_SUCCESS] = true,
+    [CHIME_EVENT_CRITICAL_ERROR] = true,
+};
+static int chime_volume = CHIME_DEFAULT_VOLUME_PERCENT;
+static int chime_repeat_count[CHIME_EVENT_COUNT] = {0};
+
+// Climate (SHTC3) - logging on by default (no visual clutter), the overlay
+// badge and Agenda-header readout off by default, see config.h.
+static climate_room_type_t climate_room_type = CLIMATE_ROOM_LIVING_ROOM;
+static climate_temp_unit_t climate_temp_unit = CLIMATE_UNIT_CELSIUS;
+static bool climate_logging_enabled = true;
+static bool climate_history_backup_enabled = true;
+static bool climate_overlay_enabled = false;
+static bool climate_agenda_header_enabled = false;
+static char climate_temp_offset[CLIMATE_OFFSET_MAX_LEN] = "0";
+static char climate_hum_offset[CLIMATE_OFFSET_MAX_LEN] = "0";
+static int64_t climate_last_log_time = 0;
+
+#endif
 // ----------------------------------------------------------------------------
 // Cron schedule helpers
 // ----------------------------------------------------------------------------
@@ -123,6 +301,390 @@ static void cron_persist(void)
     }
 }
 
+#if FORK_ANY
+// ----------------------------------------------------------------------------
+// Shared agenda NVS write helpers - every agenda_*_set_* function (cron
+// schedule included) writes through these three instead of hand-rolling its
+// own open/set/commit/close. Normally each still opens/commits/closes
+// independently (identical behavior to before this existed), but while
+// config_manager_begin_agenda_batch()/_end_agenda_batch() bracket a run of
+// calls (utils.c's apply_config_from_json() does this around the whole
+// agenda field block), they share one already-open handle and defer the
+// commit to the end instead. A single Web UI Agenda settings save can touch
+// on the order of 25 separate fields; without batching that was 25
+// independent flash erase/write cycles for one logical save.
+//
+// apply_config_from_json() (the sole caller of begin/end) has two call
+// sites that run on different FreeRTOS tasks - the httpd task (Web UI
+// PATCH) and the URL-mode rotation task's remote-config-payload handling -
+// which the rest of this project already treats as genuinely concurrent
+// (see main.c's HTTP-server-stays-up-during-rotation comment). Without a
+// lock here, both could open/write through the same shared
+// agenda_nvs_batch_handle at once, and whichever finishes its batch first
+// would close a handle the other is still mid-write on, silently dropping
+// part of that request's save. agenda_nvs_batch_mutex serializes the
+// begin/end window itself (not each individual write) so at most one
+// caller is ever "inside" a batch at a time - the other simply falls back
+// to its own independent per-field open/commit/close for the (rare, brief)
+// duration it has to wait, rather than corrupting shared state.
+// ----------------------------------------------------------------------------
+
+#define AGENDA_BATCH_LOCK_TIMEOUT_MS 5000
+
+static SemaphoreHandle_t agenda_nvs_batch_mutex = NULL;
+static bool agenda_nvs_batching = false;
+static bool agenda_nvs_batch_locked = false;  // true only while this call holds the mutex
+static nvs_handle_t agenda_nvs_batch_handle;
+
+static void agenda_nvs_set_u8(const char *key, uint8_t value)
+{
+    if (agenda_nvs_batching) {
+        nvs_set_u8(agenda_nvs_batch_handle, key, value);
+        return;
+    }
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, key, value);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+static void agenda_nvs_set_u16(const char *key, uint16_t value)
+{
+    if (agenda_nvs_batching) {
+        nvs_set_u16(agenda_nvs_batch_handle, key, value);
+        return;
+    }
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u16(h, key, value);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+static void agenda_nvs_set_str(const char *key, const char *value)
+{
+    if (agenda_nvs_batching) {
+        nvs_set_str(agenda_nvs_batch_handle, key, value);
+        return;
+    }
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_str(h, key, value);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+// Same as agenda_nvs_set_str(), but an empty `value` erases the key instead
+// of storing it - the write-only-credential fields (agenda_cal_url etc.)
+// and the joined cron list use this so clearing the field back to empty
+// actually clears NVS too, rather than persisting a stored empty string.
+static void agenda_nvs_set_str_or_erase(const char *key, const char *value)
+{
+    nvs_handle_t local_h;
+    nvs_handle_t h = agenda_nvs_batching ? agenda_nvs_batch_handle : 0;
+    if (!agenda_nvs_batching) {
+        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &local_h) != ESP_OK) {
+            return;
+        }
+        h = local_h;
+    }
+    if (value[0] != '\0') {
+        nvs_set_str(h, key, value);
+    } else {
+        nvs_erase_key(h, key);
+    }
+    if (!agenda_nvs_batching) {
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+void config_manager_begin_agenda_batch(void)
+{
+    if (!agenda_nvs_batch_mutex) {
+        return;  // mutex not initialized (shouldn't happen) - callers fall
+                 // back to their own independent open/commit/close, same as
+                 // a timed-out lock below
+    }
+    if (xSemaphoreTake(agenda_nvs_batch_mutex, pdMS_TO_TICKS(AGENDA_BATCH_LOCK_TIMEOUT_MS)) !=
+        pdTRUE) {
+        // Another task is mid-batch and didn't finish in time - rather than
+        // block indefinitely (or worse, proceed and corrupt the other
+        // task's in-progress batch), skip batching for this call entirely;
+        // every agenda_nvs_set_* helper below already handles
+        // agenda_nvs_batching == false by opening/committing/closing on
+        // its own.
+        ESP_LOGW(TAG, "Agenda config batch: lock timed out, saving unbatched");
+        return;
+    }
+    agenda_nvs_batch_locked = true;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &agenda_nvs_batch_handle) == ESP_OK) {
+        agenda_nvs_batching = true;
+    } else {
+        xSemaphoreGive(agenda_nvs_batch_mutex);
+        agenda_nvs_batch_locked = false;
+    }
+}
+
+void config_manager_end_agenda_batch(void)
+{
+    if (agenda_nvs_batching) {
+        nvs_commit(agenda_nvs_batch_handle);
+        nvs_close(agenda_nvs_batch_handle);
+        agenda_nvs_batching = false;
+    }
+    if (agenda_nvs_batch_locked) {
+        xSemaphoreGive(agenda_nvs_batch_mutex);
+        agenda_nvs_batch_locked = false;
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Agenda cron schedule helpers - independent second schedule (ToDo/Calendar
+// full-screen mode), same '\n'-joined NVS encoding as the rotate schedule
+// above, just its own store/key so the two never interfere.
+// ----------------------------------------------------------------------------
+
+static void agenda_cron_load_from_joined(const char *joined)
+{
+    agenda_cron_rule_count = 0;
+    agenda_cron_compiled_count = -1;  // rule strings changed - stale compiled cache
+    if (!joined) {
+        return;
+    }
+    const char *p = joined;
+    while (*p && agenda_cron_rule_count < MAX_CRON_RULES) {
+        const char *nl = strchr(p, '\n');
+        size_t len = nl ? (size_t) (nl - p) : strlen(p);
+        if (len > 0 && len < CRON_RULE_MAX_LEN) {
+            memcpy(agenda_cron_rules_store[agenda_cron_rule_count], p, len);
+            agenda_cron_rules_store[agenda_cron_rule_count][len] = '\0';
+            agenda_cron_rule_count++;
+        }
+        if (!nl) {
+            break;
+        }
+        p = nl + 1;
+    }
+}
+
+// Shared by the 11 agenda per-role color loads in config_manager_init() below
+// - each is a plain string field with the exact same "load or fall back to
+// this role's hardcoded default" shape, so one helper replaces 11 near-
+// identical nvs_get_str()+strncpy() blocks.
+static void agenda_role_color_load(nvs_handle_t handle, const char *key, char *buf, size_t buf_size,
+                                   const char *default_val)
+{
+    size_t len = buf_size;
+    if (nvs_get_str(handle, key, buf, &len) != ESP_OK) {
+        strncpy(buf, default_val, buf_size - 1);
+        buf[buf_size - 1] = '\0';
+    }
+}
+
+static void agenda_cron_persist(void)
+{
+    char joined[MAX_CRON_RULES * CRON_RULE_MAX_LEN];
+    joined[0] = '\0';
+    size_t off = 0;
+    for (int i = 0; i < agenda_cron_rule_count; i++) {
+        int n = snprintf(joined + off, sizeof(joined) - off, "%s%s", i ? "\n" : "",
+                         agenda_cron_rules_store[i]);
+        if (n < 0 || (size_t) n >= sizeof(joined) - off) {
+            break;
+        }
+        off += n;
+    }
+
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_CRON_KEY, joined);
+}
+
+// ----------------------------------------------------------------------------
+// Alarm clock cron schedule helpers - independent third schedule, identical
+// '\n'-joined NVS encoding to the rotate/agenda schedules above. No seeded
+// default (see config.h's own comment on NVS_ALARM_CRON_KEY) - an empty
+// schedule on a fresh device just means no alarm is set.
+// ----------------------------------------------------------------------------
+
+static void alarm_cron_load_from_joined(const char *joined)
+{
+    alarm_cron_rule_count = 0;
+    alarm_cron_compiled_count = -1;  // rule strings changed - stale compiled cache
+    if (!joined) {
+        return;
+    }
+    const char *p = joined;
+    while (*p && alarm_cron_rule_count < MAX_CRON_RULES) {
+        const char *nl = strchr(p, '\n');
+        size_t len = nl ? (size_t) (nl - p) : strlen(p);
+        if (len > 0 && len < CRON_RULE_MAX_LEN) {
+            memcpy(alarm_cron_rules_store[alarm_cron_rule_count], p, len);
+            alarm_cron_rules_store[alarm_cron_rule_count][len] = '\0';
+            alarm_cron_rule_count++;
+        }
+        if (!nl) {
+            break;
+        }
+        p = nl + 1;
+    }
+}
+
+static void alarm_cron_persist(void)
+{
+    char joined[MAX_CRON_RULES * CRON_RULE_MAX_LEN];
+    joined[0] = '\0';
+    size_t off = 0;
+    for (int i = 0; i < alarm_cron_rule_count; i++) {
+        int n = snprintf(joined + off, sizeof(joined) - off, "%s%s", i ? "\n" : "",
+                         alarm_cron_rules_store[i]);
+        if (n < 0 || (size_t) n >= sizeof(joined) - off) {
+            break;
+        }
+        off += n;
+    }
+
+    agenda_nvs_set_str_or_erase(NVS_ALARM_CRON_KEY, joined);
+}
+
+// ----------------------------------------------------------------------------
+// Telegram pending-image list helpers (queue of images waiting for an
+// orientation-pairing partner). Joined-string NVS encoding mirrors the cron
+// helpers above: 0x1F separates path/caption within an entry, 0x1E separates
+// entries. Those control bytes can't appear in normal text, so no escaping is
+// needed even though captions may contain arbitrary UTF-8/newlines.
+// ----------------------------------------------------------------------------
+
+#define TELEGRAM_PENDING_JOINED_MAX \
+    (TELEGRAM_MAX_PENDING_IMAGES *  \
+     (sizeof(((telegram_pending_image_t *) 0)->path) + TELEGRAM_CAPTION_MAX_LEN + 2))
+
+static void telegram_pending_persist(void)
+{
+    // static, not a stack local: this project's main task stack is only
+    // 6144 bytes and this buffer (TELEGRAM_MAX_PENDING_IMAGES * ~450 bytes)
+    // is called from deep within the Telegram poll's call chain, where
+    // stack headroom is already tight. config_manager runs single-threaded
+    // (main task only), so a static buffer here is safe.
+    static char joined[TELEGRAM_PENDING_JOINED_MAX];
+    size_t off = 0;
+    joined[0] = '\0';
+    for (int i = 0; i < telegram_pending_image_count; i++) {
+        int n = snprintf(joined + off, sizeof(joined) - off, "%s\x1F%s\x1E",
+                         telegram_pending_images[i].path, telegram_pending_images[i].caption);
+        if (n < 0 || (size_t) n >= sizeof(joined) - off) {
+            break;
+        }
+        off += (size_t) n;
+    }
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        if (telegram_pending_image_count > 0) {
+            nvs_set_str(nvs_handle, NVS_TELEGRAM_PENDING_LIST_KEY, joined);
+        } else {
+            nvs_erase_key(nvs_handle, NVS_TELEGRAM_PENDING_LIST_KEY);
+        }
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+static void telegram_pending_load_from_joined(const char *joined)
+{
+    telegram_pending_image_count = 0;
+    if (!joined) {
+        return;
+    }
+    const char *p = joined;
+    while (*p != '\0' && telegram_pending_image_count < TELEGRAM_MAX_PENDING_IMAGES) {
+        const char *rec_end = strchr(p, '\x1E');
+        size_t rec_len = rec_end ? (size_t) (rec_end - p) : strlen(p);
+        const char *sep = memchr(p, '\x1F', rec_len);
+        if (sep) {
+            telegram_pending_image_t *e = &telegram_pending_images[telegram_pending_image_count];
+            size_t path_len = (size_t) (sep - p);
+            if (path_len >= sizeof(e->path)) {
+                path_len = sizeof(e->path) - 1;
+            }
+            memcpy(e->path, p, path_len);
+            e->path[path_len] = '\0';
+
+            size_t cap_len = rec_len - (size_t) (sep - p) - 1;
+            if (cap_len >= sizeof(e->caption)) {
+                cap_len = sizeof(e->caption) - 1;
+            }
+            memcpy(e->caption, sep + 1, cap_len);
+            e->caption[cap_len] = '\0';
+
+            telegram_pending_image_count++;
+        }
+        if (!rec_end) {
+            break;
+        }
+        p = rec_end + 1;
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Telegram duplicate-detection: a small FIFO of recently seen
+// "file_unique_id" values. Newline-joined NVS encoding, like the cron rules
+// above - unique ids are plain alphanumeric (Telegram's own format), so no
+// separator collision is possible.
+// ----------------------------------------------------------------------------
+
+static void telegram_seen_ids_persist(void)
+{
+    static char joined[TELEGRAM_DEDUP_MAX_ENTRIES * (TELEGRAM_UNIQUE_ID_MAX_LEN + 1)];
+    size_t off = 0;
+    joined[0] = '\0';
+    for (int i = 0; i < telegram_seen_id_count; i++) {
+        int n = snprintf(joined + off, sizeof(joined) - off, "%s%s", i ? "\n" : "",
+                         telegram_seen_unique_ids[i]);
+        if (n < 0 || (size_t) n >= sizeof(joined) - off) {
+            break;
+        }
+        off += (size_t) n;
+    }
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        if (telegram_seen_id_count > 0) {
+            nvs_set_str(nvs_handle, NVS_TELEGRAM_SEEN_IDS_KEY, joined);
+        } else {
+            nvs_erase_key(nvs_handle, NVS_TELEGRAM_SEEN_IDS_KEY);
+        }
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+static void telegram_seen_ids_load_from_joined(const char *joined)
+{
+    telegram_seen_id_count = 0;
+    if (!joined) {
+        return;
+    }
+    const char *p = joined;
+    while (*p != '\0' && telegram_seen_id_count < TELEGRAM_DEDUP_MAX_ENTRIES) {
+        const char *nl = strchr(p, '\n');
+        size_t len = nl ? (size_t) (nl - p) : strlen(p);
+        if (len > 0 && len < TELEGRAM_UNIQUE_ID_MAX_LEN) {
+            memcpy(telegram_seen_unique_ids[telegram_seen_id_count], p, len);
+            telegram_seen_unique_ids[telegram_seen_id_count][len] = '\0';
+            telegram_seen_id_count++;
+        }
+        if (!nl) {
+            break;
+        }
+        p = nl + 1;
+    }
+}
+
+#endif
 // Convert a legacy rotation interval (seconds) into a single cron expression.
 // Mirrors the documented best-effort mapping; falls back to hourly.
 static void cron_from_legacy_interval(int seconds, char *out, size_t out_len)
@@ -148,6 +710,16 @@ esp_err_t config_manager_init(void)
 {
     ESP_LOGI(TAG, "Initializing config manager");
 
+#if FORK_ANY
+    // See the comment above config_manager_begin_agenda_batch()'s
+    // definition - serializes the two concurrent-task call sites of
+    // apply_config_from_json()'s agenda batch window.
+    agenda_nvs_batch_mutex = xSemaphoreCreateMutex();
+    if (!agenda_nvs_batch_mutex) {
+        ESP_LOGW(TAG, "Failed to create agenda NVS batch mutex - agenda saves will be unbatched");
+    }
+
+#endif
     // Rotation-schedule load is resolved after the read-only NVS handle closes
     // (migration / default seeding may need a read-write handle).
     char cron_buf[MAX_CRON_RULES * CRON_RULE_MAX_LEN] = {0};
@@ -373,6 +945,496 @@ esp_err_t config_manager_init(void)
             ESP_LOGI(TAG, "No HA URL in NVS, using default (empty)");
         }
 
+#if FORK_ANY
+        uint8_t stored_ha_enabled;
+        if (nvs_get_u8(nvs_handle, NVS_HA_ENABLED_KEY, &stored_ha_enabled) == ESP_OK) {
+            ha_enabled = (stored_ha_enabled != 0);
+        } else {
+            // No explicit setting yet: preserve pre-existing behavior for a
+            // device that already had an HA URL configured before this
+            // switch existed; fresh/factory-reset devices default to off.
+            ha_enabled = (ha_url[0] != '\0');
+        }
+        ESP_LOGI(TAG, "Home Assistant integration: %s", ha_enabled ? "enabled" : "disabled");
+
+        // Telegram Bot
+        size_t tg_token_len = TELEGRAM_BOT_TOKEN_MAX_LEN;
+        if (nvs_get_str(nvs_handle, NVS_TELEGRAM_BOT_TOKEN_KEY, telegram_bot_token,
+                        &tg_token_len) == ESP_OK) {
+            ESP_LOGI(TAG, "Loaded Telegram bot token from NVS (length: %zu)", tg_token_len);
+        }
+
+        size_t tg_chat_id_len = TELEGRAM_CHAT_ID_MAX_LEN;
+        if (nvs_get_str(nvs_handle, NVS_TELEGRAM_CHAT_ID_KEY, telegram_chat_id, &tg_chat_id_len) ==
+            ESP_OK) {
+            ESP_LOGI(TAG, "Loaded Telegram chat ID from NVS (length: %zu)", tg_chat_id_len);
+        }
+
+        if (nvs_get_i64(nvs_handle, NVS_TELEGRAM_LAST_UPDATE_ID_KEY, &telegram_last_update_id) ==
+            ESP_OK) {
+            ESP_LOGI(TAG, "Loaded Telegram last update_id from NVS: %lld",
+                     (long long) telegram_last_update_id);
+        }
+
+        uint8_t stored_pairing = 1;  // Default to enabled
+        if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_PAIRING_KEY, &stored_pairing) == ESP_OK) {
+            telegram_pairing_enabled = (stored_pairing != 0);
+        }
+        ESP_LOGI(TAG, "Telegram orientation pairing: %s",
+                 telegram_pairing_enabled ? "enabled" : "disabled");
+
+        uint8_t stored_low_batt_warned = 0;
+        if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_LOW_BATT_WARNED_KEY, &stored_low_batt_warned) ==
+            ESP_OK) {
+            telegram_low_battery_warned = (stored_low_batt_warned != 0);
+        }
+
+        uint8_t stored_wake_notify = 0;
+        if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_WAKE_NOTIFY_KEY, &stored_wake_notify) == ESP_OK) {
+            telegram_wake_notify_enabled = (stored_wake_notify != 0);
+        }
+
+        uint8_t stored_error_overlay = 0;
+        if (nvs_get_u8(nvs_handle, NVS_ERROR_OVERLAY_ENABLED_KEY, &stored_error_overlay) ==
+            ESP_OK) {
+            error_overlay_enabled = (stored_error_overlay != 0);
+        }
+
+        int32_t stored_wifi_fail_count = 0;
+        if (nvs_get_i32(nvs_handle, NVS_WIFI_FAIL_COUNT_KEY, &stored_wifi_fail_count) == ESP_OK) {
+            wifi_fail_count = (int) stored_wifi_fail_count;
+        }
+
+        uint8_t stored_wifi_perf = 1;  // Default to enabled (existing tiered behavior)
+        if (nvs_get_u8(nvs_handle, NVS_WIFI_PERF_MODE_ENABLED_KEY, &stored_wifi_perf) == ESP_OK) {
+            wifi_performance_mode_enabled = (stored_wifi_perf != 0);
+        }
+
+        uint8_t stored_tx_power_cap = 1;  // Default to enabled
+        if (nvs_get_u8(nvs_handle, NVS_WIFI_TX_POWER_CAP_ENABLED_KEY, &stored_tx_power_cap) ==
+            ESP_OK) {
+            wifi_tx_power_cap_enabled = (stored_tx_power_cap != 0);
+        }
+
+        uint8_t stored_wifi_ext_retry = 0;  // Default to disabled - see config.h
+        if (nvs_get_u8(nvs_handle, NVS_WIFI_EXT_RETRY_ENABLED_KEY, &stored_wifi_ext_retry) ==
+            ESP_OK) {
+            wifi_extended_retry_enabled = (stored_wifi_ext_retry != 0);
+        }
+
+        int32_t stored_wifi_cb_fail = 0;
+        if (nvs_get_i32(nvs_handle, NVS_WIFI_COLDBOOT_FAIL_COUNT_KEY, &stored_wifi_cb_fail) ==
+            ESP_OK) {
+            wifi_coldboot_fail_count = (int) stored_wifi_cb_fail;
+        }
+
+        uint8_t stored_wifi_reprov = 1;  // Default to enabled - see config.h
+        if (nvs_get_u8(nvs_handle, NVS_WIFI_REPROV_ON_FAIL_KEY, &stored_wifi_reprov) == ESP_OK) {
+            wifi_reprovision_on_fail_enabled = (stored_wifi_reprov != 0);
+        }
+
+        uint8_t stored_offline_mode = 0;
+        if (nvs_get_u8(nvs_handle, NVS_OFFLINE_MODE_KEY, &stored_offline_mode) == ESP_OK) {
+            offline_mode_enabled = (stored_offline_mode != 0);
+        }
+
+        uint8_t stored_https = 0;
+        if (nvs_get_u8(nvs_handle, NVS_HTTPS_ENABLED_KEY, &stored_https) == ESP_OK) {
+            https_enabled = (stored_https != 0);
+        }
+
+        uint8_t stored_rotation_pairing = 0;
+        if (nvs_get_u8(nvs_handle, NVS_ROTATION_PAIRING_ENABLED_KEY, &stored_rotation_pairing) ==
+            ESP_OK) {
+            rotation_pairing_enabled = (stored_rotation_pairing != 0);
+        }
+
+        uint8_t stored_variant_selection = 0;
+        if (nvs_get_u8(nvs_handle, NVS_VARIANT_SELECTION_ENABLED_KEY, &stored_variant_selection) ==
+            ESP_OK) {
+            variant_selection_enabled = (stored_variant_selection != 0);
+        }
+
+        uint8_t stored_rotation_notify = 0;
+        if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_ROTATION_NOTIFY_KEY, &stored_rotation_notify) ==
+            ESP_OK) {
+            telegram_rotation_notify_enabled = (stored_rotation_notify != 0);
+        }
+
+        uint8_t stored_fallback_rotation = 1;  // Default to enabled (preserves existing behavior)
+        if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_FALLBACK_ROTATION_ENABLED_KEY,
+                       &stored_fallback_rotation) == ESP_OK) {
+            telegram_fallback_rotation_enabled = (stored_fallback_rotation != 0);
+        }
+
+        uint8_t stored_fallback_on_error = 1;  // Default to enabled (preserves existing behavior)
+        if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_FALLBACK_ON_ERROR_ENABLED_KEY,
+                       &stored_fallback_on_error) == ESP_OK) {
+            telegram_fallback_on_error_enabled = (stored_fallback_on_error != 0);
+        }
+
+        uint8_t stored_power_save = 0;
+        if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_POWER_SAVE_ENABLED_KEY, &stored_power_save) ==
+            ESP_OK) {
+            telegram_power_save_enabled = (stored_power_save != 0);
+        }
+
+        uint8_t stored_power_save_latest = 0;
+        if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_POWER_SAVE_LATEST_ONLY_KEY,
+                       &stored_power_save_latest) == ESP_OK) {
+            telegram_power_save_latest_only = (stored_power_save_latest != 0);
+        }
+
+        uint8_t stored_keep_originals = 0;
+        if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_KEEP_ORIGINALS_KEY, &stored_keep_originals) ==
+            ESP_OK) {
+            telegram_keep_originals_enabled = (stored_keep_originals != 0);
+        }
+
+        uint8_t stored_dedup = 0;
+        if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_DEDUP_ENABLED_KEY, &stored_dedup) == ESP_OK) {
+            telegram_dedup_enabled = (stored_dedup != 0);
+        }
+
+        char stored_image_format[TELEGRAM_IMAGE_FORMAT_MAX_LEN] = {0};
+        size_t telegram_image_format_len = sizeof(stored_image_format);
+        if (nvs_get_str(nvs_handle, NVS_TELEGRAM_IMAGE_FORMAT_KEY, stored_image_format,
+                        &telegram_image_format_len) == ESP_OK &&
+            (strcmp(stored_image_format, TELEGRAM_IMAGE_FORMAT_PNG) == 0 ||
+             strcmp(stored_image_format, TELEGRAM_IMAGE_FORMAT_EPDGZ) == 0)) {
+            strncpy(telegram_image_format, stored_image_format, sizeof(telegram_image_format) - 1);
+        }
+
+        uint8_t stored_weather_overlay = 0;
+        if (nvs_get_u8(nvs_handle, NVS_WEATHER_OVERLAY_ENABLED_KEY, &stored_weather_overlay) ==
+            ESP_OK) {
+            weather_overlay_enabled = (stored_weather_overlay != 0);
+        }
+        size_t weather_loc_len = sizeof(weather_location_name);
+        nvs_get_str(nvs_handle, NVS_WEATHER_LOCATION_NAME_KEY, weather_location_name,
+                    &weather_loc_len);
+        size_t weather_lat_len = sizeof(weather_lat);
+        nvs_get_str(nvs_handle, NVS_WEATHER_LAT_KEY, weather_lat, &weather_lat_len);
+        size_t weather_lon_len = sizeof(weather_lon);
+        nvs_get_str(nvs_handle, NVS_WEATHER_LON_KEY, weather_lon, &weather_lon_len);
+        size_t weather_geo_len = sizeof(weather_geocoded_name);
+        nvs_get_str(nvs_handle, NVS_WEATHER_GEOCODED_NAME_KEY, weather_geocoded_name,
+                    &weather_geo_len);
+        char stored_provider[WEATHER_PROVIDER_MAX_LEN] = {0};
+        size_t weather_provider_len = sizeof(stored_provider);
+        if (nvs_get_str(nvs_handle, NVS_WEATHER_PROVIDER_KEY, stored_provider,
+                        &weather_provider_len) == ESP_OK &&
+            (strcmp(stored_provider, WEATHER_PROVIDER_OPEN_METEO) == 0 ||
+             strcmp(stored_provider, WEATHER_PROVIDER_WTTR_IN) == 0 ||
+             strcmp(stored_provider, WEATHER_PROVIDER_YR_NO) == 0)) {
+            strncpy(weather_provider, stored_provider, sizeof(weather_provider) - 1);
+        }
+        size_t weather_last_source_len = sizeof(weather_last_source);
+        nvs_get_str(nvs_handle, NVS_WEATHER_LAST_SOURCE_KEY, weather_last_source,
+                    &weather_last_source_len);
+
+        uint8_t stored_headlines_overlay = 0;
+        if (nvs_get_u8(nvs_handle, NVS_HEADLINES_OVERLAY_ENABLED_KEY, &stored_headlines_overlay) ==
+            ESP_OK) {
+            headlines_overlay_enabled = (stored_headlines_overlay != 0);
+        }
+        size_t headlines_url_len = sizeof(headlines_rss_url);
+        nvs_get_str(nvs_handle, NVS_HEADLINES_RSS_URL_KEY, headlines_rss_url, &headlines_url_len);
+        uint8_t stored_headlines_count = HEADLINES_COUNT_DEFAULT;
+        if (nvs_get_u8(nvs_handle, NVS_HEADLINES_COUNT_KEY, &stored_headlines_count) == ESP_OK &&
+            stored_headlines_count >= HEADLINES_COUNT_MIN &&
+            stored_headlines_count <= HEADLINES_COUNT_MAX) {
+            headlines_count = stored_headlines_count;
+        }
+        uint8_t stored_wrap_lines = HEADLINES_WRAP_LINES_DEFAULT;
+        if (nvs_get_u8(nvs_handle, NVS_HEADLINES_WRAP_LINES_KEY, &stored_wrap_lines) == ESP_OK &&
+            stored_wrap_lines >= HEADLINES_WRAP_LINES_MIN &&
+            stored_wrap_lines <= HEADLINES_WRAP_LINES_MAX) {
+            headlines_wrap_lines = stored_wrap_lines;
+        }
+
+        uint8_t stored_overlay_invert = 0;
+        if (nvs_get_u8(nvs_handle, NVS_OVERLAY_INVERT_COLORS_KEY, &stored_overlay_invert) ==
+            ESP_OK) {
+            overlay_invert_colors = (stored_overlay_invert != 0);
+        }
+        uint8_t stored_overlay_epdgz = 0;
+        if (nvs_get_u8(nvs_handle, NVS_OVERLAY_EPDGZ_ENABLED_KEY, &stored_overlay_epdgz) ==
+            ESP_OK) {
+            overlay_epdgz_enabled = (stored_overlay_epdgz != 0);
+        }
+        size_t overlay_lang_len = sizeof(overlay_language);
+        if (nvs_get_str(nvs_handle, NVS_OVERLAY_LANGUAGE_KEY, overlay_language,
+                        &overlay_lang_len) != ESP_OK) {
+            strncpy(overlay_language, OVERLAY_LANGUAGE_DEFAULT, sizeof(overlay_language) - 1);
+            overlay_language[sizeof(overlay_language) - 1] = '\0';
+        }
+        uint8_t stored_caption_invert = 0;
+        if (nvs_get_u8(nvs_handle, NVS_CAPTION_INVERT_COLORS_KEY, &stored_caption_invert) ==
+            ESP_OK) {
+            caption_invert_colors_enabled = (stored_caption_invert != 0);
+        }
+        uint8_t stored_weather_multiline = 0;
+        if (nvs_get_u8(nvs_handle, NVS_WEATHER_MULTILINE_KEY, &stored_weather_multiline) ==
+            ESP_OK) {
+            weather_multiline_enabled = (stored_weather_multiline != 0);
+        }
+        size_t weather_icon_set_len = sizeof(weather_icon_set);
+        if (nvs_get_str(nvs_handle, NVS_WEATHER_ICON_SET_KEY, weather_icon_set,
+                        &weather_icon_set_len) != ESP_OK) {
+            strncpy(weather_icon_set, WEATHER_ICON_SET_DEFAULT, sizeof(weather_icon_set) - 1);
+            weather_icon_set[sizeof(weather_icon_set) - 1] = '\0';
+        }
+        uint8_t stored_weather_icon_colored = 0;
+        if (nvs_get_u8(nvs_handle, NVS_WEATHER_ICON_COLORED_KEY, &stored_weather_icon_colored) ==
+            ESP_OK) {
+            weather_icon_colored = (stored_weather_icon_colored != 0);
+        }
+        uint8_t stored_show_exif_datetime = 0;
+        if (nvs_get_u8(nvs_handle, NVS_SHOW_EXIF_DATETIME_KEY, &stored_show_exif_datetime) ==
+            ESP_OK) {
+            show_exif_datetime_enabled = (stored_show_exif_datetime != 0);
+        }
+        uint8_t stored_low_batt_overlay = 0;
+        if (nvs_get_u8(nvs_handle, NVS_LOW_BATTERY_OVERLAY_ENABLED_KEY, &stored_low_batt_overlay) ==
+            ESP_OK) {
+            low_battery_overlay_enabled = (stored_low_batt_overlay != 0);
+        }
+        uint8_t stored_low_batt_threshold = LOW_BATTERY_OVERLAY_THRESHOLD_DEFAULT;
+        if (nvs_get_u8(nvs_handle, NVS_LOW_BATTERY_OVERLAY_THRESHOLD_KEY,
+                       &stored_low_batt_threshold) == ESP_OK &&
+            stored_low_batt_threshold >= LOW_BATTERY_OVERLAY_THRESHOLD_MIN &&
+            stored_low_batt_threshold <= LOW_BATTERY_OVERLAY_THRESHOLD_MAX) {
+            low_battery_overlay_threshold = stored_low_batt_threshold;
+        }
+        uint8_t stored_batt_hist_backup = 0;
+        if (nvs_get_u8(nvs_handle, NVS_BATTERY_HISTORY_BACKUP_KEY, &stored_batt_hist_backup) ==
+            ESP_OK) {
+            battery_history_backup_enabled = (stored_batt_hist_backup != 0);
+        }
+        uint8_t stored_low_batt_overlay_active = 0;
+        if (nvs_get_u8(nvs_handle, NVS_LOW_BATTERY_OVERLAY_ACTIVE_KEY,
+                       &stored_low_batt_overlay_active) == ESP_OK) {
+            low_battery_overlay_active = (stored_low_batt_overlay_active != 0);
+        }
+
+        uint8_t stored_agenda_todo_en = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_TODO_ENABLED_KEY, &stored_agenda_todo_en) == ESP_OK) {
+            agenda_todo_enabled = (stored_agenda_todo_en != 0);
+        }
+        uint8_t stored_agenda_cal_en = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_ENABLED_KEY, &stored_agenda_cal_en) == ESP_OK) {
+            agenda_cal_enabled = (stored_agenda_cal_en != 0);
+        }
+        uint8_t stored_agenda_cal_wthr = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_WEATHER_KEY, &stored_agenda_cal_wthr) == ESP_OK) {
+            agenda_cal_weather_enabled = (stored_agenda_cal_wthr != 0);
+        }
+        uint8_t stored_agenda_cal_wal = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_WTHR_ALIGN_KEY, &stored_agenda_cal_wal) ==
+            ESP_OK) {
+            agenda_cal_weather_right_aligned = (stored_agenda_cal_wal != 0);
+        }
+        uint8_t stored_agenda_cal_cpt = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_COMPACT_KEY, &stored_agenda_cal_cpt) == ESP_OK) {
+            agenda_cal_multiday_mode = (stored_agenda_cal_cpt <= AGENDA_MULTIDAY_REPEAT_NUMBERED)
+                                           ? (agenda_multiday_mode_t) stored_agenda_cal_cpt
+                                           : AGENDA_MULTIDAY_REPEAT;
+        }
+        uint8_t stored_agenda_cal_dur = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_SHOW_DURATION_KEY, &stored_agenda_cal_dur) ==
+            ESP_OK) {
+            agenda_cal_time_display_mode = (stored_agenda_cal_dur <= AGENDA_TIME_DISPLAY_RANGE)
+                                               ? (agenda_time_display_mode_t) stored_agenda_cal_dur
+                                               : AGENDA_TIME_DISPLAY_OFF;
+        }
+        size_t agenda_cal_name_len = sizeof(agenda_cal_name);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_NAME_KEY, agenda_cal_name, &agenda_cal_name_len);
+        size_t agenda_cal_name2_len = sizeof(agenda_cal_name2);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_NAME2_KEY, agenda_cal_name2, &agenda_cal_name2_len);
+        size_t agenda_todo_url_len = sizeof(agenda_todo_url);
+        nvs_get_str(nvs_handle, NVS_AGENDA_TODO_URL_KEY, agenda_todo_url, &agenda_todo_url_len);
+        size_t agenda_cal_url_len = sizeof(agenda_cal_url);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_URL_KEY, agenda_cal_url, &agenda_cal_url_len);
+        size_t agenda_cal_url2_len = sizeof(agenda_cal_url2);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_URL2_KEY, agenda_cal_url2, &agenda_cal_url2_len);
+        uint8_t stored_agenda_cal_c_en = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_C_ENABLED_KEY, &stored_agenda_cal_c_en) ==
+            ESP_OK) {
+            agenda_cal_c_enabled = (stored_agenda_cal_c_en != 0);
+        }
+        uint8_t stored_agenda_cal_d_en = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_D_ENABLED_KEY, &stored_agenda_cal_d_en) ==
+            ESP_OK) {
+            agenda_cal_d_enabled = (stored_agenda_cal_d_en != 0);
+        }
+        uint8_t stored_agenda_cal_e_en = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_E_ENABLED_KEY, &stored_agenda_cal_e_en) ==
+            ESP_OK) {
+            agenda_cal_e_enabled = (stored_agenda_cal_e_en != 0);
+        }
+        size_t agenda_cal_c_url_len = sizeof(agenda_cal_c_url);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_C_URL_KEY, agenda_cal_c_url, &agenda_cal_c_url_len);
+        size_t agenda_cal_d_url_len = sizeof(agenda_cal_d_url);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_D_URL_KEY, agenda_cal_d_url, &agenda_cal_d_url_len);
+        size_t agenda_cal_e_url_len = sizeof(agenda_cal_e_url);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_E_URL_KEY, agenda_cal_e_url, &agenda_cal_e_url_len);
+        size_t agenda_cal_c_name_len = sizeof(agenda_cal_c_name);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_C_NAME_KEY, agenda_cal_c_name,
+                    &agenda_cal_c_name_len);
+        size_t agenda_cal_d_name_len = sizeof(agenda_cal_d_name);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_D_NAME_KEY, agenda_cal_d_name,
+                    &agenda_cal_d_name_len);
+        size_t agenda_cal_e_name_len = sizeof(agenda_cal_e_name);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_E_NAME_KEY, agenda_cal_e_name,
+                    &agenda_cal_e_name_len);
+        size_t agenda_todo_etag_len = sizeof(agenda_todo_etag);
+        nvs_get_str(nvs_handle, NVS_AGENDA_TODO_ETAG_KEY, agenda_todo_etag, &agenda_todo_etag_len);
+        size_t agenda_cal_etag_len = sizeof(agenda_cal_etag);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_ETAG_KEY, agenda_cal_etag, &agenda_cal_etag_len);
+        size_t agenda_cal_etag2_len = sizeof(agenda_cal_etag2);
+        nvs_get_str(nvs_handle, NVS_AGENDA_CAL_ETAG2_KEY, agenda_cal_etag2, &agenda_cal_etag2_len);
+        uint8_t stored_agenda_cal_days = AGENDA_CAL_DAYS_DEFAULT;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_DAYS_KEY, &stored_agenda_cal_days) == ESP_OK &&
+            stored_agenda_cal_days >= AGENDA_CAL_DAYS_MIN &&
+            stored_agenda_cal_days <= AGENDA_CAL_DAYS_MAX) {
+            agenda_cal_days = stored_agenda_cal_days;
+        }
+        uint8_t stored_agenda_cal_layout = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_LAYOUT_KEY, &stored_agenda_cal_layout) ==
+                ESP_OK &&
+            stored_agenda_cal_layout <= AGENDA_CAL_LAYOUT_GRID_B) {
+            agenda_cal_layout_mode = (agenda_cal_layout_mode_t) stored_agenda_cal_layout;
+        }
+        uint8_t stored_agenda_shift_model = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_SHIFT_MODEL_KEY, &stored_agenda_shift_model) ==
+                ESP_OK &&
+            stored_agenda_shift_model <= AGENDA_SHIFT_MODEL_3_4) {
+            agenda_shift_model = (agenda_shift_model_t) stored_agenda_shift_model;
+        }
+        size_t agenda_shift_start_len = sizeof(agenda_shift_start);
+        nvs_get_str(nvs_handle, NVS_AGENDA_SHIFT_START_KEY, agenda_shift_start,
+                    &agenda_shift_start_len);
+        uint8_t stored_agenda_color_profile_active = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_COLOR_PROFILE_ACTIVE_KEY,
+                       &stored_agenda_color_profile_active) == ESP_OK &&
+            stored_agenda_color_profile_active <= AGENDA_COLOR_PROFILE_SLOTS) {
+            agenda_color_profile_active = stored_agenda_color_profile_active;
+        }
+        {
+            // static: this large a buffer on the main task's stack
+            // (CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144) is unnecessary stack
+            // pressure on top of the pre-existing rotate cron_buf[] above -
+            // same reasoning as pending_buf/seen_ids_buf just below. Ruled
+            // out (not confirmed) as the cause of a separately-investigated
+            // debug_log-task coredump; kept regardless as the correct,
+            // precedent-matching way to declare it.
+            static char agenda_cron_buf[MAX_CRON_RULES * CRON_RULE_MAX_LEN];
+            agenda_cron_buf[0] = '\0';
+            size_t agenda_cron_len = sizeof(agenda_cron_buf);
+            if (nvs_get_str(nvs_handle, NVS_AGENDA_CRON_KEY, agenda_cron_buf, &agenda_cron_len) ==
+                ESP_OK) {
+                agenda_cron_load_from_joined(agenda_cron_buf);
+                ESP_LOGI(TAG, "Loaded %d agenda cron rule(s) from NVS", agenda_cron_rule_count);
+            } else {
+                // Fresh device (or agenda enabled via some path other than
+                // the Web UI, which always saves a schedule alongside the
+                // enable toggles): seed default in memory only, same
+                // "persists on first user save" convention as the rotate
+                // schedule's own seed_default_cron path above - without
+                // this, agenda_manager_is_enabled() would stay permanently
+                // false (it requires a non-empty schedule) even with
+                // ToDo/Calendar enabled, and DEFAULT_AGENDA_CRON would be
+                // dead code.
+                agenda_cron_load_from_joined(DEFAULT_AGENDA_CRON);
+                ESP_LOGI(TAG, "No agenda schedule in NVS, using default: %s", DEFAULT_AGENDA_CRON);
+            }
+        }
+        {
+            static char alarm_cron_buf[MAX_CRON_RULES * CRON_RULE_MAX_LEN];
+            alarm_cron_buf[0] = '\0';
+            size_t alarm_cron_len = sizeof(alarm_cron_buf);
+            if (nvs_get_str(nvs_handle, NVS_ALARM_CRON_KEY, alarm_cron_buf, &alarm_cron_len) ==
+                ESP_OK) {
+                alarm_cron_load_from_joined(alarm_cron_buf);
+                ESP_LOGI(TAG, "Loaded %d alarm cron rule(s) from NVS", alarm_cron_rule_count);
+            }
+            // No default seeded here - see config.h's NVS_ALARM_CRON_KEY comment.
+        }
+        uint16_t stored_alarm_ring_sec = ALARM_RING_DURATION_DEFAULT_SEC;
+        if (nvs_get_u16(nvs_handle, NVS_ALARM_RING_SEC_KEY, &stored_alarm_ring_sec) == ESP_OK &&
+            stored_alarm_ring_sec > 0 && stored_alarm_ring_sec <= ALARM_RING_DURATION_MAX_SEC) {
+            alarm_ring_duration_sec = stored_alarm_ring_sec;
+        }
+        uint8_t stored_alarm_volume = 0;
+        if (nvs_get_u8(nvs_handle, NVS_ALARM_VOLUME_KEY, &stored_alarm_volume) == ESP_OK &&
+            stored_alarm_volume >= ALARM_VOLUME_MIN && stored_alarm_volume <= ALARM_VOLUME_MAX) {
+            alarm_volume = stored_alarm_volume;
+        }
+        uint16_t stored_alarm_ramp = 0;
+        if (nvs_get_u16(nvs_handle, NVS_ALARM_RAMP_SEC_KEY, &stored_alarm_ramp) == ESP_OK &&
+            stored_alarm_ramp <= ALARM_RAMP_MAX_SEC) {
+            alarm_ramp_sec = stored_alarm_ramp;
+        }
+        uint8_t stored_alarm_tune = 0;
+        if (nvs_get_u8(nvs_handle, NVS_ALARM_TUNE_KEY, &stored_alarm_tune) == ESP_OK &&
+            stored_alarm_tune <= ALARM_TUNE_MAX_INDEX) {
+            alarm_tune = stored_alarm_tune;
+        }
+        uint8_t stored_agenda_stack = AGENDA_STACK_DEFAULT ? 1 : 0;
+        if (nvs_get_u8(nvs_handle, NVS_AGENDA_STACK_KEY, &stored_agenda_stack) == ESP_OK) {
+            agenda_stack_layout = (stored_agenda_stack != 0);
+        }
+        agenda_role_color_load(nvs_handle, NVS_AGENDA_PRI_A_KEY, agenda_pri_a_color,
+                               sizeof(agenda_pri_a_color), AGENDA_PRI_A_DEFAULT);
+        agenda_role_color_load(nvs_handle, NVS_AGENDA_PRI_B_KEY, agenda_pri_b_color,
+                               sizeof(agenda_pri_b_color), AGENDA_PRI_B_DEFAULT);
+        agenda_role_color_load(nvs_handle, NVS_AGENDA_PRI_C_KEY, agenda_pri_c_color,
+                               sizeof(agenda_pri_c_color), AGENDA_PRI_C_DEFAULT);
+        agenda_role_color_load(nvs_handle, NVS_AGENDA_PRI_D_KEY, agenda_pri_d_color,
+                               sizeof(agenda_pri_d_color), AGENDA_PRI_D_DEFAULT);
+        agenda_role_color_load(nvs_handle, NVS_AGENDA_DUE_OD_KEY, agenda_due_overdue_color,
+                               sizeof(agenda_due_overdue_color), AGENDA_DUE_OD_DEFAULT);
+        agenda_role_color_load(nvs_handle, NVS_AGENDA_DUE_TDY_KEY, agenda_due_today_color,
+                               sizeof(agenda_due_today_color), AGENDA_DUE_TDY_DEFAULT);
+        agenda_role_color_load(nvs_handle, NVS_AGENDA_DUE_LTR_KEY, agenda_due_later_color,
+                               sizeof(agenda_due_later_color), AGENDA_DUE_LTR_DEFAULT);
+        agenda_role_color_load(nvs_handle, NVS_AGENDA_PROJ_C_KEY, agenda_project_color,
+                               sizeof(agenda_project_color), AGENDA_PROJ_C_DEFAULT);
+        agenda_role_color_load(nvs_handle, NVS_AGENDA_CTX_C_KEY, agenda_context_color,
+                               sizeof(agenda_context_color), AGENDA_CTX_C_DEFAULT);
+
+        {
+            static char pending_buf[TELEGRAM_PENDING_JOINED_MAX];
+            pending_buf[0] = '\0';
+            size_t pending_len = sizeof(pending_buf);
+            if (nvs_get_str(nvs_handle, NVS_TELEGRAM_PENDING_LIST_KEY, pending_buf, &pending_len) ==
+                ESP_OK) {
+                telegram_pending_load_from_joined(pending_buf);
+                ESP_LOGI(TAG, "Loaded %d pending Telegram pair image(s) from NVS",
+                         telegram_pending_image_count);
+            }
+        }
+
+        {
+            static char seen_ids_buf[TELEGRAM_DEDUP_MAX_ENTRIES * (TELEGRAM_UNIQUE_ID_MAX_LEN + 1)];
+            seen_ids_buf[0] = '\0';
+            size_t seen_ids_len = sizeof(seen_ids_buf);
+            if (nvs_get_str(nvs_handle, NVS_TELEGRAM_SEEN_IDS_KEY, seen_ids_buf, &seen_ids_len) ==
+                ESP_OK) {
+                telegram_seen_ids_load_from_joined(seen_ids_buf);
+                ESP_LOGI(TAG, "Loaded %d seen Telegram file_unique_id(s) from NVS",
+                         telegram_seen_id_count);
+            }
+        }
+
+        uint8_t stored_ota_check = 1;  // Default to enabled (unchanged prior behavior)
+        if (nvs_get_u8(nvs_handle, NVS_OTA_CHECK_ENABLED_KEY, &stored_ota_check) == ESP_OK) {
+            ota_check_enabled = (stored_ota_check != 0);
+        }
+        ESP_LOGI(TAG, "Automatic OTA check: %s", ota_check_enabled ? "enabled" : "disabled");
+
+#endif
         // AI API Keys
         size_t openai_key_len = AI_API_KEY_MAX_LEN;
         if (nvs_get_str(nvs_handle, NVS_OPENAI_API_KEY_KEY, openai_api_key, &openai_key_len) ==
@@ -407,6 +1469,95 @@ esp_err_t config_manager_init(void)
             ESP_LOGI(TAG, "Loaded config_last_updated: %lld", (long long) config_last_updated);
         }
 
+#if FORK_ANY
+        // Chimes
+        uint8_t stored_chime_mode = 0;
+        if (nvs_get_u8(nvs_handle, NVS_CHIME_SPEAKER_MODE_KEY, &stored_chime_mode) == ESP_OK) {
+            chime_speaker_mode = (stored_chime_mode <= CHIME_SPEAKER_MAINS_ONLY)
+                                     ? (chime_speaker_mode_t) stored_chime_mode
+                                     : CHIME_SPEAKER_OFF;
+        }
+        uint8_t stored_chime_vol = 0;
+        if (nvs_get_u8(nvs_handle, NVS_CHIME_VOLUME_KEY, &stored_chime_vol) == ESP_OK) {
+            chime_volume = (stored_chime_vol <= 100) ? stored_chime_vol : 100;
+        }
+        uint8_t stored_chime_quiet_en = 0;
+        if (nvs_get_u8(nvs_handle, NVS_CHIME_QUIET_ENABLED_KEY, &stored_chime_quiet_en) == ESP_OK) {
+            chime_quiet_enabled = (stored_chime_quiet_en != 0);
+        }
+        size_t chime_quiet_start_len = sizeof(chime_quiet_start);
+        nvs_get_str(nvs_handle, NVS_CHIME_QUIET_START_KEY, chime_quiet_start,
+                    &chime_quiet_start_len);
+        size_t chime_quiet_end_len = sizeof(chime_quiet_end);
+        nvs_get_str(nvs_handle, NVS_CHIME_QUIET_END_KEY, chime_quiet_end, &chime_quiet_end_len);
+        static const char *const chime_event_keys[CHIME_EVENT_COUNT] = {
+            [CHIME_EVENT_ROTATION] = NVS_CHIME_EVENT_ROTATION_KEY,
+            [CHIME_EVENT_TELEGRAM_PHOTO] = NVS_CHIME_EVENT_TELEGRAM_KEY,
+            [CHIME_EVENT_LOW_BATTERY] = NVS_CHIME_EVENT_LOWBATT_KEY,
+            [CHIME_EVENT_WIFI_REPROVISION] = NVS_CHIME_EVENT_WIFIPROV_KEY,
+            [CHIME_EVENT_AGENDA_DUE] = NVS_CHIME_EVENT_AGENDA_KEY,
+            [CHIME_EVENT_OTA_SUCCESS] = NVS_CHIME_EVENT_OTA_KEY,
+            [CHIME_EVENT_CRITICAL_ERROR] = NVS_CHIME_EVENT_CRIT_KEY,
+        };
+        for (int i = 0; i < CHIME_EVENT_COUNT; i++) {
+            uint8_t stored_ev = 0;
+            if (nvs_get_u8(nvs_handle, chime_event_keys[i], &stored_ev) == ESP_OK) {
+                chime_event_enabled[i] = (stored_ev != 0);
+            }
+        }
+        int32_t stored_chime_rc = 0;
+        if (nvs_get_i32(nvs_handle, NVS_CHIME_REPEAT_LOWBATT_KEY, &stored_chime_rc) == ESP_OK) {
+            chime_repeat_count[CHIME_EVENT_LOW_BATTERY] = (int) stored_chime_rc;
+        }
+        if (nvs_get_i32(nvs_handle, NVS_CHIME_REPEAT_CRIT_KEY, &stored_chime_rc) == ESP_OK) {
+            chime_repeat_count[CHIME_EVENT_CRITICAL_ERROR] = (int) stored_chime_rc;
+        }
+        if (nvs_get_i32(nvs_handle, NVS_CHIME_REPEAT_AGENDA_KEY, &stored_chime_rc) == ESP_OK) {
+            chime_repeat_count[CHIME_EVENT_AGENDA_DUE] = (int) stored_chime_rc;
+        }
+
+        // Climate
+        uint8_t stored_climate_room = 0;
+        if (nvs_get_u8(nvs_handle, NVS_CLIMATE_ROOM_TYPE_KEY, &stored_climate_room) == ESP_OK) {
+            climate_room_type = (stored_climate_room <= CLIMATE_ROOM_BASEMENT)
+                                    ? (climate_room_type_t) stored_climate_room
+                                    : CLIMATE_ROOM_LIVING_ROOM;
+        }
+        uint8_t stored_climate_unit = 0;
+        if (nvs_get_u8(nvs_handle, NVS_CLIMATE_TEMP_UNIT_KEY, &stored_climate_unit) == ESP_OK) {
+            climate_temp_unit = (stored_climate_unit <= CLIMATE_UNIT_FAHRENHEIT)
+                                    ? (climate_temp_unit_t) stored_climate_unit
+                                    : CLIMATE_UNIT_CELSIUS;
+        }
+        uint8_t stored_climate_log = 0;
+        if (nvs_get_u8(nvs_handle, NVS_CLIMATE_LOGGING_ENABLED_KEY, &stored_climate_log) ==
+            ESP_OK) {
+            climate_logging_enabled = (stored_climate_log != 0);
+        }
+        uint8_t stored_climate_hist_backup = 0;
+        if (nvs_get_u8(nvs_handle, NVS_CLIMATE_HISTORY_BACKUP_KEY, &stored_climate_hist_backup) ==
+            ESP_OK) {
+            climate_history_backup_enabled = (stored_climate_hist_backup != 0);
+        }
+        uint8_t stored_climate_ovl = 0;
+        if (nvs_get_u8(nvs_handle, NVS_CLIMATE_OVERLAY_ENABLED_KEY, &stored_climate_ovl) ==
+            ESP_OK) {
+            climate_overlay_enabled = (stored_climate_ovl != 0);
+        }
+        uint8_t stored_climate_hdr = 0;
+        if (nvs_get_u8(nvs_handle, NVS_CLIMATE_AGENDA_HEADER_ENABLED_KEY, &stored_climate_hdr) ==
+            ESP_OK) {
+            climate_agenda_header_enabled = (stored_climate_hdr != 0);
+        }
+        size_t climate_temp_offset_len = sizeof(climate_temp_offset);
+        nvs_get_str(nvs_handle, NVS_CLIMATE_TEMP_OFFSET_KEY, climate_temp_offset,
+                    &climate_temp_offset_len);
+        size_t climate_hum_offset_len = sizeof(climate_hum_offset);
+        nvs_get_str(nvs_handle, NVS_CLIMATE_HUM_OFFSET_KEY, climate_hum_offset,
+                    &climate_hum_offset_len);
+        nvs_get_i64(nvs_handle, NVS_CLIMATE_LAST_LOG_KEY, &climate_last_log_time);
+
+#endif
         nvs_close(nvs_handle);
     }
 
@@ -1122,6 +2273,1870 @@ const char *config_manager_get_ha_url(void)
     return ha_url;
 }
 
+#if FORK_ANY
+void config_manager_set_ha_enabled(bool enabled)
+{
+    ha_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_HA_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Home Assistant integration %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_ha_enabled(void)
+{
+    return ha_enabled;
+}
+
+// ============================================================================
+// Telegram Bot
+// ============================================================================
+
+void config_manager_set_telegram_bot_token(const char *token)
+{
+    const char *new_token = token ? token : "";
+    strncpy(telegram_bot_token, new_token, TELEGRAM_BOT_TOKEN_MAX_LEN - 1);
+    telegram_bot_token[TELEGRAM_BOT_TOKEN_MAX_LEN - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        if (telegram_bot_token[0] != '\0') {
+            nvs_set_str(nvs_handle, NVS_TELEGRAM_BOT_TOKEN_KEY, telegram_bot_token);
+        } else {
+            nvs_erase_key(nvs_handle, NVS_TELEGRAM_BOT_TOKEN_KEY);
+        }
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram bot token %s", telegram_bot_token[0] ? "set" : "cleared");
+}
+
+const char *config_manager_get_telegram_bot_token(void)
+{
+    return telegram_bot_token;
+}
+
+void config_manager_set_telegram_chat_id(const char *chat_id)
+{
+    const char *new_id = chat_id ? chat_id : "";
+    strncpy(telegram_chat_id, new_id, TELEGRAM_CHAT_ID_MAX_LEN - 1);
+    telegram_chat_id[TELEGRAM_CHAT_ID_MAX_LEN - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        if (telegram_chat_id[0] != '\0') {
+            nvs_set_str(nvs_handle, NVS_TELEGRAM_CHAT_ID_KEY, telegram_chat_id);
+        } else {
+            nvs_erase_key(nvs_handle, NVS_TELEGRAM_CHAT_ID_KEY);
+        }
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram chat ID %s", telegram_chat_id[0] ? "set" : "cleared");
+}
+
+const char *config_manager_get_telegram_chat_id(void)
+{
+    return telegram_chat_id;
+}
+
+bool config_manager_telegram_is_configured(void)
+{
+    return telegram_bot_token[0] != '\0' && telegram_chat_id[0] != '\0';
+}
+
+void config_manager_set_telegram_last_update_id(int64_t update_id)
+{
+    telegram_last_update_id = update_id;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_i64(nvs_handle, NVS_TELEGRAM_LAST_UPDATE_ID_KEY, telegram_last_update_id);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram last update_id set to: %lld", (long long) telegram_last_update_id);
+}
+
+int64_t config_manager_get_telegram_last_update_id(void)
+{
+    return telegram_last_update_id;
+}
+
+void config_manager_set_telegram_pairing_enabled(bool enabled)
+{
+    telegram_pairing_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_TELEGRAM_PAIRING_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram orientation pairing %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_telegram_pairing_enabled(void)
+{
+    return telegram_pairing_enabled;
+}
+
+void config_manager_add_telegram_pending_image(const char *path, const char *caption)
+{
+    if (!path || path[0] == '\0') {
+        return;
+    }
+    if (telegram_pending_image_count >= TELEGRAM_MAX_PENDING_IMAGES) {
+        ESP_LOGW(TAG,
+                 "Telegram pending-pair queue full (%d), cannot track %s (file is still saved on "
+                 "storage)",
+                 TELEGRAM_MAX_PENDING_IMAGES, path);
+        return;
+    }
+
+    telegram_pending_image_t *e = &telegram_pending_images[telegram_pending_image_count++];
+    strncpy(e->path, path, sizeof(e->path) - 1);
+    e->path[sizeof(e->path) - 1] = '\0';
+    strncpy(e->caption, caption ? caption : "", sizeof(e->caption) - 1);
+    e->caption[sizeof(e->caption) - 1] = '\0';
+
+    telegram_pending_persist();
+    ESP_LOGI(TAG, "Queued %s for orientation pairing (%d pending)", path,
+             telegram_pending_image_count);
+}
+
+int config_manager_get_telegram_pending_image_count(void)
+{
+    return telegram_pending_image_count;
+}
+
+bool config_manager_get_telegram_pending_image_at(int index, char *path_out, size_t path_out_len,
+                                                  char *caption_out, size_t caption_out_len)
+{
+    if (index < 0 || index >= telegram_pending_image_count) {
+        return false;
+    }
+    if (path_out) {
+        snprintf(path_out, path_out_len, "%s", telegram_pending_images[index].path);
+    }
+    if (caption_out) {
+        snprintf(caption_out, caption_out_len, "%s", telegram_pending_images[index].caption);
+    }
+    return true;
+}
+
+void config_manager_remove_telegram_pending_image_at(int index)
+{
+    if (index < 0 || index >= telegram_pending_image_count) {
+        return;
+    }
+    for (int i = index; i < telegram_pending_image_count - 1; i++) {
+        telegram_pending_images[i] = telegram_pending_images[i + 1];
+    }
+    telegram_pending_image_count--;
+    telegram_pending_persist();
+}
+
+void config_manager_clear_telegram_pending_images(void)
+{
+    telegram_pending_image_count = 0;
+    telegram_pending_persist();
+    ESP_LOGI(TAG, "Cleared Telegram pending-pair queue (files were left on storage)");
+}
+
+void config_manager_set_telegram_low_battery_warned(bool warned)
+{
+    telegram_low_battery_warned = warned;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_TELEGRAM_LOW_BATT_WARNED_KEY, warned ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+bool config_manager_get_telegram_low_battery_warned(void)
+{
+    return telegram_low_battery_warned;
+}
+
+void config_manager_set_telegram_wake_notify_enabled(bool enabled)
+{
+    telegram_wake_notify_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_TELEGRAM_WAKE_NOTIFY_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram wake-up notification %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_telegram_wake_notify_enabled(void)
+{
+    return telegram_wake_notify_enabled;
+}
+
+// ============================================================================
+// Error overlay / WiFi failure tracking
+// ============================================================================
+
+void config_manager_set_error_overlay_enabled(bool enabled)
+{
+    error_overlay_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_ERROR_OVERLAY_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Critical-error display overlay %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_error_overlay_enabled(void)
+{
+    return error_overlay_enabled;
+}
+
+void config_manager_set_wifi_fail_count(int count)
+{
+    wifi_fail_count = count;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_i32(nvs_handle, NVS_WIFI_FAIL_COUNT_KEY, (int32_t) wifi_fail_count);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+int config_manager_get_wifi_fail_count(void)
+{
+    return wifi_fail_count;
+}
+
+// ============================================================================
+// WiFi
+// ============================================================================
+
+void config_manager_set_wifi_performance_mode_enabled(bool enabled)
+{
+    wifi_performance_mode_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_WIFI_PERF_MODE_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "WiFi performance mode %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_wifi_performance_mode_enabled(void)
+{
+    return wifi_performance_mode_enabled;
+}
+
+void config_manager_set_wifi_tx_power_cap_enabled(bool enabled)
+{
+    wifi_tx_power_cap_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_WIFI_TX_POWER_CAP_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "WiFi TX power cap %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_wifi_tx_power_cap_enabled(void)
+{
+    return wifi_tx_power_cap_enabled;
+}
+
+void config_manager_set_wifi_extended_retry_enabled(bool enabled)
+{
+    wifi_extended_retry_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_WIFI_EXT_RETRY_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "WiFi extended cold-boot retry %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_wifi_extended_retry_enabled(void)
+{
+    return wifi_extended_retry_enabled;
+}
+
+void config_manager_set_wifi_coldboot_fail_count(int count)
+{
+    wifi_coldboot_fail_count = count;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_i32(nvs_handle, NVS_WIFI_COLDBOOT_FAIL_COUNT_KEY,
+                    (int32_t) wifi_coldboot_fail_count);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+int config_manager_get_wifi_coldboot_fail_count(void)
+{
+    return wifi_coldboot_fail_count;
+}
+
+void config_manager_set_wifi_reprovision_on_fail_enabled(bool enabled)
+{
+    wifi_reprovision_on_fail_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_WIFI_REPROV_ON_FAIL_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "WiFi reprovision-on-failure %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_wifi_reprovision_on_fail_enabled(void)
+{
+    return wifi_reprovision_on_fail_enabled;
+}
+
+void config_manager_set_offline_mode_enabled(bool enabled)
+{
+    offline_mode_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_OFFLINE_MODE_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Offline mode (no WiFi network) %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_offline_mode_enabled(void)
+{
+    return offline_mode_enabled;
+}
+
+void config_manager_set_https_enabled(bool enabled)
+{
+    https_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_HTTPS_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "HTTPS web UI %s (takes effect on next restart)",
+             enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_https_enabled(void)
+{
+    return https_enabled;
+}
+
+void config_manager_set_rotation_pairing_enabled(bool enabled)
+{
+    rotation_pairing_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_ROTATION_PAIRING_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Auto-rotate orientation pairing %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_rotation_pairing_enabled(void)
+{
+    return rotation_pairing_enabled;
+}
+
+void config_manager_set_variant_selection_enabled(bool enabled)
+{
+    variant_selection_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_VARIANT_SELECTION_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Cover/Fit variant selection %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_variant_selection_enabled(void)
+{
+    return variant_selection_enabled;
+}
+
+void config_manager_set_telegram_rotation_notify_enabled(bool enabled)
+{
+    telegram_rotation_notify_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_TELEGRAM_ROTATION_NOTIFY_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram fallback-rotation notification %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_telegram_rotation_notify_enabled(void)
+{
+    return telegram_rotation_notify_enabled;
+}
+
+void config_manager_set_telegram_fallback_rotation_enabled(bool enabled)
+{
+    telegram_fallback_rotation_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_TELEGRAM_FALLBACK_ROTATION_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram fallback rotation %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_telegram_fallback_rotation_enabled(void)
+{
+    return telegram_fallback_rotation_enabled;
+}
+
+void config_manager_set_telegram_fallback_on_error_enabled(bool enabled)
+{
+    telegram_fallback_on_error_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_TELEGRAM_FALLBACK_ON_ERROR_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram fallback rotation on connection error %s",
+             enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_telegram_fallback_on_error_enabled(void)
+{
+    return telegram_fallback_on_error_enabled;
+}
+
+void config_manager_set_telegram_power_save_enabled(bool enabled)
+{
+    telegram_power_save_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_TELEGRAM_POWER_SAVE_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram power save mode %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_telegram_power_save_enabled(void)
+{
+    return telegram_power_save_enabled;
+}
+
+void config_manager_set_telegram_power_save_latest_only(bool enabled)
+{
+    telegram_power_save_latest_only = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_TELEGRAM_POWER_SAVE_LATEST_ONLY_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram power save latest-only mode %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_telegram_power_save_latest_only(void)
+{
+    return telegram_power_save_latest_only;
+}
+
+void config_manager_set_telegram_keep_originals_enabled(bool enabled)
+{
+    telegram_keep_originals_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_TELEGRAM_KEEP_ORIGINALS_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram keep-originals %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_telegram_keep_originals_enabled(void)
+{
+    return telegram_keep_originals_enabled;
+}
+
+void config_manager_set_telegram_image_format(const char *format)
+{
+    if (!format || (strcmp(format, TELEGRAM_IMAGE_FORMAT_PNG) != 0 &&
+                    strcmp(format, TELEGRAM_IMAGE_FORMAT_EPDGZ) != 0)) {
+        format = TELEGRAM_IMAGE_FORMAT_DEFAULT;
+    }
+    strncpy(telegram_image_format, format, sizeof(telegram_image_format) - 1);
+    telegram_image_format[sizeof(telegram_image_format) - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_str(nvs_handle, NVS_TELEGRAM_IMAGE_FORMAT_KEY, telegram_image_format);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram image format set to %s", telegram_image_format);
+}
+
+const char *config_manager_get_telegram_image_format(void)
+{
+    return telegram_image_format;
+}
+
+void config_manager_set_telegram_dedup_enabled(bool enabled)
+{
+    telegram_dedup_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_TELEGRAM_DEDUP_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Telegram duplicate detection %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_telegram_dedup_enabled(void)
+{
+    return telegram_dedup_enabled;
+}
+
+bool config_manager_telegram_has_seen_unique_id(const char *unique_id)
+{
+    if (!unique_id || unique_id[0] == '\0') {
+        return false;
+    }
+    for (int i = 0; i < telegram_seen_id_count; i++) {
+        if (strcmp(telegram_seen_unique_ids[i], unique_id) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void config_manager_telegram_mark_seen_unique_id(const char *unique_id)
+{
+    if (!unique_id || unique_id[0] == '\0' || strlen(unique_id) >= TELEGRAM_UNIQUE_ID_MAX_LEN) {
+        return;
+    }
+    if (config_manager_telegram_has_seen_unique_id(unique_id)) {
+        return;
+    }
+
+    if (telegram_seen_id_count >= TELEGRAM_DEDUP_MAX_ENTRIES) {
+        // FIFO: drop the oldest to make room for the newest.
+        for (int i = 1; i < telegram_seen_id_count; i++) {
+            strncpy(telegram_seen_unique_ids[i - 1], telegram_seen_unique_ids[i],
+                    TELEGRAM_UNIQUE_ID_MAX_LEN - 1);
+            telegram_seen_unique_ids[i - 1][TELEGRAM_UNIQUE_ID_MAX_LEN - 1] = '\0';
+        }
+        telegram_seen_id_count--;
+    }
+
+    strncpy(telegram_seen_unique_ids[telegram_seen_id_count], unique_id,
+            TELEGRAM_UNIQUE_ID_MAX_LEN - 1);
+    telegram_seen_unique_ids[telegram_seen_id_count][TELEGRAM_UNIQUE_ID_MAX_LEN - 1] = '\0';
+    telegram_seen_id_count++;
+
+    telegram_seen_ids_persist();
+}
+
+void config_manager_set_weather_overlay_enabled(bool enabled)
+{
+    weather_overlay_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_WEATHER_OVERLAY_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Weather overlay %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_weather_overlay_enabled(void)
+{
+    return weather_overlay_enabled;
+}
+
+void config_manager_set_weather_location_name(const char *name)
+{
+    const char *new_name = name ? name : "";
+    strncpy(weather_location_name, new_name, WEATHER_LOCATION_NAME_MAX_LEN - 1);
+    weather_location_name[WEATHER_LOCATION_NAME_MAX_LEN - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        if (weather_location_name[0] != '\0') {
+            nvs_set_str(nvs_handle, NVS_WEATHER_LOCATION_NAME_KEY, weather_location_name);
+        } else {
+            nvs_erase_key(nvs_handle, NVS_WEATHER_LOCATION_NAME_KEY);
+        }
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+const char *config_manager_get_weather_location_name(void)
+{
+    return weather_location_name;
+}
+
+void config_manager_set_weather_lat(const char *lat)
+{
+    const char *new_lat = lat ? lat : "";
+    strncpy(weather_lat, new_lat, WEATHER_LATLON_MAX_LEN - 1);
+    weather_lat[WEATHER_LATLON_MAX_LEN - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        if (weather_lat[0] != '\0') {
+            nvs_set_str(nvs_handle, NVS_WEATHER_LAT_KEY, weather_lat);
+        } else {
+            nvs_erase_key(nvs_handle, NVS_WEATHER_LAT_KEY);
+        }
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+const char *config_manager_get_weather_lat(void)
+{
+    return weather_lat;
+}
+
+void config_manager_set_weather_lon(const char *lon)
+{
+    const char *new_lon = lon ? lon : "";
+    strncpy(weather_lon, new_lon, WEATHER_LATLON_MAX_LEN - 1);
+    weather_lon[WEATHER_LATLON_MAX_LEN - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        if (weather_lon[0] != '\0') {
+            nvs_set_str(nvs_handle, NVS_WEATHER_LON_KEY, weather_lon);
+        } else {
+            nvs_erase_key(nvs_handle, NVS_WEATHER_LON_KEY);
+        }
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+const char *config_manager_get_weather_lon(void)
+{
+    return weather_lon;
+}
+
+// Cache-invalidation marker: the location name that was last successfully
+// geocoded. weather.c compares this against the current location name to
+// decide whether a fresh geocode call is needed, or the cached lat/lon
+// above are still valid.
+void config_manager_set_weather_geocoded_name(const char *name)
+{
+    const char *new_name = name ? name : "";
+    strncpy(weather_geocoded_name, new_name, WEATHER_LOCATION_NAME_MAX_LEN - 1);
+    weather_geocoded_name[WEATHER_LOCATION_NAME_MAX_LEN - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        if (weather_geocoded_name[0] != '\0') {
+            nvs_set_str(nvs_handle, NVS_WEATHER_GEOCODED_NAME_KEY, weather_geocoded_name);
+        } else {
+            nvs_erase_key(nvs_handle, NVS_WEATHER_GEOCODED_NAME_KEY);
+        }
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+const char *config_manager_get_weather_geocoded_name(void)
+{
+    return weather_geocoded_name;
+}
+
+void config_manager_set_weather_provider(const char *provider)
+{
+    if (!provider || (strcmp(provider, WEATHER_PROVIDER_OPEN_METEO) != 0 &&
+                      strcmp(provider, WEATHER_PROVIDER_WTTR_IN) != 0 &&
+                      strcmp(provider, WEATHER_PROVIDER_YR_NO) != 0)) {
+        provider = WEATHER_PROVIDER_DEFAULT;
+    }
+    strncpy(weather_provider, provider, sizeof(weather_provider) - 1);
+    weather_provider[sizeof(weather_provider) - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_str(nvs_handle, NVS_WEATHER_PROVIDER_KEY, weather_provider);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Weather provider set to %s", weather_provider);
+}
+
+const char *config_manager_get_weather_provider(void)
+{
+    return weather_provider;
+}
+
+void config_manager_set_weather_last_source(const char *provider)
+{
+    const char *new_source = provider ? provider : "";
+    strncpy(weather_last_source, new_source, sizeof(weather_last_source) - 1);
+    weather_last_source[sizeof(weather_last_source) - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_str(nvs_handle, NVS_WEATHER_LAST_SOURCE_KEY, weather_last_source);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+const char *config_manager_get_weather_last_source(void)
+{
+    return weather_last_source;
+}
+
+void config_manager_set_headlines_overlay_enabled(bool enabled)
+{
+    headlines_overlay_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_HEADLINES_OVERLAY_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Headlines overlay %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_headlines_overlay_enabled(void)
+{
+    return headlines_overlay_enabled;
+}
+
+void config_manager_set_headlines_rss_url(const char *url)
+{
+    const char *new_url = url ? url : "";
+    strncpy(headlines_rss_url, new_url, HEADLINES_RSS_URL_MAX_LEN - 1);
+    headlines_rss_url[HEADLINES_RSS_URL_MAX_LEN - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        if (headlines_rss_url[0] != '\0') {
+            nvs_set_str(nvs_handle, NVS_HEADLINES_RSS_URL_KEY, headlines_rss_url);
+        } else {
+            nvs_erase_key(nvs_handle, NVS_HEADLINES_RSS_URL_KEY);
+        }
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+const char *config_manager_get_headlines_rss_url(void)
+{
+    return headlines_rss_url;
+}
+
+void config_manager_set_headlines_count(int count)
+{
+    if (count < HEADLINES_COUNT_MIN) {
+        count = HEADLINES_COUNT_MIN;
+    } else if (count > HEADLINES_COUNT_MAX) {
+        count = HEADLINES_COUNT_MAX;
+    }
+    headlines_count = (uint8_t) count;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_HEADLINES_COUNT_KEY, headlines_count);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+int config_manager_get_headlines_count(void)
+{
+    return headlines_count;
+}
+
+void config_manager_set_headlines_wrap_lines(int lines)
+{
+    if (lines < HEADLINES_WRAP_LINES_MIN) {
+        lines = HEADLINES_WRAP_LINES_MIN;
+    } else if (lines > HEADLINES_WRAP_LINES_MAX) {
+        lines = HEADLINES_WRAP_LINES_MAX;
+    }
+    headlines_wrap_lines = (uint8_t) lines;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_HEADLINES_WRAP_LINES_KEY, headlines_wrap_lines);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+int config_manager_get_headlines_wrap_lines(void)
+{
+    return headlines_wrap_lines;
+}
+
+void config_manager_set_overlay_invert_colors(bool enabled)
+{
+    overlay_invert_colors = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_OVERLAY_INVERT_COLORS_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+bool config_manager_get_overlay_invert_colors(void)
+{
+    return overlay_invert_colors;
+}
+
+void config_manager_set_overlay_epdgz_enabled(bool enabled)
+{
+    overlay_epdgz_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_OVERLAY_EPDGZ_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+bool config_manager_get_overlay_epdgz_enabled(void)
+{
+    return overlay_epdgz_enabled;
+}
+
+void config_manager_set_overlay_language(const char *language)
+{
+    const char *new_lang =
+        (language && (strcmp(language, "de") == 0 || strcmp(language, "en") == 0))
+            ? language
+            : OVERLAY_LANGUAGE_DEFAULT;
+    strncpy(overlay_language, new_lang, sizeof(overlay_language) - 1);
+    overlay_language[sizeof(overlay_language) - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_str(nvs_handle, NVS_OVERLAY_LANGUAGE_KEY, overlay_language);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+const char *config_manager_get_overlay_language(void)
+{
+    return overlay_language;
+}
+
+void config_manager_set_caption_invert_colors_enabled(bool enabled)
+{
+    caption_invert_colors_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_CAPTION_INVERT_COLORS_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+bool config_manager_get_caption_invert_colors_enabled(void)
+{
+    return caption_invert_colors_enabled;
+}
+
+void config_manager_set_weather_multiline_enabled(bool enabled)
+{
+    weather_multiline_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_WEATHER_MULTILINE_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+bool config_manager_get_weather_multiline_enabled(void)
+{
+    return weather_multiline_enabled;
+}
+
+void config_manager_set_weather_icon_set(const char *icon_set)
+{
+    const char *new_set =
+        (icon_set && (strcmp(icon_set, "none") == 0 || strcmp(icon_set, "flaticon") == 0 ||
+                      strcmp(icon_set, "metno") == 0))
+            ? icon_set
+            : WEATHER_ICON_SET_DEFAULT;
+    strncpy(weather_icon_set, new_set, sizeof(weather_icon_set) - 1);
+    weather_icon_set[sizeof(weather_icon_set) - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_str(nvs_handle, NVS_WEATHER_ICON_SET_KEY, weather_icon_set);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+const char *config_manager_get_weather_icon_set(void)
+{
+    return weather_icon_set;
+}
+
+void config_manager_set_weather_icon_colored(bool enabled)
+{
+    weather_icon_colored = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_WEATHER_ICON_COLORED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+bool config_manager_get_weather_icon_colored(void)
+{
+    return weather_icon_colored;
+}
+
+void config_manager_set_show_exif_datetime_enabled(bool enabled)
+{
+    show_exif_datetime_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_SHOW_EXIF_DATETIME_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Show EXIF capture date as fallback caption %s",
+             enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_show_exif_datetime_enabled(void)
+{
+    return show_exif_datetime_enabled;
+}
+
+void config_manager_set_low_battery_overlay_enabled(bool enabled)
+{
+    low_battery_overlay_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_LOW_BATTERY_OVERLAY_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Low battery overlay %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_low_battery_overlay_enabled(void)
+{
+    return low_battery_overlay_enabled;
+}
+
+void config_manager_set_low_battery_overlay_threshold(int threshold)
+{
+    if (threshold < LOW_BATTERY_OVERLAY_THRESHOLD_MIN) {
+        threshold = LOW_BATTERY_OVERLAY_THRESHOLD_MIN;
+    } else if (threshold > LOW_BATTERY_OVERLAY_THRESHOLD_MAX) {
+        threshold = LOW_BATTERY_OVERLAY_THRESHOLD_MAX;
+    }
+    low_battery_overlay_threshold = (uint8_t) threshold;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_LOW_BATTERY_OVERLAY_THRESHOLD_KEY,
+                   low_battery_overlay_threshold);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+int config_manager_get_low_battery_overlay_threshold(void)
+{
+    return low_battery_overlay_threshold;
+}
+
+void config_manager_set_battery_history_backup_enabled(bool enabled)
+{
+    battery_history_backup_enabled = enabled;
+    agenda_nvs_set_u8(NVS_BATTERY_HISTORY_BACKUP_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_battery_history_backup_enabled(void)
+{
+    return battery_history_backup_enabled;
+}
+
+// Internal hysteresis state - not a user setting, see NVS_LOW_BATTERY_OVERLAY_ACTIVE_KEY.
+void config_manager_set_low_battery_overlay_active(bool active)
+{
+    low_battery_overlay_active = active;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_LOW_BATTERY_OVERLAY_ACTIVE_KEY, active ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+bool config_manager_get_low_battery_overlay_active(void)
+{
+    return low_battery_overlay_active;
+}
+
+// ============================================================================
+// Agenda (ToDo + Calendar)
+// ============================================================================
+
+void config_manager_set_agenda_todo_enabled(bool enabled)
+{
+    agenda_todo_enabled = enabled;
+    agenda_nvs_set_u8(NVS_AGENDA_TODO_ENABLED_KEY, enabled ? 1 : 0);
+    ESP_LOGI(TAG, "Agenda ToDo %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_agenda_todo_enabled(void)
+{
+    return agenda_todo_enabled;
+}
+
+void config_manager_set_agenda_cal_enabled(bool enabled)
+{
+    agenda_cal_enabled = enabled;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_ENABLED_KEY, enabled ? 1 : 0);
+    ESP_LOGI(TAG, "Agenda Calendar %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_agenda_cal_enabled(void)
+{
+    return agenda_cal_enabled;
+}
+
+void config_manager_set_agenda_cal_weather_enabled(bool enabled)
+{
+    agenda_cal_weather_enabled = enabled;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_WEATHER_KEY, enabled ? 1 : 0);
+    ESP_LOGI(TAG, "Agenda Calendar weather annotation %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_agenda_cal_weather_enabled(void)
+{
+    return agenda_cal_weather_enabled;
+}
+
+void config_manager_set_agenda_cal_weather_right_aligned(bool enabled)
+{
+    agenda_cal_weather_right_aligned = enabled;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_WTHR_ALIGN_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_agenda_cal_weather_right_aligned(void)
+{
+    return agenda_cal_weather_right_aligned;
+}
+
+void config_manager_set_agenda_cal_multiday_mode(agenda_multiday_mode_t mode)
+{
+    if (mode < AGENDA_MULTIDAY_REPEAT || mode > AGENDA_MULTIDAY_REPEAT_NUMBERED) {
+        mode = AGENDA_MULTIDAY_REPEAT;
+    }
+    agenda_cal_multiday_mode = mode;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_COMPACT_KEY, (uint8_t) mode);
+}
+
+agenda_multiday_mode_t config_manager_get_agenda_cal_multiday_mode(void)
+{
+    return agenda_cal_multiday_mode;
+}
+
+void config_manager_set_agenda_cal_time_display_mode(agenda_time_display_mode_t mode)
+{
+    if (mode < AGENDA_TIME_DISPLAY_OFF || mode > AGENDA_TIME_DISPLAY_RANGE) {
+        mode = AGENDA_TIME_DISPLAY_OFF;
+    }
+    agenda_cal_time_display_mode = mode;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_SHOW_DURATION_KEY, (uint8_t) mode);
+}
+
+agenda_time_display_mode_t config_manager_get_agenda_cal_time_display_mode(void)
+{
+    return agenda_cal_time_display_mode;
+}
+
+void config_manager_set_agenda_cal_name(const char *name)
+{
+    strncpy(agenda_cal_name, name ? name : "", sizeof(agenda_cal_name) - 1);
+    agenda_cal_name[sizeof(agenda_cal_name) - 1] = '\0';
+    agenda_nvs_set_str(NVS_AGENDA_CAL_NAME_KEY, agenda_cal_name);
+}
+
+const char *config_manager_get_agenda_cal_name(void)
+{
+    return agenda_cal_name;
+}
+
+void config_manager_set_agenda_cal_name2(const char *name)
+{
+    strncpy(agenda_cal_name2, name ? name : "", sizeof(agenda_cal_name2) - 1);
+    agenda_cal_name2[sizeof(agenda_cal_name2) - 1] = '\0';
+    agenda_nvs_set_str(NVS_AGENDA_CAL_NAME2_KEY, agenda_cal_name2);
+}
+
+const char *config_manager_get_agenda_cal_name2(void)
+{
+    return agenda_cal_name2;
+}
+
+void config_manager_set_agenda_todo_url(const char *url)
+{
+    const char *new_url = url ? url : "";
+    // A stale ETag from the previous URL would be meaningless (worst case
+    // harmless - the new server just won't match it and returns 200 as
+    // normal), but clearing it on a genuine URL change keeps the cached
+    // validator honest rather than relying on that.
+    if (strncmp(agenda_todo_url, new_url, AGENDA_TODO_URL_MAX_LEN) != 0) {
+        config_manager_set_agenda_todo_etag("");
+    }
+    strncpy(agenda_todo_url, new_url, AGENDA_TODO_URL_MAX_LEN - 1);
+    agenda_todo_url[AGENDA_TODO_URL_MAX_LEN - 1] = '\0';
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_TODO_URL_KEY, agenda_todo_url);
+}
+
+const char *config_manager_get_agenda_todo_url(void)
+{
+    return agenda_todo_url;
+}
+
+void config_manager_set_agenda_todo_etag(const char *etag)
+{
+    const char *new_etag = etag ? etag : "";
+    if (strncmp(agenda_todo_etag, new_etag, HTTP_ETAG_MAX_LEN) == 0) {
+        return;
+    }
+    strncpy(agenda_todo_etag, new_etag, HTTP_ETAG_MAX_LEN - 1);
+    agenda_todo_etag[HTTP_ETAG_MAX_LEN - 1] = '\0';
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_TODO_ETAG_KEY, agenda_todo_etag);
+}
+
+const char *config_manager_get_agenda_todo_etag(void)
+{
+    return agenda_todo_etag;
+}
+
+// The ICS URL is a credential (Google: "only you should know this
+// address") - logged only by length, never by value, matching
+// config_manager_set_wifi_password()'s own discipline.
+void config_manager_set_agenda_cal_url(const char *url)
+{
+    const char *new_url = url ? url : "";
+    if (strncmp(agenda_cal_url, new_url, AGENDA_CAL_URL_MAX_LEN) != 0) {
+        config_manager_set_agenda_cal_etag("");
+    }
+    strncpy(agenda_cal_url, new_url, AGENDA_CAL_URL_MAX_LEN - 1);
+    agenda_cal_url[AGENDA_CAL_URL_MAX_LEN - 1] = '\0';
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_CAL_URL_KEY, agenda_cal_url);
+    ESP_LOGI(TAG, "Agenda Calendar URL set (length: %zu)", strlen(agenda_cal_url));
+}
+
+const char *config_manager_get_agenda_cal_url(void)
+{
+    return agenda_cal_url;
+}
+
+void config_manager_set_agenda_cal_etag(const char *etag)
+{
+    const char *new_etag = etag ? etag : "";
+    if (strncmp(agenda_cal_etag, new_etag, HTTP_ETAG_MAX_LEN) == 0) {
+        return;
+    }
+    strncpy(agenda_cal_etag, new_etag, HTTP_ETAG_MAX_LEN - 1);
+    agenda_cal_etag[HTTP_ETAG_MAX_LEN - 1] = '\0';
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_CAL_ETAG_KEY, agenda_cal_etag);
+}
+
+const char *config_manager_get_agenda_cal_etag(void)
+{
+    return agenda_cal_etag;
+}
+
+void config_manager_set_agenda_cal_url2(const char *url)
+{
+    const char *new_url = url ? url : "";
+    if (strncmp(agenda_cal_url2, new_url, AGENDA_CAL_URL2_MAX_LEN) != 0) {
+        config_manager_set_agenda_cal_etag2("");
+    }
+    strncpy(agenda_cal_url2, new_url, AGENDA_CAL_URL2_MAX_LEN - 1);
+    agenda_cal_url2[AGENDA_CAL_URL2_MAX_LEN - 1] = '\0';
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_CAL_URL2_KEY, agenda_cal_url2);
+    ESP_LOGI(TAG, "Agenda Calendar URL 2 set (length: %zu)", strlen(agenda_cal_url2));
+}
+
+const char *config_manager_get_agenda_cal_url2(void)
+{
+    return agenda_cal_url2;
+}
+
+void config_manager_set_agenda_cal_c_enabled(bool enabled)
+{
+    agenda_cal_c_enabled = enabled;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_C_ENABLED_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_agenda_cal_c_enabled(void)
+{
+    return agenda_cal_c_enabled;
+}
+
+void config_manager_set_agenda_cal_d_enabled(bool enabled)
+{
+    agenda_cal_d_enabled = enabled;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_D_ENABLED_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_agenda_cal_d_enabled(void)
+{
+    return agenda_cal_d_enabled;
+}
+
+void config_manager_set_agenda_cal_e_enabled(bool enabled)
+{
+    agenda_cal_e_enabled = enabled;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_E_ENABLED_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_agenda_cal_e_enabled(void)
+{
+    return agenda_cal_e_enabled;
+}
+
+// No etag to clear on change, unlike agenda_cal_url/_url2 above - these
+// three sources have no conditional-GET/periodic refresh at all (see
+// AGENDA_CAL_CACHE_PATH_C etc. in config.h). Whether a URL actually changed
+// (and therefore needs an immediate fetch) is decided by the caller in
+// utils.c's apply_config_from_json(), which compares against the old value
+// before calling this setter.
+void config_manager_set_agenda_cal_c_url(const char *url)
+{
+    const char *new_url = url ? url : "";
+    strncpy(agenda_cal_c_url, new_url, AGENDA_CAL_C_URL_MAX_LEN - 1);
+    agenda_cal_c_url[AGENDA_CAL_C_URL_MAX_LEN - 1] = '\0';
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_CAL_C_URL_KEY, agenda_cal_c_url);
+    ESP_LOGI(TAG, "Agenda Calendar URL C set (length: %zu)", strlen(agenda_cal_c_url));
+}
+
+const char *config_manager_get_agenda_cal_c_url(void)
+{
+    return agenda_cal_c_url;
+}
+
+void config_manager_set_agenda_cal_d_url(const char *url)
+{
+    const char *new_url = url ? url : "";
+    strncpy(agenda_cal_d_url, new_url, AGENDA_CAL_D_URL_MAX_LEN - 1);
+    agenda_cal_d_url[AGENDA_CAL_D_URL_MAX_LEN - 1] = '\0';
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_CAL_D_URL_KEY, agenda_cal_d_url);
+    ESP_LOGI(TAG, "Agenda Calendar URL D set (length: %zu)", strlen(agenda_cal_d_url));
+}
+
+const char *config_manager_get_agenda_cal_d_url(void)
+{
+    return agenda_cal_d_url;
+}
+
+void config_manager_set_agenda_cal_e_url(const char *url)
+{
+    const char *new_url = url ? url : "";
+    strncpy(agenda_cal_e_url, new_url, AGENDA_CAL_E_URL_MAX_LEN - 1);
+    agenda_cal_e_url[AGENDA_CAL_E_URL_MAX_LEN - 1] = '\0';
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_CAL_E_URL_KEY, agenda_cal_e_url);
+    ESP_LOGI(TAG, "Agenda Calendar URL E set (length: %zu)", strlen(agenda_cal_e_url));
+}
+
+const char *config_manager_get_agenda_cal_e_url(void)
+{
+    return agenda_cal_e_url;
+}
+
+void config_manager_set_agenda_cal_c_name(const char *name)
+{
+    strncpy(agenda_cal_c_name, name ? name : "", sizeof(agenda_cal_c_name) - 1);
+    agenda_cal_c_name[sizeof(agenda_cal_c_name) - 1] = '\0';
+    agenda_nvs_set_str(NVS_AGENDA_CAL_C_NAME_KEY, agenda_cal_c_name);
+}
+
+const char *config_manager_get_agenda_cal_c_name(void)
+{
+    return agenda_cal_c_name;
+}
+
+void config_manager_set_agenda_cal_d_name(const char *name)
+{
+    strncpy(agenda_cal_d_name, name ? name : "", sizeof(agenda_cal_d_name) - 1);
+    agenda_cal_d_name[sizeof(agenda_cal_d_name) - 1] = '\0';
+    agenda_nvs_set_str(NVS_AGENDA_CAL_D_NAME_KEY, agenda_cal_d_name);
+}
+
+const char *config_manager_get_agenda_cal_d_name(void)
+{
+    return agenda_cal_d_name;
+}
+
+void config_manager_set_agenda_cal_e_name(const char *name)
+{
+    strncpy(agenda_cal_e_name, name ? name : "", sizeof(agenda_cal_e_name) - 1);
+    agenda_cal_e_name[sizeof(agenda_cal_e_name) - 1] = '\0';
+    agenda_nvs_set_str(NVS_AGENDA_CAL_E_NAME_KEY, agenda_cal_e_name);
+}
+
+const char *config_manager_get_agenda_cal_e_name(void)
+{
+    return agenda_cal_e_name;
+}
+
+void config_manager_set_agenda_cal_etag2(const char *etag)
+{
+    const char *new_etag = etag ? etag : "";
+    if (strncmp(agenda_cal_etag2, new_etag, HTTP_ETAG_MAX_LEN) == 0) {
+        return;
+    }
+    strncpy(agenda_cal_etag2, new_etag, HTTP_ETAG_MAX_LEN - 1);
+    agenda_cal_etag2[HTTP_ETAG_MAX_LEN - 1] = '\0';
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_CAL_ETAG2_KEY, agenda_cal_etag2);
+}
+
+const char *config_manager_get_agenda_cal_etag2(void)
+{
+    return agenda_cal_etag2;
+}
+
+void config_manager_set_agenda_cal_days(int days)
+{
+    if (days < AGENDA_CAL_DAYS_MIN) {
+        days = AGENDA_CAL_DAYS_MIN;
+    } else if (days > AGENDA_CAL_DAYS_MAX) {
+        days = AGENDA_CAL_DAYS_MAX;
+    }
+    agenda_cal_days = (uint8_t) days;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_DAYS_KEY, agenda_cal_days);
+}
+
+int config_manager_get_agenda_cal_days(void)
+{
+    return agenda_cal_days;
+}
+
+void config_manager_set_agenda_cal_layout_mode(agenda_cal_layout_mode_t mode)
+{
+    if (mode < AGENDA_CAL_LAYOUT_LIST || mode > AGENDA_CAL_LAYOUT_GRID_B) {
+        mode = AGENDA_CAL_LAYOUT_LIST;
+    }
+    agenda_cal_layout_mode = mode;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_LAYOUT_KEY, (uint8_t) mode);
+}
+
+agenda_cal_layout_mode_t config_manager_get_agenda_cal_layout_mode(void)
+{
+    return agenda_cal_layout_mode;
+}
+
+void config_manager_set_agenda_shift_model(agenda_shift_model_t model)
+{
+    if (model < AGENDA_SHIFT_MODEL_NONE || model > AGENDA_SHIFT_MODEL_3_4) {
+        model = AGENDA_SHIFT_MODEL_NONE;
+    }
+    agenda_shift_model = model;
+    agenda_nvs_set_u8(NVS_AGENDA_SHIFT_MODEL_KEY, (uint8_t) model);
+}
+
+agenda_shift_model_t config_manager_get_agenda_shift_model(void)
+{
+    return agenda_shift_model;
+}
+
+void config_manager_set_agenda_shift_start(const char *start_date)
+{
+    strncpy(agenda_shift_start, start_date ? start_date : "", sizeof(agenda_shift_start) - 1);
+    agenda_shift_start[sizeof(agenda_shift_start) - 1] = '\0';
+    agenda_nvs_set_str_or_erase(NVS_AGENDA_SHIFT_START_KEY, agenda_shift_start);
+}
+
+const char *config_manager_get_agenda_shift_start(void)
+{
+    return agenda_shift_start;
+}
+
+int config_manager_get_agenda_cron_rule_count(void)
+{
+    return agenda_cron_rule_count;
+}
+
+const char *config_manager_get_agenda_cron_rule(int index)
+{
+    if (index < 0 || index >= agenda_cron_rule_count) {
+        return NULL;
+    }
+    return agenda_cron_rules_store[index];
+}
+
+void config_manager_set_agenda_cron_rules(const char *const *rules, int count)
+{
+    if (count < 0) {
+        count = 0;
+    }
+    agenda_cron_rule_count = 0;
+    agenda_cron_compiled_count = -1;  // rule strings changed - stale compiled cache
+    for (int i = 0; i < count && agenda_cron_rule_count < MAX_CRON_RULES; i++) {
+        if (!rules[i] || rules[i][0] == '\0' || strlen(rules[i]) >= CRON_RULE_MAX_LEN) {
+            continue;
+        }
+        strncpy(agenda_cron_rules_store[agenda_cron_rule_count], rules[i], CRON_RULE_MAX_LEN - 1);
+        agenda_cron_rules_store[agenda_cron_rule_count][CRON_RULE_MAX_LEN - 1] = '\0';
+        agenda_cron_rule_count++;
+    }
+
+    agenda_cron_persist();
+    ESP_LOGI(TAG, "Agenda schedule set to %d cron rule(s)", agenda_cron_rule_count);
+}
+
+int config_manager_get_compiled_agenda_cron_rules(cron_rule_t *out, int max)
+{
+    // Compile once per rule-set change, not once per call - the wake-decision
+    // (main.c) and next-wake-time (power_manager.c) call sites both need this
+    // within the same wake cycle, and re-running cron_parse() on the same
+    // strings a second time is pure waste (the parse result can't have
+    // changed unless one of the two invalidation points above ran).
+    if (agenda_cron_compiled_count < 0) {
+        int n = 0;
+        for (int i = 0; i < agenda_cron_rule_count && n < MAX_CRON_RULES; i++) {
+            if (cron_parse(agenda_cron_rules_store[i], &agenda_cron_compiled[n])) {
+                n++;
+            }
+        }
+        agenda_cron_compiled_count = n;
+    }
+    int n = (agenda_cron_compiled_count < max) ? agenda_cron_compiled_count : max;
+    for (int i = 0; i < n; i++) {
+        out[i] = agenda_cron_compiled[i];
+    }
+    return n;
+}
+
+#if FORK_ANY
+int config_manager_get_alarm_cron_rule_count(void)
+{
+    return alarm_cron_rule_count;
+}
+
+const char *config_manager_get_alarm_cron_rule(int index)
+{
+    if (index < 0 || index >= alarm_cron_rule_count) {
+        return NULL;
+    }
+    return alarm_cron_rules_store[index];
+}
+
+void config_manager_set_alarm_cron_rules(const char *const *rules, int count)
+{
+    alarm_cron_rule_count = 0;
+    alarm_cron_compiled_count = -1;  // rule strings changed - stale compiled cache
+    for (int i = 0; i < count && alarm_cron_rule_count < MAX_CRON_RULES; i++) {
+        if (!rules[i] || rules[i][0] == '\0' || strlen(rules[i]) >= CRON_RULE_MAX_LEN) {
+            continue;
+        }
+        strncpy(alarm_cron_rules_store[alarm_cron_rule_count], rules[i], CRON_RULE_MAX_LEN - 1);
+        alarm_cron_rules_store[alarm_cron_rule_count][CRON_RULE_MAX_LEN - 1] = '\0';
+        alarm_cron_rule_count++;
+    }
+    alarm_cron_persist();
+    ESP_LOGI(TAG, "Alarm schedule set to %d cron rule(s)", alarm_cron_rule_count);
+}
+
+int config_manager_get_compiled_alarm_cron_rules(cron_rule_t *out, int max)
+{
+    if (alarm_cron_compiled_count < 0) {
+        int n = 0;
+        for (int i = 0; i < alarm_cron_rule_count && n < MAX_CRON_RULES; i++) {
+            if (cron_parse(alarm_cron_rules_store[i], &alarm_cron_compiled[n])) {
+                n++;
+            }
+        }
+        alarm_cron_compiled_count = n;
+    }
+    int n = (alarm_cron_compiled_count < max) ? alarm_cron_compiled_count : max;
+    for (int i = 0; i < n; i++) {
+        out[i] = alarm_cron_compiled[i];
+    }
+    return n;
+}
+
+void config_manager_set_alarm_ring_duration_sec(uint16_t seconds)
+{
+    if (seconds == 0 || seconds > ALARM_RING_DURATION_MAX_SEC) {
+        return;
+    }
+    alarm_ring_duration_sec = seconds;
+    agenda_nvs_set_u16(NVS_ALARM_RING_SEC_KEY, alarm_ring_duration_sec);
+}
+
+uint16_t config_manager_get_alarm_ring_duration_sec(void)
+{
+    return alarm_ring_duration_sec;
+}
+
+void config_manager_set_alarm_volume(int percent)
+{
+    if (percent < ALARM_VOLUME_MIN || percent > ALARM_VOLUME_MAX) {
+        return;
+    }
+    alarm_volume = percent;
+    agenda_nvs_set_u8(NVS_ALARM_VOLUME_KEY, (uint8_t) alarm_volume);
+}
+
+int config_manager_get_alarm_volume(void)
+{
+    return alarm_volume;
+}
+
+void config_manager_set_alarm_ramp_sec(int seconds)
+{
+    if (seconds < 0 || seconds > ALARM_RAMP_MAX_SEC) {
+        return;
+    }
+    alarm_ramp_sec = seconds;
+    agenda_nvs_set_u16(NVS_ALARM_RAMP_SEC_KEY, (uint16_t) alarm_ramp_sec);
+}
+
+int config_manager_get_alarm_ramp_sec(void)
+{
+    return alarm_ramp_sec;
+}
+
+void config_manager_set_alarm_tune(int tune)
+{
+    if (tune < 0 || tune > ALARM_TUNE_MAX_INDEX) {
+        return;
+    }
+    alarm_tune = tune;
+    agenda_nvs_set_u8(NVS_ALARM_TUNE_KEY, (uint8_t) alarm_tune);
+}
+
+int config_manager_get_alarm_tune(void)
+{
+    return alarm_tune;
+}
+#else
+int config_manager_get_alarm_cron_rule_count(void)
+{
+    return 0;
+}
+
+const char *config_manager_get_alarm_cron_rule(int index)
+{
+    (void) index;
+    return NULL;
+}
+
+void config_manager_set_alarm_cron_rules(const char *const *rules, int count)
+{
+    (void) rules;
+    (void) count;
+}
+
+int config_manager_get_compiled_alarm_cron_rules(cron_rule_t *out, int max)
+{
+    (void) out;
+    (void) max;
+    return 0;
+}
+
+void config_manager_set_alarm_ring_duration_sec(uint16_t seconds)
+{
+    (void) seconds;
+}
+
+uint16_t config_manager_get_alarm_ring_duration_sec(void)
+{
+    return ALARM_RING_DURATION_DEFAULT_SEC;
+}
+
+void config_manager_set_alarm_volume(int percent)
+{
+    (void) percent;
+}
+
+int config_manager_get_alarm_volume(void)
+{
+    return ALARM_VOLUME_DEFAULT;
+}
+
+void config_manager_set_alarm_ramp_sec(int seconds)
+{
+    (void) seconds;
+}
+
+int config_manager_get_alarm_ramp_sec(void)
+{
+    return ALARM_RAMP_DEFAULT_SEC;
+}
+
+void config_manager_set_alarm_tune(int tune)
+{
+    (void) tune;
+}
+
+int config_manager_get_alarm_tune(void)
+{
+    return 0;
+}
+#endif  // FEATURE_ALARMCLOCK
+
+void config_manager_set_agenda_stack_layout(bool stacked)
+{
+    agenda_stack_layout = stacked;
+    agenda_nvs_set_u8(NVS_AGENDA_STACK_KEY, agenda_stack_layout ? 1 : 0);
+}
+
+bool config_manager_get_agenda_stack_layout(void)
+{
+    return agenda_stack_layout;
+}
+
+// Shared by the agenda per-role color setters below - identical
+// "copy into this role's static buffer, then persist" shape.
+static void agenda_role_color_set(char *buf, size_t buf_size, const char *nvs_key,
+                                  const char *color)
+{
+    if (!color || color[0] == '\0') {
+        return;
+    }
+    strncpy(buf, color, buf_size - 1);
+    buf[buf_size - 1] = '\0';
+    agenda_nvs_set_str(nvs_key, buf);
+}
+
+void config_manager_set_agenda_pri_a_color(const char *color)
+{
+    agenda_role_color_set(agenda_pri_a_color, sizeof(agenda_pri_a_color), NVS_AGENDA_PRI_A_KEY,
+                          color);
+}
+
+const char *config_manager_get_agenda_pri_a_color(void)
+{
+    return agenda_pri_a_color;
+}
+
+void config_manager_set_agenda_pri_b_color(const char *color)
+{
+    agenda_role_color_set(agenda_pri_b_color, sizeof(agenda_pri_b_color), NVS_AGENDA_PRI_B_KEY,
+                          color);
+}
+
+const char *config_manager_get_agenda_pri_b_color(void)
+{
+    return agenda_pri_b_color;
+}
+
+void config_manager_set_agenda_pri_c_color(const char *color)
+{
+    agenda_role_color_set(agenda_pri_c_color, sizeof(agenda_pri_c_color), NVS_AGENDA_PRI_C_KEY,
+                          color);
+}
+
+const char *config_manager_get_agenda_pri_c_color(void)
+{
+    return agenda_pri_c_color;
+}
+
+void config_manager_set_agenda_pri_d_color(const char *color)
+{
+    agenda_role_color_set(agenda_pri_d_color, sizeof(agenda_pri_d_color), NVS_AGENDA_PRI_D_KEY,
+                          color);
+}
+
+const char *config_manager_get_agenda_pri_d_color(void)
+{
+    return agenda_pri_d_color;
+}
+
+void config_manager_set_agenda_due_overdue_color(const char *color)
+{
+    agenda_role_color_set(agenda_due_overdue_color, sizeof(agenda_due_overdue_color),
+                          NVS_AGENDA_DUE_OD_KEY, color);
+}
+
+const char *config_manager_get_agenda_due_overdue_color(void)
+{
+    return agenda_due_overdue_color;
+}
+
+void config_manager_set_agenda_due_today_color(const char *color)
+{
+    agenda_role_color_set(agenda_due_today_color, sizeof(agenda_due_today_color),
+                          NVS_AGENDA_DUE_TDY_KEY, color);
+}
+
+const char *config_manager_get_agenda_due_today_color(void)
+{
+    return agenda_due_today_color;
+}
+
+void config_manager_set_agenda_due_later_color(const char *color)
+{
+    agenda_role_color_set(agenda_due_later_color, sizeof(agenda_due_later_color),
+                          NVS_AGENDA_DUE_LTR_KEY, color);
+}
+
+const char *config_manager_get_agenda_due_later_color(void)
+{
+    return agenda_due_later_color;
+}
+
+void config_manager_set_agenda_project_color(const char *color)
+{
+    agenda_role_color_set(agenda_project_color, sizeof(agenda_project_color), NVS_AGENDA_PROJ_C_KEY,
+                          color);
+}
+
+const char *config_manager_get_agenda_project_color(void)
+{
+    return agenda_project_color;
+}
+
+void config_manager_set_agenda_context_color(const char *color)
+{
+    agenda_role_color_set(agenda_context_color, sizeof(agenda_context_color), NVS_AGENDA_CTX_C_KEY,
+                          color);
+}
+
+const char *config_manager_get_agenda_context_color(void)
+{
+    return agenda_context_color;
+}
+
+void config_manager_set_agenda_color_profile_active(int slot)
+{
+    if (slot < 0) {
+        slot = 0;
+    } else if (slot > AGENDA_COLOR_PROFILE_SLOTS) {
+        slot = AGENDA_COLOR_PROFILE_SLOTS;
+    }
+    agenda_color_profile_active = (uint8_t) slot;
+    agenda_nvs_set_u8(NVS_AGENDA_COLOR_PROFILE_ACTIVE_KEY, agenda_color_profile_active);
+}
+
+int config_manager_get_agenda_color_profile_active(void)
+{
+    return agenda_color_profile_active;
+}
+
+// ============================================================================
+// OTA
+// ============================================================================
+
+void config_manager_set_ota_check_enabled(bool enabled)
+{
+    ota_check_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_OTA_CHECK_ENABLED_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Automatic OTA check %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_ota_check_enabled(void)
+{
+    return ota_check_enabled;
+}
+
+#endif
 // ============================================================================
 // AI Generation
 // ============================================================================
@@ -1234,3 +4249,262 @@ void config_manager_touch_config(void)
     time(&now);
     config_manager_set_config_last_updated((int64_t) now);
 }
+#if FORK_ANY
+
+// ============================================================================
+// Chimes (speaker feedback)
+// ============================================================================
+
+void config_manager_set_chime_speaker_mode(chime_speaker_mode_t mode)
+{
+    if (mode < CHIME_SPEAKER_OFF || mode > CHIME_SPEAKER_MAINS_ONLY) {
+        mode = CHIME_SPEAKER_OFF;
+    }
+    chime_speaker_mode = mode;
+    agenda_nvs_set_u8(NVS_CHIME_SPEAKER_MODE_KEY, (uint8_t) mode);
+}
+
+chime_speaker_mode_t config_manager_get_chime_speaker_mode(void)
+{
+    return chime_speaker_mode;
+}
+
+void config_manager_set_chime_volume(int percent)
+{
+    if (percent < 0) {
+        percent = 0;
+    } else if (percent > 100) {
+        percent = 100;
+    }
+    chime_volume = percent;
+    agenda_nvs_set_u8(NVS_CHIME_VOLUME_KEY, (uint8_t) percent);
+}
+
+int config_manager_get_chime_volume(void)
+{
+    return chime_volume;
+}
+
+void config_manager_set_chime_quiet_enabled(bool enabled)
+{
+    chime_quiet_enabled = enabled;
+    agenda_nvs_set_u8(NVS_CHIME_QUIET_ENABLED_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_chime_quiet_enabled(void)
+{
+    return chime_quiet_enabled;
+}
+
+void config_manager_set_chime_quiet_start(const char *time_str)
+{
+    strncpy(chime_quiet_start, time_str ? time_str : "", sizeof(chime_quiet_start) - 1);
+    chime_quiet_start[sizeof(chime_quiet_start) - 1] = '\0';
+    agenda_nvs_set_str(NVS_CHIME_QUIET_START_KEY, chime_quiet_start);
+}
+
+const char *config_manager_get_chime_quiet_start(void)
+{
+    return chime_quiet_start;
+}
+
+void config_manager_set_chime_quiet_end(const char *time_str)
+{
+    strncpy(chime_quiet_end, time_str ? time_str : "", sizeof(chime_quiet_end) - 1);
+    chime_quiet_end[sizeof(chime_quiet_end) - 1] = '\0';
+    agenda_nvs_set_str(NVS_CHIME_QUIET_END_KEY, chime_quiet_end);
+}
+
+const char *config_manager_get_chime_quiet_end(void)
+{
+    return chime_quiet_end;
+}
+
+void config_manager_set_chime_event_enabled(chime_event_t event, bool enabled)
+{
+    if (event < 0 || event >= CHIME_EVENT_COUNT) {
+        return;
+    }
+    static const char *const chime_event_keys[CHIME_EVENT_COUNT] = {
+        [CHIME_EVENT_ROTATION] = NVS_CHIME_EVENT_ROTATION_KEY,
+        [CHIME_EVENT_TELEGRAM_PHOTO] = NVS_CHIME_EVENT_TELEGRAM_KEY,
+        [CHIME_EVENT_LOW_BATTERY] = NVS_CHIME_EVENT_LOWBATT_KEY,
+        [CHIME_EVENT_WIFI_REPROVISION] = NVS_CHIME_EVENT_WIFIPROV_KEY,
+        [CHIME_EVENT_AGENDA_DUE] = NVS_CHIME_EVENT_AGENDA_KEY,
+        [CHIME_EVENT_OTA_SUCCESS] = NVS_CHIME_EVENT_OTA_KEY,
+        [CHIME_EVENT_CRITICAL_ERROR] = NVS_CHIME_EVENT_CRIT_KEY,
+    };
+    chime_event_enabled[event] = enabled;
+    agenda_nvs_set_u8(chime_event_keys[event], enabled ? 1 : 0);
+}
+
+bool config_manager_get_chime_event_enabled(chime_event_t event)
+{
+    if (event < 0 || event >= CHIME_EVENT_COUNT) {
+        return false;
+    }
+    return chime_event_enabled[event];
+}
+
+// Maps an event to its repeat-counter NVS key - only the 3 "actionable,
+// can resolve" events have one (see CHIME_REPEAT_MAX's comment in
+// config.h); any other event just isn't persisted (in-memory value stays
+// whatever it was, but nothing ever sets it since chime_repeat_gate() is
+// only ever called for these 3).
+static const char *chime_repeat_key_for_event(chime_event_t event)
+{
+    switch (event) {
+    case CHIME_EVENT_LOW_BATTERY:
+        return NVS_CHIME_REPEAT_LOWBATT_KEY;
+    case CHIME_EVENT_CRITICAL_ERROR:
+        return NVS_CHIME_REPEAT_CRIT_KEY;
+    case CHIME_EVENT_AGENDA_DUE:
+        return NVS_CHIME_REPEAT_AGENDA_KEY;
+    default:
+        return NULL;
+    }
+}
+
+void config_manager_set_chime_repeat_count(chime_event_t event, int count)
+{
+    if (event < 0 || event >= CHIME_EVENT_COUNT) {
+        return;
+    }
+    chime_repeat_count[event] = count;
+    const char *key = chime_repeat_key_for_event(event);
+    if (!key) {
+        return;
+    }
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_i32(nvs_handle, key, (int32_t) count);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+int config_manager_get_chime_repeat_count(chime_event_t event)
+{
+    if (event < 0 || event >= CHIME_EVENT_COUNT) {
+        return 0;
+    }
+    return chime_repeat_count[event];
+}
+
+// ============================================================================
+// Climate (SHTC3 temperature/humidity)
+// ============================================================================
+
+void config_manager_set_climate_room_type(climate_room_type_t room)
+{
+    if (room < CLIMATE_ROOM_LIVING_ROOM || room > CLIMATE_ROOM_BASEMENT) {
+        room = CLIMATE_ROOM_LIVING_ROOM;
+    }
+    climate_room_type = room;
+    agenda_nvs_set_u8(NVS_CLIMATE_ROOM_TYPE_KEY, (uint8_t) room);
+}
+
+climate_room_type_t config_manager_get_climate_room_type(void)
+{
+    return climate_room_type;
+}
+
+void config_manager_set_climate_temp_unit(climate_temp_unit_t unit)
+{
+    if (unit < CLIMATE_UNIT_CELSIUS || unit > CLIMATE_UNIT_FAHRENHEIT) {
+        unit = CLIMATE_UNIT_CELSIUS;
+    }
+    climate_temp_unit = unit;
+    agenda_nvs_set_u8(NVS_CLIMATE_TEMP_UNIT_KEY, (uint8_t) unit);
+}
+
+climate_temp_unit_t config_manager_get_climate_temp_unit(void)
+{
+    return climate_temp_unit;
+}
+
+void config_manager_set_climate_logging_enabled(bool enabled)
+{
+    climate_logging_enabled = enabled;
+    agenda_nvs_set_u8(NVS_CLIMATE_LOGGING_ENABLED_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_climate_logging_enabled(void)
+{
+    return climate_logging_enabled;
+}
+
+void config_manager_set_climate_history_backup_enabled(bool enabled)
+{
+    climate_history_backup_enabled = enabled;
+    agenda_nvs_set_u8(NVS_CLIMATE_HISTORY_BACKUP_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_climate_history_backup_enabled(void)
+{
+    return climate_history_backup_enabled;
+}
+
+void config_manager_set_climate_overlay_enabled(bool enabled)
+{
+    climate_overlay_enabled = enabled;
+    agenda_nvs_set_u8(NVS_CLIMATE_OVERLAY_ENABLED_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_climate_overlay_enabled(void)
+{
+    return climate_overlay_enabled;
+}
+
+void config_manager_set_climate_agenda_header_enabled(bool enabled)
+{
+    climate_agenda_header_enabled = enabled;
+    agenda_nvs_set_u8(NVS_CLIMATE_AGENDA_HEADER_ENABLED_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_climate_agenda_header_enabled(void)
+{
+    return climate_agenda_header_enabled;
+}
+
+void config_manager_set_climate_temp_offset(const char *offset_c_str)
+{
+    strncpy(climate_temp_offset, offset_c_str ? offset_c_str : "0",
+            sizeof(climate_temp_offset) - 1);
+    climate_temp_offset[sizeof(climate_temp_offset) - 1] = '\0';
+    agenda_nvs_set_str(NVS_CLIMATE_TEMP_OFFSET_KEY, climate_temp_offset);
+}
+
+const char *config_manager_get_climate_temp_offset(void)
+{
+    return climate_temp_offset;
+}
+
+void config_manager_set_climate_hum_offset(const char *offset_str)
+{
+    strncpy(climate_hum_offset, offset_str ? offset_str : "0", sizeof(climate_hum_offset) - 1);
+    climate_hum_offset[sizeof(climate_hum_offset) - 1] = '\0';
+    agenda_nvs_set_str(NVS_CLIMATE_HUM_OFFSET_KEY, climate_hum_offset);
+}
+
+const char *config_manager_get_climate_hum_offset(void)
+{
+    return climate_hum_offset;
+}
+
+void config_manager_set_climate_last_log_time(int64_t timestamp)
+{
+    climate_last_log_time = timestamp;
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_i64(nvs_handle, NVS_CLIMATE_LAST_LOG_KEY, climate_last_log_time);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+int64_t config_manager_get_climate_last_log_time(void)
+{
+    return climate_last_log_time;
+}
+#endif

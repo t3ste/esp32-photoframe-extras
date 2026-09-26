@@ -6,6 +6,7 @@
 #include "esp_err.h"
 #include "esp_wifi.h"
 #include "esp_wifi_types.h"
+#include "feature_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 
@@ -39,6 +40,20 @@ void wifi_manager_stop_connecting(void);
 // retries stop.
 void wifi_manager_keep_reconnecting(void);
 esp_err_t wifi_manager_disconnect(void);
+#if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
+// True if the most recent wifi_manager_connect() failure's disconnect reason
+// (WIFI_EVENT_STA_DISCONNECTED) is one the AP itself uses specifically to
+// reject a wrong password/security mismatch (a failed 4-way handshake, MIC
+// failure, or an explicit auth-fail code) - as opposed to a merely transient
+// failure (AP not currently found/visible, beacon timeout, general
+// connection failure) that a retry might well recover from on its own.
+// Meaningless if the last connect attempt actually succeeded.
+bool wifi_manager_last_failure_is_credential_reject(void);
+// Overrides the default reconnect-attempt budget (5) used by the
+// WIFI_EVENT_STA_DISCONNECTED handler before it gives up and reports
+// WIFI_FAIL_BIT. Takes effect on the next wifi_manager_connect() call.
+void wifi_manager_set_max_retries(int max_retries);
+#endif
 bool wifi_manager_is_connected(void);
 esp_err_t wifi_manager_get_ip(char *ip_str, size_t len);
 esp_err_t wifi_manager_save_credentials(const char *ssid, const char *password);
@@ -47,4 +62,18 @@ esp_err_t wifi_manager_load_credentials_from_sdcard(char *ssid, char *password);
 EventGroupHandle_t wifi_manager_get_event_group(void);
 int wifi_manager_scan(wifi_ap_record_t *results, int max_results);
 
+#if FEATURE_OFFLINE_HOTSPOT
+// On-demand offline hotspot (github.com/aitjcize/esp32-photoframe#90):
+// switches to AP-only mode with the same open/no-password SSID scheme as
+// first-time-setup provisioning, making the ALREADY-RUNNING main web UI
+// (main/http_server.c - netif-agnostic, no changes needed) reachable at
+// http://192.168.4.1 with no real WiFi network involved. Drops any existing
+// STA connection. `ssid_out` (may be NULL) receives the chosen SSID, e.g.
+// for a splash-screen QR code. wifi_manager_stop_ap_hotspot() reconnects to
+// the saved network (if any) and returns to normal operation.
+esp_err_t wifi_manager_start_ap_hotspot(char *ssid_out, size_t ssid_out_len);
+esp_err_t wifi_manager_stop_ap_hotspot(void);
+bool wifi_manager_is_ap_hotspot_active(void);
+
+#endif
 #endif
