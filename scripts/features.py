@@ -96,6 +96,27 @@ FEATURES = (
         "Optional HTTPS web UI on port 443",
     ),
     Feature(
+        "offline-hotspot",
+        "FEATURE_OFFLINE_HOTSPOT",
+        (),
+        (),
+        "Offline mode and on-demand hotspot (hold BOOT for 3 s)",
+    ),
+    Feature(
+        "error-banner",
+        "FEATURE_ERROR_BANNER",
+        (),
+        (),
+        "On-display error banner for WiFi and internet failures",
+    ),
+    Feature(
+        "ota-channel",
+        "FEATURE_OTA_CHANNEL",
+        (),
+        (),
+        "OTA release channel (stable/pre-release) and firmware variant choice",
+    ),
+    Feature(
         "facecrop",
         "FEATURE_FACECROP",
         (),

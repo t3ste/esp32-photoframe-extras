@@ -19,8 +19,14 @@ Baseline: `main` = upstream `aitjcize/esp32-photoframe @ 1347744` (v2.18.0-27). 
 | `FEATURE_BATTERY_HISTORY` | `battery_history`, chart tab | - |
 | `FEATURE_DISPLAY_HISTORY` | `history_manager` (no-repeat random rotation) | - |
 | `FEATURE_HTTPS` | `https_cert`, second httpd on 443, mbedTLS X509 write | - |
+| `FEATURE_OFFLINE_HOTSPOT` | offline mode, on-demand AP hotspot (BOOT 3 s), setup-page offline option | - |
+| `FEATURE_ERROR_BANNER` | on-display error banner incl. "no internet" tracking | - |
+| `FEATURE_OTA_CHANNEL` | stable/pre-release channel, firmware variant choice | - |
 | `FEATURE_FACECROP` | `facecrop_metadata`, Cover/Fit variants, "Organize Crop Folders" (the `process-cli` face-crop tool is host-side, always in the tree) | selects `FORK_IMAGE_PIPELINE` |
 | `FORK_FIXES` | general fixes, see 5 | - |
+
+Found during the inventory (not in the first list): offline mode/hotspot, error banner and the OTA channel above; also small options that ride on `FORK_FIXES`
+(WiFi reprovision safety, extended retry, battery TX-power cap, DNS fallback, HA on/off). `process-cli` (host tool) is taken over as is - it is not part of the firmware.
 
 Hidden helpers: `FORK_HTTP_FETCH`, `FORK_WEATHER`, `FORK_EXIF`, `FORK_IMAGE_PIPELINE`, `FORK_HW_SPEAKER`, `FORK_HW_MICROPHONE`, `FORK_HW_CLIMATE_SENSOR`.
 Whether orientation pairing becomes its own flag is decided in the Telegram step, once the `image_processor.c` hunks (+3.4k lines, mostly Telegram-driven) are split.

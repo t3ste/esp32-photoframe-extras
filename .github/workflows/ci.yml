@@ -68,3 +68,21 @@ jobs:
 
       - name: Run host tests
         run: make test
+
+  feature-tooling:
+    name: Feature Flag Tooling
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Feature registry tests
+        run: python -m unittest discover -s scripts -p "test_*.py"
+
+      - name: Check board capability and feature tables
+        run: python scripts/check_capabilities.py

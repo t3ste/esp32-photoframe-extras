@@ -115,6 +115,26 @@ menu "Photoframe optional features"
             Second, TLS-encrypted web server on port 443 with an on-device
             self-signed certificate. Plain HTTP on port 80 keeps working.
 
+    config FEATURE_OFFLINE_HOTSPOT
+        bool "Offline mode and on-demand hotspot"
+        default n
+        help
+            Set the device up without a WiFi network and start an access point
+            with the full web UI on demand (hold BOOT for 3 seconds).
+
+    config FEATURE_ERROR_BANNER
+        bool "On-display error banner"
+        default n
+        help
+            Shows WiFi and internet failures as a banner on the display.
+
+    config FEATURE_OTA_CHANNEL
+        bool "OTA release channel and firmware variant"
+        default n
+        help
+            Choose between stable and pre-release updates and between the
+            firmware variants offered by the release.
+
     config FEATURE_FACECROP
         bool "Face-aware crop variants"
         default n
