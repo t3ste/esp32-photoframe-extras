@@ -1,3 +1,8 @@
+#include "feature_config.h"
+
+#if FORK_ANY
+#include <stdint.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -5,8 +10,17 @@
 #include <time.h>
 #include <unistd.h>
 
+#if FEATURE_ALARMCLOCK
+#include "agenda_manager.h"
+#include "alarm_manager.h"
+#include "alarm_setting_ui.h"
+#endif
 #include "album_manager.h"
 #include "board_hal.h"
+#if FEATURE_CHIMES
+#include "chime.h"
+#include "climate_history.h"
+#endif
 #include "color_palette.h"
 #include "config.h"
 #include "config_manager.h"
@@ -23,6 +37,9 @@
 #include "esp_vfs_dev.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#if FEATURE_DISPLAY_HISTORY
+#include "history_manager.h"
+#endif
 
 // External RTC support
 #ifdef CONFIG_EXT_RTC_ENABLED
@@ -41,6 +58,9 @@
 #include "processing_settings.h"
 #include "splash_screen.h"
 #include "storage.h"
+#if FEATURE_TELEGRAM
+#include "telegram_bot.h"
+#endif
 #include "utils.h"
 #include "wifi_manager.h"
 #include "wifi_provisioning.h"
@@ -346,12 +366,33 @@ static void log_wall_clock(const char *label)
 
 void deep_sleep_wake_main(wakeup_source_t wakeup_src)
 {
+#if FEATURE_CLIMATE
+    // Every real wake gets a climate reading, regardless of whether this
+    // cycle ends up rotating/rendering anything - board_hal_init() already
+    // ran in app_main() before this task was created, so the I2C sensor is
+    // ready, and this needs neither WiFi nor a corrected clock. Deliberately
+    // ahead of every early-sleep-return branch below (the "woke too early"
+    // checks, the agenda/HA-veto sleeps) - see climate_history_record()'s
+    // own debounce for why calling it this often is still cheap.
+    climate_history_record();
+
+#endif
     bool is_button_wake = (wakeup_src == WAKEUP_SOURCE_ROTATE_BUTTON);
     // Check rotation mode and HA configuration
     rotation_mode_t rotation_mode = config_manager_get_rotation_mode();
     bool ha_configured = ha_is_configured();
     bool wifi_connected = false;
 
+#if FEATURE_TELEGRAM
+    // Telegram power-save mode's fast-path optimizations (shorter WiFi
+    // connect budget, skipped hold-window) apply only to an automatic timer
+    // wake - never a manual button press, which always keeps the full retry
+    // budget/window as a deliberate escape hatch to reach the web UI.
+    bool telegram_power_save_active = (rotation_mode == ROTATION_MODE_TELEGRAM) &&
+                                      config_manager_get_telegram_power_save_enabled() &&
+                                      !is_button_wake;
+
+#endif
     // Early-wake check before spending power on WiFi: on boards with an
     // external RTC the corrected time is already restored at this point, so
     // a wake that fired early due to RTC drift can go back to sleep for the
@@ -392,6 +433,22 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         // the trustworthy anchor on RTC-less boards.
         ESP_LOGI(TAG, "Checking periodic tasks...");
         periodic_tasks_check_and_run();
+#if FEATURE_AGENDA
+
+        // Re-derive whether this is still an agenda wake now that the clock
+        // may have just been corrected by SNTP - mirrors the early_seconds
+        // recheck just below for the same RTC-less-board reason. The
+        // WiFi-bring-up decision above necessarily used the pre-sync clock
+        // (SNTP itself needs WiFi already connected, so that half of the
+        // asymmetry can't be fixed within the same wake) - this only
+        // catches the other half: a stale pre-sync clock that wrongly
+        // matched the agenda cron, which the corrected clock says it
+        // shouldn't have. A wake that WiFi never came up for because the
+        // stale clock said "no match" can't be recovered here either way.
+        if (agenda_wake) {
+            agenda_wake = agenda_manager_wake_matches_now();
+        }
+#endif
     }
 
     // Re-check now that the clock is as corrected as it will get (NTP sync
@@ -404,6 +461,28 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         // Won't reach here after sleep
     }
 
+#if FEATURE_AGENDA
+    // An agenda wake takes over the display exclusively for ToDo/Calendar
+    // content and skips the entire photo pipeline below (HA veto ask,
+    // trigger_image_rotation(), Telegram command drain, post-rotate HTTP
+    // hold window) - none of that applies when no photo is being shown
+    // this cycle. If the normal rotate schedule happens to match the exact
+    // same minute, the agenda wake wins; the rotate schedule simply fires
+    // on its own next natural boundary next time around (no makeup logic -
+    // same "just skip, don't special-case a retry" spirit already used for
+    // an HA-vetoed rotation below).
+    if (agenda_wake) {
+        ESP_LOGI(TAG,
+                 "Agenda wake matched - rendering ToDo/Calendar screen, skipping photo rotation");
+        power_manager_reset_sleep_timer();
+        agenda_manager_run(wifi_connected);
+        utils_finalize_internet_health();
+        ESP_LOGI(TAG, "Agenda render complete, going back to sleep");
+        power_manager_enter_sleep();
+        // Won't reach here after sleep
+    }
+
+#endif
     // Whether this wake should actually rotate. Home Assistant can veto a
     // scheduled rotation (e.g. nobody home / night) via the notify response.
     bool should_rotate = true;
@@ -434,6 +513,9 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         // is up but we couldn't ask HA, so don't rotate. (A total WiFi failure
         // never reaches here, so it rotates as normal.)
         esp_err_t notify_err = ha_notify_online(is_button_wake ? NULL : &should_rotate);
+#if FEATURE_ERROR_BANNER
+        utils_record_internet_attempt(notify_err == ESP_OK);
+#endif
         if (!is_button_wake && notify_err != ESP_OK) {
             ESP_LOGW(TAG, "Could not reach Home Assistant to check rotation; skipping");
             utils_set_last_fetch_error("Could not reach Home Assistant to check rotation");
@@ -462,9 +544,24 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
     power_manager_reset_sleep_timer();
     power_manager_record_network_wake(trigger_image_rotation() == ESP_OK);
 
+#if FEATURE_TELEGRAM
+    // Telegram mode: run any "/" commands queued during the poll above (e.g.
+    // /status, /restart, /clear) now that the newest image has been
+    // displayed, and before we notify HA / open the config window / sleep.
+    // (The emergency "/telegram_reset" case already went straight to sleep
+    // from inside trigger_image_rotation() and never reaches this point.)
+    if (rotation_mode == ROTATION_MODE_TELEGRAM) {
+        telegram_bot_run_pending_commands();
+    }
+
+#endif
     // Notify HA that data has been updated (after both OTA check and rotation)
     if (wifi_connected && ha_configured) {
+#if FEATURE_ERROR_BANNER
+        utils_record_internet_attempt(ha_notify_update() == ESP_OK);
+#else
         ha_notify_update();
+#endif
     }
 
     // Keep the HTTP server up briefly so a late config change — or a server-side
@@ -472,7 +569,17 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
     // that asked us to wait (X-Post-Rotate-Wait-Sec, meaning it wants to pull our
     // config) extends it, and gets a window even without HA — URL-mode frames
     // don't start the server before rotating, so we start it on demand here.
+#if FEATURE_TELEGRAM
+    // Telegram power-save mode skips this ambient baseline window entirely (it
+    // exists to let a server/HA reach the device after the fact, not to serve
+    // an active in-progress request) - but still honors an explicit
+    // server_wait below, since that reflects a real, in-progress interaction.
+    int hold_sec = telegram_power_save_active          ? 0
+                   : (wifi_connected && ha_configured) ? HA_CONFIG_WINDOW_SEC
+                                                       : 0;
+#else
     int hold_sec = (wifi_connected && ha_configured) ? HA_CONFIG_WINDOW_SEC : 0;
+#endif
     int server_wait = utils_get_post_rotate_wait_sec();
     if (server_wait > hold_sec) {
         hold_sec = server_wait;
@@ -484,12 +591,50 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         ESP_LOGI(TAG, "HTTP server window closed");
     }
 
+#if FEATURE_TELEGRAM
+    // Tally this cycle's internet-dependent attempts (weather/headlines/
+    // Telegram/HA/URL fetch, wherever any of those were actually enabled) -
+    // a no-op if none of them applied this cycle. Separate from
+    // utils_handle_wifi_connect_result() above: that one only catches WiFi
+    // itself failing to associate, not "WiFi connected fine but every
+    // internet-bound request failed anyway" (e.g. a transient DNS outage).
+    utils_finalize_internet_health();
+
+#endif
     // Go back to sleep (offline notification sent inside power_manager_enter_sleep)
     ESP_LOGI(TAG, "Auto-rotate complete, going back to sleep");
     power_manager_enter_sleep();
     // Won't reach here after sleep
 }
 
+#if FORK_ANY
+// Runs deep_sleep_wake_main() on a dedicated task with a generously-sized
+// stack, instead of the small ESP-IDF "main" task (CONFIG_ESP_MAIN_TASK_STACK_SIZE
+// is back to 6144 - the value already validated upstream for this task's own
+// remaining work, "WiFi and HTTP client operations" - now that the heavy
+// rotation pipeline no longer runs there). 12288 bytes matches the size that
+// used to be applied globally for every build (coredump-confirmed sufficient,
+// see commit 4bbaa64's stack-overflow fix) - just relocated to a task that
+// only exists for the duration of one wake cycle, rather than a permanent
+// cost every build pays whether or not it's ever needed. Applies to every
+// rotation mode, not just Telegram: Storage mode's own orientation-pairing
+// image composition (compose_rotation_pair() in display_manager.c) is a
+// similarly non-trivial operation and shouldn't have to independently
+// re-prove it fits in a smaller shared stack.
+//
+// deep_sleep_wake_main() never returns in normal operation - every path ends
+// in power_manager_enter_sleep() -> esp_deep_sleep_start(), which resets the
+// chip before this task (or anything else) runs again. The vTaskDelete(NULL)
+// below is defensive cleanup for the otherwise-unreachable case where it
+// somehow does return.
+static void deep_sleep_wake_task(void *arg)
+{
+    wakeup_source_t wakeup_src = (wakeup_source_t) (intptr_t) arg;
+    deep_sleep_wake_main(wakeup_src);
+    vTaskDelete(NULL);
+}
+
+#endif
 #if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
 // Dev builds only: if the previous boot stored a core dump (panic), log the
 // crashed task + backtrace so it lands in the persistent debug log, then clear
@@ -502,8 +647,20 @@ static void log_coredump_summary(void)
     }
     esp_core_dump_summary_t summary;
     if (esp_core_dump_get_summary(&summary) == ESP_OK) {
+#if FORK_FIXES
+        ESP_LOGE(TAG, "COREDUMP: task '%s' crashed at PC 0x%08x (%u frames%s)", summary.exc_task,
+                 (unsigned) summary.exc_pc, (unsigned) summary.exc_bt_info.depth,
+                 summary.exc_bt_info.corrupted ? ", CORRUPTED" : "");
+        // exc_cause/exc_vaddr distinguish a null/dangling-pointer access
+        // (LoadProhibited=28/StoreProhibited=29, exc_vaddr = the bad address)
+        // from other fault classes - not previously logged, so every past
+        // crash summary only had the backtrace to go on.
+        ESP_LOGE(TAG, "COREDUMP   exc_cause=%u exc_vaddr=0x%08x",
+                 (unsigned) summary.ex_info.exc_cause, (unsigned) summary.ex_info.exc_vaddr);
+#else
         ESP_LOGE(TAG, "COREDUMP: task '%s' crashed at PC 0x%08x (%u frames)", summary.exc_task,
                  (unsigned) summary.exc_pc, (unsigned) summary.exc_bt_info.depth);
+#endif
         for (uint32_t i = 0; i < summary.exc_bt_info.depth; i++) {
             ESP_LOGE(TAG, "COREDUMP   bt[%u] 0x%08x", (unsigned) i,
                      (unsigned) summary.exc_bt_info.bt[i]);
@@ -567,11 +724,41 @@ void app_main(void)
     // None of these depend on the RTC or the AXP2101 power-rail delay.
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+#if FORK_FIXES
+        // This wipes the ENTIRE NVS partition (WiFi credentials, Telegram
+        // token, every setting) - loud and unmistakable in the log on
+        // purpose. A round of field reports of WiFi needing reprovisioning
+        // after a reflash that never touched the NVS region at 0x9000 was
+        // investigated against this exact mechanism (2026-09) and ruled out
+        // for those specific incidents (nvs_get_stats() below showed 465/756
+        // entries free at the time, and the real cause was found instead in
+        // main.c's cold-boot WiFi-connect-failure handling - see
+        // WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS below). Kept as cheap,
+        // permanent health telemetry regardless, since a genuinely exhausted
+        // NVS partition would still hit this path eventually over a long
+        // enough real-world device lifetime. `ret` here is the specific
+        // ESP-IDF error that triggered the erase - logged before it's
+        // overwritten below.
+        ESP_LOGE(TAG, "*** NVS init failed (%s) - erasing ENTIRE NVS partition ***",
+                 esp_err_to_name(ret));
+#endif
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
 
+#if FORK_FIXES
+    // Diagnostic only (see the erase-on-failure block above): free/used NVS
+    // entry counts on every boot, so a slow drift toward exhaustion is
+    // visible in the debug log well before it actually triggers an erase.
+    nvs_stats_t nvs_stats;
+    if (nvs_get_stats(NULL, &nvs_stats) == ESP_OK) {
+        ESP_LOGI(TAG, "NVS stats: %d used, %d free, %d total entries (%d namespaces)",
+                 (int) nvs_stats.used_entries, (int) nvs_stats.free_entries,
+                 (int) nvs_stats.total_entries, (int) nvs_stats.namespace_count);
+    }
+
+#endif
     ESP_ERROR_CHECK(config_manager_init());
 
     // Start mirroring console logs to storage if debug logging is enabled.
@@ -673,6 +860,10 @@ void app_main(void)
 
     ESP_ERROR_CHECK(album_manager_init());
 
+#if FEATURE_DISPLAY_HISTORY
+    ESP_ERROR_CHECK(history_manager_init());
+
+#endif
     // Check wake-up source
     wakeup_source_t wakeup_src = power_manager_get_wakeup_source();
     ESP_LOGI(TAG, "Wake-up source: %d", wakeup_src);
@@ -680,7 +871,10 @@ void app_main(void)
     switch (wakeup_src) {
     case WAKEUP_SOURCE_CLEAR_BUTTON:
         ESP_LOGI(TAG, "CLEAR button wakeup detected - clearing display and sleeping");
-        board_hal_init();             // Ensure HAL is active
+        board_hal_init();  // Ensure HAL is active
+#if FEATURE_CLIMATE
+        climate_history_record();  // Every physical wake gets a reading too
+#endif
         display_manager_init();       // Initialize display
         display_manager_clear();      // Clear screen
         power_manager_enter_sleep();  // Go back to sleep
@@ -688,6 +882,26 @@ void app_main(void)
         break;
 
     case WAKEUP_SOURCE_TIMER:
+#if FORK_ANY
+        ESP_LOGI(TAG, "Entering deep sleep wake path (timer)");
+        // 16384, not 12288: a live coredump showed button_task overflowing at
+        // 12288 running this same pipeline (trigger_image_rotation(), even
+        // for a small ~23KB photo - the overflow tracks call depth, not
+        // image size) - matched here to rotation_timer_task's own
+        // (apparently sufficient) 16384 for the identical call, see
+        // power_manager.c. See trigger_image_rotation()'s own stack
+        // high-water-mark log (utils.c) for real numbers on this build.
+        xTaskCreate(deep_sleep_wake_task, "deep_sleep_wake", 16384, (void *) (intptr_t) wakeup_src,
+                    5, NULL);
+        // Returning (rather than `break`) hands off exclusively to the new
+        // task - falling through to the cold-boot/BOOT_BUTTON setup code
+        // below would otherwise run concurrently with it (duplicate WiFi/HTTP
+        // server init racing the same state). This wake path always ends in
+        // deep sleep (chip reset) from within that task, so there is nothing
+        // left for the main task to do.
+        return;
+
+#endif
     case WAKEUP_SOURCE_ROTATE_BUTTON:
         ESP_LOGI(TAG, "Entering deep sleep wake path (timer or rotate button)");
         deep_sleep_wake_main(wakeup_src);

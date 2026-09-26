@@ -26,6 +26,7 @@ python build.py --board seeedstudio_xiao_ee02 --list-features
 | `offline-hotspot` | Offline mode and on-demand hotspot (hold BOOT for 3 s) | - |
 | `error-banner` | On-display error banner for WiFi and internet failures | - |
 | `ota-channel` | OTA release channel (stable/pre-release) and firmware variant choice | - |
+| `wifi-resilience` | WiFi options: credential-wipe safety, extended retry, battery TX cap, performance mode | - |
 | `facecrop` | Face-aware crop sidecars and Cover/Fit image variants | - |
 | `fixes` | General bug fixes and robustness improvements | - |
 

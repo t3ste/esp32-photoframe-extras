@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
+#include "feature_config.h"
 
 esp_err_t display_manager_init(void);
 esp_err_t display_manager_show_image(const char *filename);
@@ -17,6 +18,27 @@ void display_manager_rotate_from_storage(void);
 const char *display_manager_get_current_image(void);
 void display_manager_initialize_paint(void);
 
+#if FEATURE_FACECROP
+/**
+ * @brief Whether a matched album file should be treated as its own logical
+ * photo entry, or skipped in favor of a ".fit.<ext>" sibling that already
+ * represents it
+ *
+ * Only matters when config_manager_get_variant_selection_enabled() is on
+ * (always returns true otherwise) - see docs/FACE_CROP.md and the design
+ * comment above display_manager.c's rotate_sequential(). Shared between
+ * display_manager.c's own rotation-loop directory walks and
+ * http_server.c's album_images_handler() (Web UI gallery listing), so both
+ * agree on what counts as one photo.
+ *
+ * @param album_path Directory containing d_name (used to check for a
+ *   ".fit.<ext>" sibling).
+ * @param d_name A directory entry's name, already known to match one of the
+ *   recognized display-file extensions (.bmp/.png/.epdgz).
+ */
+bool display_manager_is_photo_anchor(const char *album_path, const char *d_name);
+
+#endif
 /**
  * @brief Display an RGB buffer directly on the e-paper display
  *

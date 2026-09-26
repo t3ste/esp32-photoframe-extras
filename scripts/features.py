@@ -117,6 +117,13 @@ FEATURES = (
         "OTA release channel (stable/pre-release) and firmware variant choice",
     ),
     Feature(
+        "wifi-resilience",
+        "FEATURE_WIFI_RESILIENCE",
+        (),
+        (),
+        "WiFi options: credential-wipe safety, extended retry, battery TX cap",
+    ),
+    Feature(
         "facecrop",
         "FEATURE_FACECROP",
         (),

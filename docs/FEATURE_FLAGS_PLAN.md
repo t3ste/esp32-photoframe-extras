@@ -10,8 +10,8 @@ Baseline: `main` = upstream `aitjcize/esp32-photoframe @ 1347744` (v2.18.0-27). 
 | Flag (`CONFIG_...`) | Contents | Needs |
 | --- | --- | --- |
 | `FEATURE_TELEGRAM` | `telegram_bot`, Telegram commands, orientation pairing, on-device EPDGZ encode, streaming JPEG fallback | selects `FORK_EXIF`, `FORK_IMAGE_PIPELINE` |
-| `FEATURE_OVERLAYS` | `overlay_manager`, `headlines`, weather icons, caption, low-battery badge | selects `FORK_WEATHER`, `FORK_EXIF`, `FORK_IMAGE_PIPELINE` |
-| `FEATURE_AGENDA` | `agenda_*`, `todo`, `calendar_ics` (A-E, RRULE), 7-day grid, colour profiles, profile editor | selects `FORK_HTTP_FETCH`; weather chip only if `FORK_WEATHER` |
+| `FEATURE_OVERLAYS` | `overlay_manager`, `headlines`, weather icons, caption, low-battery badge | selects `FORK_HTTP_FETCH`, `FORK_EXIF`, `FORK_IMAGE_PIPELINE` |
+| `FEATURE_AGENDA` | `agenda_*`, `todo`, `calendar_ics` (A-E, RRULE), 7-day grid, colour profiles, profile editor | selects `FORK_HTTP_FETCH`; weather chip only together with `FEATURE_OVERLAYS` |
 | `FEATURE_CHIMES` | `chime`, speaker HAL, volume/quiet hours | `FORK_HW_SPEAKER` |
 | `FEATURE_CLIMATE` | `climate`, `climate_history`, badges, Agenda chip, history tab | `FORK_HW_CLIMATE_SENSOR` |
 | `FEATURE_ALARMCLOCK` | `alarm_*`, alarm tones/ramp/volume, button UI (replaces `ALARM_CLOCK_ENABLED`; `build.py --alarmclock` stays as alias) | `FORK_HW_SPEAKER` (HAL audio only, not `FEATURE_CHIMES`) |
@@ -22,13 +22,14 @@ Baseline: `main` = upstream `aitjcize/esp32-photoframe @ 1347744` (v2.18.0-27). 
 | `FEATURE_OFFLINE_HOTSPOT` | offline mode, on-demand AP hotspot (BOOT 3 s), setup-page offline option | - |
 | `FEATURE_ERROR_BANNER` | on-display error banner incl. "no internet" tracking | - |
 | `FEATURE_OTA_CHANNEL` | stable/pre-release channel, firmware variant choice | - |
+| `FEATURE_WIFI_RESILIENCE` | reprovision safety, extended cold-boot retry, battery TX-power cap, WiFi performance mode | - |
 | `FEATURE_FACECROP` | `facecrop_metadata`, Cover/Fit variants, "Organize Crop Folders" (the `process-cli` face-crop tool is host-side, always in the tree) | selects `FORK_IMAGE_PIPELINE` |
 | `FORK_FIXES` | general fixes, see 5 | - |
 
 Found during the inventory (not in the first list): offline mode/hotspot, error banner and the OTA channel above; also small options that ride on `FORK_FIXES`
-(WiFi reprovision safety, extended retry, battery TX-power cap, DNS fallback, HA on/off). `process-cli` (host tool) is taken over as is - it is not part of the firmware.
+(DNS fallback, HA on/off). `process-cli` (host tool) is taken over as is - it is not part of the firmware.
 
-Hidden helpers: `FORK_HTTP_FETCH`, `FORK_WEATHER`, `FORK_EXIF`, `FORK_IMAGE_PIPELINE`, `FORK_HW_SPEAKER`, `FORK_HW_MICROPHONE`, `FORK_HW_CLIMATE_SENSOR`.
+Hidden helpers: `FORK_HTTP_FETCH`, `FORK_EXIF`, `FORK_IMAGE_PIPELINE`, `FORK_HW_SPEAKER`, `FORK_HW_MICROPHONE`, `FORK_HW_CLIMATE_SENSOR`.
 Whether orientation pairing becomes its own flag is decided in the Telegram step, once the `image_processor.c` hunks (+3.4k lines, mostly Telegram-driven) are split.
 
 ## 2. Hardware (from `components/board_hal`, verified)

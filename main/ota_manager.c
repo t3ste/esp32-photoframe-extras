@@ -6,7 +6,14 @@
 
 #include "board_hal.h"
 #include "cJSON.h"
+#include "feature_config.h"
+#if FEATURE_CHIMES
+#include "chime.h"
+#endif
 #include "config.h"
+#if FEATURE_OTA_CHANNEL
+#include "config_manager.h"
+#endif
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_https_ota.h"
@@ -19,6 +26,9 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "ha_integration.h"
+#if FORK_FIXES
+#include "http_fetch.h"
+#endif
 #include "nvs.h"
 #include "periodic_tasks.h"
 #include "power_manager.h"
@@ -27,6 +37,10 @@ static const char *TAG = "ota_manager";
 #define OTA_NVS_NAMESPACE "ota"
 #define OTA_NVS_LATEST_VERSION_KEY "latest_ver"
 #define OTA_NVS_STATE_KEY "state"
+#if FEATURE_OTA_CHANNEL
+#define OTA_NVS_CHANNEL_KEY "channel"
+#define OTA_NVS_ALARM_KEY "alarm"
+#endif
 #define OTA_CHECK_INTERVAL_SECONDS (24 * 60 * 60)  // 24 hours
 
 static ota_status_t ota_status = {.state = OTA_STATE_IDLE,
@@ -35,6 +49,20 @@ static ota_status_t ota_status = {.state = OTA_STATE_IDLE,
                                   .error_message = "",
                                   .progress_percent = 0};
 
+#if FEATURE_OTA_CHANNEL
+#if FEATURE_ALARMCLOCK
+#define RUNNING_ALARMCLOCK true
+#else
+#define RUNNING_ALARMCLOCK false
+#endif
+
+// Which release / firmware variant the next check uses (persisted, see
+// ota_set_options()). The variant defaults to whatever this build already is,
+// so an Alarm Clock build keeps updating to the Alarm Clock firmware.
+static ota_channel_t s_channel = OTA_CHANNEL_STABLE;
+static bool s_alarm_variant = RUNNING_ALARMCLOCK;
+
+#endif
 static SemaphoreHandle_t ota_status_mutex = NULL;
 static bool update_available = false;
 static char firmware_url[256] = "";
@@ -42,6 +70,9 @@ static char firmware_url[256] = "";
 // Forward declarations
 static void ota_save_status_to_nvs(void);
 static void ota_load_status_from_nvs(void);
+#if FEATURE_OTA_CHANNEL
+static void ota_load_options_from_nvs(void);
+#endif
 static esp_err_t ota_check_periodic_callback(void);
 
 static void set_ota_state(ota_state_t state, const char *error_msg)
@@ -96,8 +127,15 @@ static int version_compare(const char *v1, const char *v2)
     return v1_patch - v2_patch;
 }
 
+#if FEATURE_OTA_CHANNEL
+static bool want_alarm_variant(void)
+#else
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
+#endif
 {
+#if FEATURE_OTA_CHANNEL
+    return s_alarm_variant && board_hal_has_speaker();
+#else
     switch (evt->event_id) {
     case HTTP_EVENT_ERROR:
         ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
@@ -127,15 +165,41 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
         break;
     }
     return ESP_OK;
+#endif
 }
 
 static esp_err_t fetch_github_release_info(char *latest_version, size_t version_len,
+#if FEATURE_OTA_CHANNEL
+                                           char *download_url, size_t url_len, bool *prerelease_out)
+#else
                                            char *download_url, size_t url_len)
+#endif
 {
     esp_err_t err = ESP_FAIL;
     char *response_buffer = NULL;
+#if !(FEATURE_OTA_CHANNEL)
     int response_len = 0;
+#endif
 
+#if FORK_FIXES
+    // GitHub's releases/latest API can respond with Transfer-Encoding: chunked
+    // rather than a fixed Content-Length - a fixed-length read (the previous
+    // implementation here) then sees Content-Length 0 and fails every time.
+    // http_fetch_get() accumulates the body via the HTTP client's own
+    // event-driven callback regardless of encoding (already proven against
+    // this exact class of API by weather.c/headlines.c) - reuse it instead of
+    // a second, more fragile fetch implementation. This project's own release
+    // (14 assets - 7 boards x merged+OTA binary; 18 with the Alarm Clock
+    // variant) measured 34 KB of response
+    // JSON (GitHub's per-asset metadata, e.g. the uploader object, is
+    // verbose) - 64 KB leaves real headroom for more assets later.
+    size_t response_len = 0;
+    err =
+        http_fetch_get(s_channel == OTA_CHANNEL_PRERELEASE ? GITHUB_API_URL_NEWEST : GITHUB_API_URL,
+                       10000, 64 * 1024, &response_buffer, &response_len, NULL, "ESP32-PhotoFrame");
+    if (err != ESP_OK || !response_buffer) {
+        ESP_LOGE(TAG, "Failed to fetch release info: %s", esp_err_to_name(err));
+#else
     esp_http_client_config_t config = {
         .url = GITHUB_API_URL,
         .event_handler = http_event_handler,
@@ -147,9 +211,11 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         ESP_LOGE(TAG, "Failed to initialize HTTP client");
+#endif
         return ESP_FAIL;
     }
 
+#if !(FORK_FIXES)
     // Set User-Agent header (GitHub API requires it)
     esp_http_client_set_header(client, "User-Agent", "ESP32-PhotoFrame");
 
@@ -195,6 +261,7 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
 
     response_buffer[response_len] = '\0';
 
+#endif
     // Parse JSON response
     cJSON *json = cJSON_Parse(response_buffer);
     if (json == NULL) {
@@ -203,8 +270,27 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
         goto cleanup;
     }
 
+#if FEATURE_OTA_CHANNEL
+    // /releases/latest returns the release object, /releases?per_page=1 an
+    // array holding it.
+    cJSON *release = json;
+    if (cJSON_IsArray(json)) {
+        release = cJSON_GetArrayItem(json, 0);
+        if (release == NULL) {
+            ESP_LOGE(TAG, "No release in response");
+            cJSON_Delete(json);
+            err = ESP_FAIL;
+            goto cleanup;
+        }
+    }
+
+#endif
     // Get tag_name (version)
+#if FEATURE_OTA_CHANNEL
+    cJSON *tag_name = cJSON_GetObjectItem(release, "tag_name");
+#else
     cJSON *tag_name = cJSON_GetObjectItem(json, "tag_name");
+#endif
     if (tag_name == NULL || !cJSON_IsString(tag_name)) {
         ESP_LOGE(TAG, "tag_name not found in response");
         cJSON_Delete(json);
@@ -213,9 +299,18 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
     }
 
     snprintf(latest_version, version_len, "%s", tag_name->valuestring);
+#if FEATURE_OTA_CHANNEL
+    if (prerelease_out) {
+        *prerelease_out = cJSON_IsTrue(cJSON_GetObjectItem(release, "prerelease"));
+    }
+#endif
 
     // Get assets array and find .bin file
+#if FEATURE_OTA_CHANNEL
+    cJSON *assets = cJSON_GetObjectItem(release, "assets");
+#else
     cJSON *assets = cJSON_GetObjectItem(json, "assets");
+#endif
     if (assets == NULL || !cJSON_IsArray(assets)) {
         ESP_LOGE(TAG, "assets not found in response");
         cJSON_Delete(json);
@@ -228,8 +323,18 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
 
     const char *board_name = BOARD_HAL_NAME;
 
+#if FEATURE_OTA_CHANNEL
+    // The Alarm Clock firmware is a separate "-alarmclock" release asset. By
+    // default a build updates to its own variant (an Alarm Clock build must not
+    // silently lose the feature); the Web UI can pick the other one.
+    const char *variant_suffix = want_alarm_variant() ? "-alarmclock" : "";
+    char target_binary[80];
+    snprintf(target_binary, sizeof(target_binary), "esp32-photoframe-%s%s.bin", board_name,
+             variant_suffix);
+#else
     char target_binary[64];
     snprintf(target_binary, sizeof(target_binary), "esp32-photoframe-%s.bin", board_name);
+#endif
     ESP_LOGI(TAG, "Searching for board-specific OTA binary: %s", target_binary);
 
     cJSON_ArrayForEach(asset, assets)
@@ -254,7 +359,11 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
 
     if (!found_binary) {
         ESP_LOGE(TAG, "No .bin file found in release assets");
+#if FEATURE_OTA_CHANNEL
+        err = ESP_ERR_NOT_FOUND;
+#else
         err = ESP_FAIL;
+#endif
         goto cleanup;
     }
 
@@ -263,12 +372,16 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
     ESP_LOGI(TAG, "Download URL: %s", download_url);
 
 cleanup:
+#if FORK_FIXES
+    free(response_buffer);
+#else
     if (response_buffer) {
         free(response_buffer);
     }
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
 
+#endif
     return err;
 }
 
@@ -284,29 +397,66 @@ static void ota_check_task(void *pvParameter)
     char latest_version[32] = {0};
     char download_url[256] = {0};
 
+#if FEATURE_OTA_CHANNEL
+    bool prerelease = false;
+#endif
     esp_err_t err = fetch_github_release_info(latest_version, sizeof(latest_version), download_url,
+#if FEATURE_OTA_CHANNEL
+                                              sizeof(download_url), &prerelease);
+#else
                                               sizeof(download_url));
+#endif
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to fetch release info");
+#if FEATURE_OTA_CHANNEL
+        if (err == ESP_ERR_NOT_FOUND) {
+            set_ota_state(OTA_STATE_ERROR, want_alarm_variant()
+                                               ? "This release has no Alarm Clock firmware yet"
+                                               : "This release has no firmware for this board");
+        } else {
+            set_ota_state(OTA_STATE_ERROR, "Failed to check for updates");
+        }
+#else
         set_ota_state(OTA_STATE_ERROR, "Failed to check for updates");
+#endif
         vTaskDelete(NULL);
         return;
     }
 
+#if FEATURE_OTA_CHANNEL
+    // Installing the found release also changes the firmware variant?
+    bool variant_switch = (want_alarm_variant() != RUNNING_ALARMCLOCK);
+
+#endif
     // Store latest version and URL
     if (ota_status_mutex && xSemaphoreTake(ota_status_mutex, portMAX_DELAY) == pdTRUE) {
         snprintf(ota_status.latest_version, sizeof(ota_status.latest_version), "%s",
                  latest_version);
+#if FEATURE_OTA_CHANNEL
+        ota_status.latest_prerelease = prerelease;
+        ota_status.variant_switch = variant_switch;
+#endif
         xSemaphoreGive(ota_status_mutex);
     }
     snprintf(firmware_url, sizeof(firmware_url), "%s", download_url);
 
+#if FEATURE_OTA_CHANNEL
+    // Compare versions. Same version but the other variant (Alarm Clock <->
+    // regular) is offered too; an older release is never offered as a "switch".
+#else
     // Compare versions
+#endif
     int cmp = version_compare(ota_status.current_version, latest_version);
 
+#if FEATURE_OTA_CHANNEL
+    if (cmp < 0 || (cmp == 0 && variant_switch)) {
+        ESP_LOGI(TAG, "Update available: %s -> %s%s%s", ota_status.current_version, latest_version,
+                 prerelease ? " (pre-release)" : "", variant_switch ? " (variant switch)" : "");
+#else
     if (cmp < 0) {
         ESP_LOGI(TAG, "Update available: %s -> %s", ota_status.current_version, latest_version);
+#endif
         update_available = true;
         set_ota_state(OTA_STATE_UPDATE_AVAILABLE, NULL);
     } else {
@@ -450,6 +600,9 @@ esp_err_t ota_manager_init(void)
 
     // Load last known OTA status from NVS (latest_version, state)
     ota_load_status_from_nvs();
+#if FEATURE_OTA_CHANNEL
+    ota_load_options_from_nvs();
+#endif
 
     // Mark current partition as valid (for rollback support)
     const esp_partition_t *running = esp_ota_get_running_partition();
@@ -458,6 +611,11 @@ esp_err_t ota_manager_init(void)
         if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
             ESP_LOGI(TAG, "First boot after OTA update, marking as valid");
             esp_ota_mark_app_valid_cancel_rollback();
+#if FEATURE_CHIMES
+            // Post-reboot, on the new firmware - board_hal_init() (and thus
+            // the speaker hardware) already ran earlier in app_main().
+            chime_play_if_enabled(CHIME_EVENT_OTA_SUCCESS);
+#endif
         }
     }
 
@@ -480,6 +638,12 @@ esp_err_t ota_check_for_update(bool *update_available_out, int timeout)
     }
 
     update_available = false;
+#if FORK_FIXES
+    // Enter CHECKING here rather than in the task: the wait loop below (and the
+    // caller's HTTP response) would otherwise see the old state before the
+    // task has run and report "no update" straight away.
+    set_ota_state(OTA_STATE_CHECKING, NULL);
+#endif
     xTaskCreate(&ota_check_task, "ota_check_task", 12288, NULL, 5, NULL);
 
     // Wait for check to complete (with timeout)
@@ -539,6 +703,29 @@ void ota_update_last_check_time(void)
 
 static esp_err_t ota_check_periodic_callback(void)
 {
+#if FEATURE_OTA_CHANNEL
+    if (!config_manager_get_ota_check_enabled()) {
+        ESP_LOGI(TAG, "Automatic OTA check disabled, skipping periodic check");
+        // Still counts as "run" so it doesn't retry every wake while disabled.
+        ota_update_last_check_time();
+        return ESP_OK;
+    }
+
+#endif
+#if FORK_FIXES
+    if (ota_status.state == OTA_STATE_CHECKING || ota_status.state == OTA_STATE_DOWNLOADING ||
+        ota_status.state == OTA_STATE_INSTALLING) {
+        // ota_check_for_update()/ota_start_update() both refuse to start a
+        // second check/update while one is already in progress, but this
+        // periodic path used to skip that guard entirely and could spawn a
+        // second concurrent ota_check_task, corrupting shared state
+        // (ota_status, firmware_url) mid-update. Skip this cycle instead;
+        // the next periodic tick retries.
+        ESP_LOGI(TAG, "OTA check/update already in progress, skipping periodic check");
+        return ESP_OK;
+    }
+
+#endif
     ESP_LOGI(TAG, "Periodic OTA check triggered");
 
     // Check for updates without notifying HA (HA will poll for status)
@@ -547,6 +734,82 @@ static esp_err_t ota_check_periodic_callback(void)
     return ESP_OK;
 }
 
+#if FEATURE_OTA_CHANNEL
+static void ota_load_options_from_nvs(void)
+{
+    s_channel = OTA_CHANNEL_STABLE;
+    s_alarm_variant = RUNNING_ALARMCLOCK;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(OTA_NVS_NAMESPACE, NVS_READONLY, &nvs_handle) != ESP_OK) {
+        return;
+    }
+    uint8_t value = 0;
+    if (nvs_get_u8(nvs_handle, OTA_NVS_CHANNEL_KEY, &value) == ESP_OK &&
+        value <= OTA_CHANNEL_PRERELEASE) {
+        s_channel = (ota_channel_t) value;
+    }
+    if (nvs_get_u8(nvs_handle, OTA_NVS_ALARM_KEY, &value) == ESP_OK) {
+        s_alarm_variant = (value != 0);
+    }
+    nvs_close(nvs_handle);
+}
+
+void ota_get_options(ota_options_t *out)
+{
+    out->channel = s_channel;
+    out->alarmclock = want_alarm_variant();
+    out->alarmclock_available = board_hal_has_speaker();
+    out->running_alarmclock = RUNNING_ALARMCLOCK;
+}
+
+esp_err_t ota_set_options(ota_channel_t channel, bool alarmclock)
+{
+    if (channel != OTA_CHANNEL_STABLE && channel != OTA_CHANNEL_PRERELEASE) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (alarmclock && !board_hal_has_speaker()) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    if (ota_status.state == OTA_STATE_CHECKING || ota_status.state == OTA_STATE_DOWNLOADING ||
+        ota_status.state == OTA_STATE_INSTALLING) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(OTA_NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = nvs_set_u8(nvs_handle, OTA_NVS_CHANNEL_KEY, (uint8_t) channel);
+    if (err == ESP_OK) {
+        err = nvs_set_u8(nvs_handle, OTA_NVS_ALARM_KEY, alarmclock ? 1 : 0);
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(nvs_handle);
+    }
+    nvs_close(nvs_handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    s_channel = channel;
+    s_alarm_variant = alarmclock;
+
+    // The last check answered a different question - forget it.
+    update_available = false;
+    if (ota_status_mutex && xSemaphoreTake(ota_status_mutex, portMAX_DELAY) == pdTRUE) {
+        ota_status.latest_version[0] = '\0';
+        ota_status.latest_prerelease = false;
+        ota_status.variant_switch = false;
+        xSemaphoreGive(ota_status_mutex);
+    }
+    set_ota_state(OTA_STATE_IDLE, NULL);
+    ota_save_status_to_nvs();
+    return ESP_OK;
+}
+
+#endif
 static void ota_save_status_to_nvs(void)
 {
     nvs_handle_t nvs_handle;

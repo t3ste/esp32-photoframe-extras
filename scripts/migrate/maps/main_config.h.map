@@ -1,0 +1,10 @@
+# main/config.h
+7.1  FORK_FIXES                # ha_enabled switch
+7.2  FEATURE_ERROR_BANNER
+7.3  FEATURE_WIFI_RESILIENCE   # wifi performance mode switch
+7.4  FEATURE_WIFI_RESILIENCE
+7.5  FEATURE_WIFI_RESILIENCE
+7.19 FORK_EXIF
+7.27 FEATURE_WIFI_RESILIENCE
+8    drop                      # OTA repo: handled by hand (FORK_OTA_REPO)
+9.0  FEATURE_OTA_CHANNEL

@@ -8,6 +8,7 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "feature_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "ota_manager.h"
@@ -40,6 +41,11 @@ static esp_err_t ha_http_event_handler(esp_http_client_event_t *evt)
 
 bool ha_is_configured(void)
 {
+#if FORK_FIXES
+    if (!config_manager_get_ha_enabled()) {
+        return false;
+    }
+#endif
     const char *ha_url = config_manager_get_ha_url();
     return (ha_url != NULL && strlen(ha_url) > 0);
 }

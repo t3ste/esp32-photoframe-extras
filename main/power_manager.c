@@ -9,6 +9,11 @@
 #include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+
+#include "feature_config.h"
+#if FORK_ANY
+#include <limits.h>
+#endif
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <time.h>
@@ -17,7 +22,14 @@
 #include <hal/usb_serial_jtag_ll.h>
 #endif
 
+#if FORK_ANY
+#include "agenda_manager.h"
+#include "alarm_manager.h"
+#endif
 #include "board_hal.h"
+#if FORK_ANY
+#include "climate_history.h"
+#endif
 #include "config.h"
 #include "config_manager.h"
 #include "debug_log.h"
@@ -99,6 +111,11 @@ static int64_t next_sleep_time = 0;  // Use absolute time for sleep timer
 static uint32_t auto_sleep_timeout_sec = AUTO_SLEEP_TIMEOUT_SEC;
 static wakeup_source_t wakeup_source = WAKEUP_SOURCE_NONE;
 static int64_t next_rotation_time = 0;  // Use absolute time for rotation
+#if FORK_ANY
+static int64_t next_agenda_time = 0;   // Same convention, for the Agenda schedule below
+static int64_t next_climate_time = 0;  // Same convention, for the climate log below
+static int64_t next_alarm_time = 0;    // Same convention, for the Alarm Clock schedule below
+#endif
 static uint64_t ext1_wakeup_pin_mask = 0;
 
 static void rotation_timer_task(void *arg)
@@ -117,10 +134,90 @@ static void rotation_timer_task(void *arg)
             continue;
         }
 
+#if FORK_ANY
+        int64_t now = esp_timer_get_time();  // Get absolute time in microseconds
+
+        // Climate: same "device stays awake continuously" gating as
+        // rotation/agenda above, but this one genuinely doesn't need
+        // 1-second precision - only actually evaluated once every ~30 ticks
+        // of this task's own 1-second loop, well within
+        // CLIMATE_ACTIVE_LOG_INTERVAL_SEC's 6-minute granularity.
+        // climate_history_record() has its own persisted debounce
+        // (CLIMATE_LOG_MIN_INTERVAL_SEC) against overlapping with a
+        // wake-triggered reading (main.c), so no coordination is needed here.
+        static int climate_check_counter = 0;
+        if (++climate_check_counter >= 30) {
+            climate_check_counter = 0;
+            if (next_climate_time == 0 || now >= next_climate_time) {
+                climate_history_record();
+                next_climate_time = now + ((int64_t) CLIMATE_ACTIVE_LOG_INTERVAL_SEC * 1000000LL);
+            }
+        }
+
+        // Alarm Clock: an independent schedule, same "device stays awake"
+        // gating as rotation/agenda - mirrors deep_sleep_wake_main()'s
+        // alarm_wake decision for the case a deep-sleep board never actually
+        // sleeps (USB-powered) or has deep sleep disabled outright, which a
+        // bedside alarm clock use case can't just ignore (many such devices
+        // stay plugged in overnight). Checked and rung before agenda/
+        // rotation below - alarm_manager_run() blocks for the ring duration,
+        // so a same-tick agenda/rotation due-ness is still evaluated against
+        // this tick's "now" but its actual action lands after the alarm
+        // finishes, same "no makeup logic, just delayed" spirit as agenda
+        // pre-empting rotation below. alarm_manager_is_enabled()/_run() are
+        // harmless no-ops on a build without FEATURE_ALARMCLOCK.
+        if (alarm_manager_is_enabled()) {
+            if (next_alarm_time == 0) {
+                int seconds_until_next = alarm_manager_seconds_until_next_wake();
+                next_alarm_time = now + (seconds_until_next * 1000000LL);
+                ESP_LOGI(TAG, "Active alarm check scheduled in %d seconds", seconds_until_next);
+            } else if (now >= next_alarm_time) {
+                ESP_LOGI(TAG, "Active alarm triggered");
+                alarm_manager_run();
+
+                int seconds_until_next = alarm_manager_seconds_until_next_wake();
+                next_alarm_time = esp_timer_get_time() + (seconds_until_next * 1000000LL);
+                ESP_LOGI(TAG, "Next alarm check scheduled in %d seconds", seconds_until_next);
+            }
+        } else {
+            next_alarm_time = 0;  // Reset if the alarm got disabled
+        }
+
+        // Agenda: an independent schedule, same "device stays awake" gating
+        // as rotation above - mirrors deep_sleep_wake_main()'s agenda_wake
+        // decision for the case a deep-sleep board never actually sleeps
+        // (USB-powered) or has deep sleep disabled outright (HA/always-on).
+        // Decided before the rotation block below so a same-tick collision
+        // can defer to it, same "agenda wins" rule as the deep-sleep path.
+        bool agenda_due = false;
+        if (agenda_manager_is_enabled()) {
+            if (next_agenda_time == 0) {
+                int seconds_until_next = agenda_manager_seconds_until_next_wake();
+                next_agenda_time = now + (seconds_until_next * 1000000LL);
+                ESP_LOGI(TAG, "Active agenda render scheduled in %d seconds", seconds_until_next);
+            } else if (now >= next_agenda_time) {
+                agenda_due = true;
+            }
+        } else {
+            next_agenda_time = 0;  // Reset if agenda got disabled
+        }
+
+        if (agenda_due) {
+            ESP_LOGI(TAG, "Active agenda render triggered");
+            agenda_manager_run(wifi_manager_is_connected());
+
+            int seconds_until_next = agenda_manager_seconds_until_next_wake();
+            next_agenda_time = now + (seconds_until_next * 1000000LL);
+            ESP_LOGI(TAG, "Next agenda render scheduled in %d seconds", seconds_until_next);
+        }
+
+#endif
         // Handle active rotation when device stays awake and auto-rotate enabled
         if (config_manager_get_auto_rotate()) {
+#if !(FORK_ANY)
             int64_t now = esp_timer_get_time();  // Get absolute time in microseconds
 
+#endif
             if (next_rotation_time == 0) {
                 // Initialize next rotation time
                 int seconds_until_next = get_seconds_until_next_wakeup();
@@ -131,13 +228,38 @@ static void rotation_timer_task(void *arg)
                 ESP_LOGI(TAG, "Active rotation scheduled in %d seconds (%s, %s)",
                          seconds_until_next, "cron", reason);
             } else if (now >= next_rotation_time) {
+#if FORK_ANY
+                // Time to rotate - unless Agenda just took over this same
+                // tick, matching the deep-sleep path's "agenda wake wins;
+                // rotate simply fires on its own next natural boundary" rule
+                // (no makeup logic for the skipped tick). next_rotation_time
+                // is advanced identically either way, from the fresh
+                // schedule computation below, so a skipped rotation still
+                // lands on its real next scheduled slot, not an immediate
+                // retry on the following 1-second tick.
+                if (agenda_due) {
+                    ESP_LOGI(TAG,
+                             "Rotation due but Agenda render took priority this tick - "
+                             "skipping, rotation continues on its own schedule");
+                } else {
+                    const char *reason =
+                        board_hal_is_usb_connected() ? "USB powered" : "deep sleep disabled";
+                    ESP_LOGI(TAG, "Active rotation triggered (%s)", reason);
+#else
                 // Time to rotate
                 const char *reason =
                     board_hal_is_usb_connected() ? "USB powered" : "deep sleep disabled";
                 ESP_LOGI(TAG, "Active rotation triggered (%s)", reason);
+#endif
 
+#if FORK_ANY
+                    trigger_image_rotation();
+                    ha_notify_update();
+                }
+#else
                 trigger_image_rotation();
                 ha_notify_update();
+#endif
 
                 // Schedule next rotation
                 int seconds_until_next = get_seconds_until_next_wakeup();
@@ -170,7 +292,15 @@ static void sleep_timer_task(void *arg)
         bool usb_powered = board_hal_is_usb_connected();
         bool interactive_wake =
             (wakeup_source == WAKEUP_SOURCE_BOOT_BUTTON || wakeup_source == WAKEUP_SOURCE_NONE);
+#if FEATURE_WIFI_RESILIENCE
+        if (!config_manager_get_wifi_performance_mode_enabled()) {
+            // User override: always stay in power-save, regardless of the
+            // tiered policy below (lower draw, slower web UI).
+            wifi_manager_set_performance_mode(false);
+        } else if (config_manager_get_deep_sleep_enabled()) {
+#else
         if (config_manager_get_deep_sleep_enabled()) {
+#endif
             wifi_manager_set_performance_mode(interactive_wake || usb_powered);
         } else {
             wifi_manager_set_performance_mode(usb_powered);
@@ -234,20 +364,41 @@ static void power_manager_enable_auto_light_sleep(void)
     // and scale CPU frequency down to save power while maintaining WiFi connectivity
     esp_pm_config_t pm_config = {
         .max_freq_mhz = 160,  // Maximum CPU frequency (160MHz for ESP32-S3)
-        .min_freq_mhz = 40,   // Minimum CPU frequency (40MHz when idle)
+#if !(FEATURE_WIFI_RESILIENCE)
+        .min_freq_mhz = 40,  // Minimum CPU frequency (40MHz when idle)
+#endif
 #ifdef BOARD_HAL_DISABLE_AUTO_LIGHT_SLEEP
-        // This board shares the SPI bus between the e-paper panel and the SD
-        // card; automatic light sleep disturbs the bus mid-transaction and
-        // corrupts SD reads. Keep CPU frequency scaling, but no light sleep.
+#if FORK_FIXES
+        // Pinning min == max disables esp_pm's dynamic frequency scaling
+        // outright, not just light sleep. Coredumps on this board show the
+        // crash (spinlock_acquire assert in esp_pm_impl_isr_hook ->
+        // leave_idle -> esp_pm_lock_acquire) still happens with light sleep
+        // off as long as min/max differ, i.e. DFS's lock/ISR-hook machinery
+        // is itself the trigger when a WiFi interrupt lands mid-transition,
+        // not specifically the light-sleep transition.
+        .min_freq_mhz = 160,
+#else
+    // This board shares the SPI bus between the e-paper panel and the SD
+    // card; automatic light sleep disturbs the bus mid-transaction and
+    // corrupts SD reads. Keep CPU frequency scaling, but no light sleep.
+#endif
         .light_sleep_enable = false,
 #else
+#if FORK_FIXES
+        .min_freq_mhz = 40,  // Minimum CPU frequency (40MHz when idle)
+#endif
         .light_sleep_enable = true,  // Enable automatic light sleep
 #endif
     };
 
     esp_err_t pm_ret = esp_pm_configure(&pm_config);
     if (pm_ret == ESP_OK) {
+#if FORK_FIXES
+        ESP_LOGI(TAG, "Power management configured (CPU: %dMHz -> %dMHz, light sleep %s)",
+                 pm_config.max_freq_mhz, pm_config.min_freq_mhz,
+#else
         ESP_LOGI(TAG, "Power management configured (CPU: 160MHz -> 40MHz, light sleep %s)",
+#endif
                  pm_config.light_sleep_enable ? "enabled" : "disabled");
     } else {
         ESP_LOGW(TAG, "Failed to configure power management: %s", esp_err_to_name(pm_ret));
@@ -258,7 +409,15 @@ static void power_manager_disable_auto_light_sleep(void)
 {
     esp_pm_config_t pm_config = {
         .max_freq_mhz = 160,  // Maximum CPU frequency (160MHz for ESP32-S3)
-        .min_freq_mhz = 40,   // Minimum CPU frequency (40MHz when idle)
+#if FORK_FIXES
+#ifdef BOARD_HAL_DISABLE_AUTO_LIGHT_SLEEP
+        .min_freq_mhz = 160,  // Pin frequency: fully disables DFS, see above
+#else
+        .min_freq_mhz = 40,  // Minimum CPU frequency (40MHz when idle)
+#endif
+#else
+        .min_freq_mhz = 40,  // Minimum CPU frequency (40MHz when idle)
+#endif
         .light_sleep_enable = false,
     };
 
@@ -452,6 +611,34 @@ void power_manager_enter_sleep(void)
     board_hal_led_set(BOARD_HAL_LED_POWER, false);
     board_hal_led_set(BOARD_HAL_LED_ACTIVITY, false);
 
+#if FORK_ANY
+    // Timer-based sleep if any of the normal photo rotation schedule, the
+    // independent agenda (ToDo + Calendar) schedule, or the independent
+    // alarm clock schedule is enabled - whichever fires soonest. All three
+    // are otherwise unrelated: deep_sleep_wake_main() re-checks which one(s)
+    // actually matched at the moment the device wakes (a coarse timer wake
+    // can't itself carry that information), and renders the photo, the
+    // agenda screen, or rings the alarm accordingly - see
+    // agenda_manager_wake_matches_now()/alarm_manager_wake_matches_now().
+    // alarm_manager_is_enabled() is a harmless no-op (always false) on a
+    // build without FEATURE_ALARMCLOCK.
+    bool rotate_on = config_manager_get_auto_rotate();
+    bool agenda_on = agenda_manager_is_enabled();
+    bool alarm_on = alarm_manager_is_enabled();
+    if (rotate_on || agenda_on || alarm_on) {
+        int rotate_wake = rotate_on ? get_seconds_until_next_wakeup() : INT_MAX;
+        int agenda_wake = agenda_on ? agenda_manager_seconds_until_next_wake() : INT_MAX;
+        int alarm_wake = alarm_on ? alarm_manager_seconds_until_next_wake() : INT_MAX;
+        int wake_seconds = rotate_wake;
+        const char *wake_reason = "rotate cron";
+        if (agenda_wake < wake_seconds) {
+            wake_seconds = agenda_wake;
+            wake_reason = "agenda cron";
+        }
+        if (alarm_wake < wake_seconds) {
+            wake_seconds = alarm_wake;
+            wake_reason = "alarm cron";
+#else
     // Check if auto-rotate is enabled
     if (config_manager_get_auto_rotate()) {
         // Use timer-based sleep for auto-rotate
@@ -471,8 +658,48 @@ void power_manager_enter_sleep(void)
                      (long long) (network_retry_after - now),
                      network_backoff_delay_sec(network_failures));
             network_retry_after = hold_limit;
+#endif
         }
 
+#if FORK_ANY
+        // Network backoff only concerns the rotate schedule -
+        // deep_sleep_wake_main() only ever records a network outcome for
+        // rotation (URL fetch / HA veto check), never for an agenda or alarm
+        // wake - so if one of those is what actually drives this wake, it
+        // must not be delayed by rotate's unrelated backoff hold.
+        if (strcmp(wake_reason, "rotate cron") == 0) {
+            time_t now;
+            time(&now);
+
+            // The hold was anchored with the clock as it read at the failure. If
+            // the clock has since been set back -- an NTP correction, or an
+            // external RTC that was ahead -- the anchor is off by that amount, so
+            // never hold longer than the delay this failure count earns, measured
+            // from now. (A clock set forward just ends the hold early: one attempt
+            // at the next slot, and the count carries on from there.)
+            time_t hold_limit = now + network_backoff_delay_sec(network_failures);
+            if (network_retry_after > hold_limit) {
+                ESP_LOGW(TAG, "Network backoff hold %lld s ahead of the clock; capping at %d s",
+                         (long long) (network_retry_after - now),
+                         network_backoff_delay_sec(network_failures));
+                network_retry_after = hold_limit;
+            }
+
+            // Under network backoff, skip slots until the hold has passed. The
+            // hold only ever lengthens the wait; the schedule is never brought
+            // forward.
+            if (network_retry_after > now) {
+                cron_rule_t rules[MAX_CRON_RULES];
+                int n = config_manager_get_compiled_cron_rules(rules, MAX_CRON_RULES);
+                int held = network_backoff_seconds_until_slot(now, network_retry_after, rules, n,
+                                                              CRON_FALLBACK_SEC);
+                if (held > wake_seconds) {
+                    ESP_LOGW(TAG,
+                             "Network backoff (%lu failed wakes): next attempt in %d s, not %d s",
+                             (unsigned long) network_failures, held, wake_seconds);
+                    wake_seconds = held;
+                }
+#else
         // Under network backoff, skip slots until the hold has passed. The
         // hold only ever lengthens the wait; the schedule is never brought
         // forward.
@@ -485,14 +712,28 @@ void power_manager_enter_sleep(void)
                 ESP_LOGW(TAG, "Network backoff (%lu failed wakes): next attempt in %d s, not %d s",
                          (unsigned long) network_failures, held, wake_seconds);
                 wake_seconds = held;
+#endif
             }
         }
 
+#if FORK_ANY
+        ESP_LOGI(TAG, "Setting timer wake-up for %d seconds (%s)", wake_seconds, wake_reason);
+#else
         ESP_LOGI(TAG, "Auto-rotate enabled, setting timer wake-up for %d seconds (%s)",
                  wake_seconds, "cron");
+#endif
         esp_sleep_enable_timer_wakeup(wake_seconds * 1000000ULL);
 
+#if FORK_ANY
+        // Store expected wakeup time in RTC memory for drift detection -
+        // schedule-agnostic (power_manager_get_seconds_until_wake_target()
+        // just compares against whichever single boundary this was, however
+        // it was computed).
+        time_t now;
+        time(&now);
+#else
         // Store expected wakeup time in RTC memory for drift detection
+#endif
         expected_wakeup_time = now + wake_seconds;
     }
 
@@ -568,6 +809,20 @@ void power_manager_reset_rotate_timer(void)
              "cron");
 }
 
+#if FEATURE_AGENDA
+// Same idea as power_manager_reset_rotate_timer() above, for the always-on
+// Agenda schedule - called whenever Agenda's own enable toggles or cron
+// rules change via the Web UI, so rotation_timer_task() picks up the new
+// schedule immediately instead of counting down to a stale cached time.
+void power_manager_reset_agenda_timer(void)
+{
+    int seconds_until_next = agenda_manager_seconds_until_next_wake();
+
+    next_agenda_time = esp_timer_get_time() + (seconds_until_next * 1000000LL);
+    ESP_LOGI(TAG, "Agenda timer reset, next agenda render in %d seconds", seconds_until_next);
+}
+
+#endif
 void power_manager_record_network_wake(bool succeeded)
 {
     // Only scheduled wakes feed the backoff. A ROTATE-button wake is the

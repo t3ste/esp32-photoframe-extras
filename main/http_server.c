@@ -10,9 +10,21 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "feature_config.h"
+
+#if FEATURE_AGENDA
+#include "agenda_color_profile.h"
+#include "alarm_manager.h"
+#endif
 #include "album_manager.h"
+#if FEATURE_BATTERY_HISTORY
+#include "battery_history.h"
+#endif
 #include "board_hal.h"
 #include "cJSON.h"
+#if FEATURE_CLIMATE
+#include "climate_history.h"
+#endif
 #include "color_palette.h"
 #include "config.h"
 #include "config_manager.h"
@@ -22,6 +34,9 @@
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
+#if FEATURE_HTTPS
+#include "esp_https_server.h"
+#endif
 #include "esp_littlefs.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -29,17 +44,36 @@
 #include "esp_vfs_fat.h"
 #include "freertos/task.h"
 #include "ha_integration.h"
+#if FEATURE_DISPLAY_HISTORY
+#include "history_manager.h"
+#endif
 #include "http_auth.h"
+#if FEATURE_HTTPS
+#include "https_cert.h"
+#endif
 #include "image_processor.h"
+#if FEATURE_VOICE_STOP
+#include "kws_service.h"
+#endif
 #include "lwip/sockets.h"
+#if FEATURE_VOICE_STOP
+#include "mic_detect.h"
+#include "mic_monitor.h"
+#endif
 #include "nvs_flash.h"
 #include "ota_manager.h"
+#if FEATURE_OVERLAYS
+#include "overlay_manager.h"
+#endif
 #include "periodic_tasks.h"
 #include "power_manager.h"
 #include "processing_settings.h"
 #include "sdcard.h"
 #include "storage.h"
 #include "utils.h"
+#if FEATURE_OFFLINE_HOTSPOT
+#include "wifi_manager.h"
+#endif
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -47,6 +81,9 @@
 
 static const char *TAG = "http_server";
 static httpd_handle_t server = NULL;
+#if FEATURE_HTTPS
+static httpd_handle_t https_server = NULL;  // NULL unless config_manager_get_https_enabled()
+#endif
 static bool system_ready = false;
 
 #define HTTPD_503 "503 Service Unavailable"
@@ -87,6 +124,10 @@ extern const uint8_t vite_browser_external_js_end[] asm(
     "_binary___vite_browser_external_js_gz_end");
 extern const uint8_t icon_svg_start[] asm("_binary_icon_svg_gz_start");
 extern const uint8_t icon_svg_end[] asm("_binary_icon_svg_gz_end");
+#if FEATURE_AGENDA
+extern const uint8_t profile_editor_html_start[] asm("_binary_profile_editor_html_gz_start");
+extern const uint8_t profile_editor_html_end[] asm("_binary_profile_editor_html_gz_end");
+#endif
 extern const uint8_t measurement_sample_jpg_start[] asm("_binary_measurement_sample_jpg_start");
 extern const uint8_t measurement_sample_jpg_end[] asm("_binary_measurement_sample_jpg_end");
 
@@ -198,12 +239,24 @@ static esp_err_t auth_gate(httpd_req_t *req)
 
 // Register a route behind the optional auth gate. The real handler rides in
 // user_ctx; every route goes through here so authentication cannot be
+#if FORK_ANY
+// forgotten when a new endpoint is added. Takes an explicit handle so the
+// same registration list can be replayed onto both the plain-HTTP server and
+// the optional HTTPS one (see register_all_handlers()).
+static void register_uri(httpd_handle_t handle, const char *uri, httpd_method_t method,
+                         http_handler_fn handler)
+#else
 // forgotten when a new endpoint is added.
 static void register_uri(const char *uri, httpd_method_t method, http_handler_fn handler)
+#endif
 {
     httpd_uri_t u = {
         .uri = uri, .method = method, .handler = auth_gate, .user_ctx = (void *) handler};
+#if FORK_ANY
+    httpd_register_uri_handler(handle, &u);
+#else
     httpd_register_uri_handler(server, &u);
+#endif
 }
 
 static esp_err_t index_handler(httpd_req_t *req)
@@ -280,6 +333,22 @@ static esp_err_t icon_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+#if FEATURE_AGENDA
+// The standalone Calendar color-profile visual editor tool (profile-editor.html,
+// webapp/public/) - served by the device itself so its "An Gerät senden" button
+// (a same-origin fetch to POST /api/agenda/color-profile?slot=N) has a device to
+// talk to without the user needing to download/re-upload the exported JSON by
+// hand. Embedded the same way as index.html/icon.svg above.
+static esp_err_t profile_editor_handler(httpd_req_t *req)
+{
+    const size_t profile_editor_html_size = (profile_editor_html_end - profile_editor_html_start);
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    httpd_resp_send(req, (const char *) profile_editor_html_start, profile_editor_html_size);
+    return ESP_OK;
+}
+
+#endif
 static esp_err_t measurement_sample_handler(httpd_req_t *req)
 {
     const size_t measurement_sample_jpg_size =
@@ -1016,7 +1085,15 @@ static esp_err_t serve_image_handler(httpd_req_t *req)
     // Cache images for 1 hour to reduce server load
     httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=3600");
 
+#if FORK_FIXES
+    // 4KB rather than 1KB: this handler is hit once per gallery thumbnail, and
+    // with many concurrent requests (a large album with thumbnails enabled)
+    // fewer, bigger chunks means each connection ties up the single httpd
+    // task for less time, freeing sockets for the next request sooner.
+    char buffer[4096];
+#else
     char buffer[1024];
+#endif
     size_t read_bytes;
     while ((read_bytes = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
         if (httpd_resp_send_chunk(req, buffer, read_bytes) != ESP_OK) {
@@ -1181,7 +1258,22 @@ static esp_err_t display_image_handler(httpd_req_t *req)
     char filepath[512];
     snprintf(filepath, sizeof(filepath), "%s/%s", IMAGE_DIRECTORY, filepath_str);
 
+#if FEATURE_OVERLAYS
+    // Weather/headline overlays (if enabled) apply here too, same as the
+    // Auto-Rotate loops - previously this direct-display action bypassed
+    // overlay_manager_apply() entirely, so neither overlay ever showed up
+    // regardless of format or settings.
+    const char *shown = overlay_manager_apply(filepath);
+    esp_err_t err = display_manager_show_image(shown);
+    if (err == ESP_OK && strcmp(shown, filepath) != 0) {
+        // The overlay was drawn onto a scratch copy - display_manager_show_image()
+        // already marked *that* path as shown; re-mark the real album file too,
+        // same reasoning as the Auto-Rotate loops' identical correction.
+        history_manager_mark_shown(filepath);
+    }
+#else
     esp_err_t err = display_manager_show_image(filepath);
+#endif
 
     cJSON_Delete(root);
     if (err != ESP_OK) {
@@ -1234,6 +1326,513 @@ static esp_err_t battery_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+#if FEATURE_ALARMCLOCK
+// /api/alarm/test - POST rings the alarm now (a test; it also listens for the
+// stop word when that is set up), DELETE stops it, GET reports whether it rings
+// and how the last ring ended ("timeout", "key", "voice" or "api").
+static esp_err_t alarm_test_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    if (req->method == HTTP_POST) {
+        esp_err_t err = alarm_manager_ring_now();
+        if (err == ESP_ERR_INVALID_STATE) {
+            httpd_resp_set_status(req, "409 Conflict");
+            httpd_resp_sendstr(req, "{\"error\":\"already ringing\"}");
+        } else if (err != ESP_OK) {
+            httpd_resp_set_status(req, HTTPD_500);
+            httpd_resp_sendstr(req, "{\"error\":\"could not start\"}");
+        } else {
+            httpd_resp_sendstr(req, "{\"status\":\"ringing\"}");
+        }
+        return ESP_OK;
+    }
+    if (req->method == HTTP_DELETE) {
+        alarm_manager_stop();
+        httpd_resp_sendstr(req, "{\"status\":\"stopping\"}");
+        return ESP_OK;
+    }
+    char body[96];
+    snprintf(body, sizeof(body), "{\"ringing\":%s,\"last_stop\":\"%s\"}",
+             alarm_manager_is_ringing() ? "true" : "false", alarm_manager_last_stop_reason());
+    httpd_resp_sendstr(req, body);
+    return ESP_OK;
+}
+
+#endif
+#if FEATURE_VOICE_STOP
+#if BOARD_HAL_VOICE_ENABLED
+// Microphone level test (first step towards voice control): POST starts a
+// monitor that prints the input level to the console for ?seconds=N (default
+// 10). With &tones=1 this device also plays the self-test tone sequence on its
+// own speaker at 100 % (speaker + microphone self-test); without it the monitor
+// just listens (e.g. to another device's tones, or as the Web UI's live level
+// meter). DELETE stops a running monitor. GET reports whether it runs, the live
+// levels / noise floor / threshold and the result of the last finished run.
+static esp_err_t mic_level_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    char body[760];
+
+    if (req->method == HTTP_DELETE) {
+        mic_monitor_stop();
+        httpd_resp_sendstr(req, "{\"status\":\"stopping\"}");
+        return ESP_OK;
+    }
+
+    if (req->method == HTTP_POST) {
+        uint32_t seconds = 10;
+        bool tones = false;
+        char query[48];
+        if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+            char value[8];
+            if (httpd_query_key_value(query, "seconds", value, sizeof(value)) == ESP_OK) {
+                seconds = (uint32_t) strtoul(value, NULL, 10);
+            }
+            if (httpd_query_key_value(query, "tones", value, sizeof(value)) == ESP_OK) {
+                tones = strcmp(value, "1") == 0 || strcmp(value, "true") == 0;
+            }
+        }
+        esp_err_t err = mic_monitor_start(seconds, tones);
+        if (err == ESP_ERR_NOT_SUPPORTED) {
+            httpd_resp_set_status(req, HTTPD_404);
+            httpd_resp_sendstr(req, "{\"error\":\"no microphone on this board\"}");
+        } else if (err == ESP_ERR_INVALID_ARG) {
+            httpd_resp_set_status(req, HTTPD_400);
+            httpd_resp_sendstr(req, "{\"error\":\"seconds must be 1-60\"}");
+        } else if (err == ESP_ERR_INVALID_STATE) {
+            httpd_resp_set_status(req, "409 Conflict");
+            httpd_resp_sendstr(req, "{\"error\":\"already running\"}");
+        } else if (err != ESP_OK) {
+            httpd_resp_set_status(req, HTTPD_500);
+            httpd_resp_sendstr(req, "{\"error\":\"could not start\"}");
+        } else {
+            snprintf(body, sizeof(body), "{\"status\":\"started\",\"seconds\":%u,\"tones\":%s}",
+                     (unsigned) seconds, tones ? "true" : "false");
+            httpd_resp_sendstr(req, body);
+        }
+        return ESP_OK;
+    }
+
+    mic_monitor_status_t st;
+    mic_monitor_get_status(&st);
+    int n =
+        snprintf(body, sizeof(body),
+                 "{\"available\":%s,\"running\":%s,\"tones_running\":%s,\"rms_dbfs\":%.1f,"
+                 "\"peak_dbfs\":%.1f,\"mic_dbfs\":%.1f,\"mic2_dbfs\":%.1f,\"floor_dbfs\":%.1f,"
+                 "\"threshold_dbfs\":%.1f,\"auto_threshold\":%s,\"result\":",
+                 mic_monitor_available() ? "true" : "false", st.running ? "true" : "false",
+                 st.tones_running ? "true" : "false", (double) st.rms_dbfs, (double) st.peak_dbfs,
+                 (double) st.mic_dbfs, (double) st.mic2_dbfs, (double) st.floor_dbfs,
+                 (double) st.threshold_dbfs, st.auto_threshold ? "true" : "false");
+    if (st.have_result) {
+        snprintf(body + n, sizeof(body) - (size_t) n,
+                 "{\"tones\":%s,\"baseline_dbfs\":%.1f,\"threshold_dbfs\":%.1f,"
+                 "\"mic_peak_dbfs\":%.1f,\"mic_bursts\":%u,\"mic2_peak_dbfs\":%.1f,"
+                 "\"mic2_bursts\":%u,\"expected_bursts\":%d,\"heard\":%s}}",
+                 st.result_with_tones ? "true" : "false", (double) st.baseline_dbfs,
+                 (double) st.result_threshold_dbfs, (double) st.mic_peak_dbfs, st.mic_bursts,
+                 (double) st.mic2_peak_dbfs, st.mic2_bursts, MIC_MONITOR_TEST_BURSTS,
+                 st.heard ? "true" : "false");
+    } else {
+        snprintf(body + n, sizeof(body) - (size_t) n, "null}");
+    }
+    httpd_resp_sendstr(req, body);
+    return ESP_OK;
+}
+
+// GET/PUT /api/mic/settings - sensitivity of the sound detection: automatic
+// (noise floor + 20 dB, at least -45 dBFS) or a fixed threshold in dBFS.
+static esp_err_t mic_settings_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    mic_settings_t settings;
+    mic_monitor_get_settings(&settings);
+
+    if (req->method == HTTP_PUT) {
+        char buf[96];
+        int ret = httpd_req_recv(req, buf, MIN(req->content_len, sizeof(buf) - 1));
+        if (ret <= 0) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to read request");
+            return ESP_FAIL;
+        }
+        buf[ret] = '\0';
+        cJSON *json = cJSON_Parse(buf);
+        if (!json) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+            return ESP_FAIL;
+        }
+        bool valid = true;
+        bool auto_threshold = settings.auto_threshold;
+        int threshold = settings.threshold_dbfs;
+        cJSON *item = cJSON_GetObjectItem(json, "auto");
+        if (item) {
+            if (cJSON_IsBool(item)) {
+                auto_threshold = cJSON_IsTrue(item);
+            } else {
+                valid = false;
+            }
+        }
+        item = cJSON_GetObjectItem(json, "threshold_dbfs");
+        if (item) {
+            if (cJSON_IsNumber(item)) {
+                threshold = (int) item->valuedouble;
+            } else {
+                valid = false;
+            }
+        }
+        cJSON_Delete(json);
+        if (!valid || mic_monitor_set_settings(auto_threshold, threshold) != ESP_OK) {
+            httpd_resp_set_status(req, HTTPD_400);
+            httpd_resp_sendstr(
+                req,
+                "{\"error\":\"auto must be a boolean, threshold_dbfs a number from -90 to 0\"}");
+            return ESP_OK;
+        }
+        mic_monitor_get_settings(&settings);
+    }
+
+    char body[160];
+    snprintf(body, sizeof(body),
+             "{\"auto\":%s,\"threshold_dbfs\":%d,\"min\":%d,\"max\":%d,"
+             "\"auto_rise_db\":%d,\"auto_min_dbfs\":%d}",
+             settings.auto_threshold ? "true" : "false", settings.threshold_dbfs,
+             MIC_THRESHOLD_MIN_DBFS, MIC_THRESHOLD_MAX_DBFS, (int) MIC_DETECT_RISE_DB,
+             (int) MIC_DETECT_MIN_THRESHOLD_DBFS);
+    httpd_resp_sendstr(req, body);
+    return ESP_OK;
+}
+
+// Stop-word recognition (first step towards switching a ringing alarm off by
+// voice, see kws.h): enrol the word by speaking it a few times, then test.
+static esp_err_t kws_send_error(httpd_req_t *req, esp_err_t err)
+{
+    if (err == ESP_ERR_NOT_SUPPORTED) {
+        httpd_resp_set_status(req, HTTPD_404);
+        httpd_resp_sendstr(req, "{\"error\":\"no microphone on this board\"}");
+    } else if (err == ESP_ERR_INVALID_ARG) {
+        httpd_resp_set_status(req, HTTPD_400);
+        httpd_resp_sendstr(req, "{\"error\":\"invalid duration\"}");
+    } else if (err == ESP_ERR_INVALID_STATE) {
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_sendstr(
+            req, "{\"error\":\"busy, an alarm is ringing, no word taught yet, or five already\"}");
+    } else {
+        httpd_resp_set_status(req, HTTPD_500);
+        httpd_resp_sendstr(req, "{\"error\":\"could not start\"}");
+    }
+    return ESP_OK;
+}
+
+static uint32_t kws_seconds_param(httpd_req_t *req, uint32_t fallback)
+{
+    char query[32];
+    char value[8];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK &&
+        httpd_query_key_value(query, "seconds", value, sizeof(value)) == ESP_OK) {
+        return (uint32_t) strtoul(value, NULL, 10);
+    }
+    return fallback;
+}
+
+// GET /api/kws/status
+static esp_err_t kws_status_handler(httpd_req_t *req)
+{
+    kws_service_status_t st;
+    kws_service_get_status(&st);
+    const char *mode = st.mode == KWS_SERVICE_ENROLLING ? "enrolling"
+                       : st.mode == KWS_SERVICE_TESTING ? "testing"
+                                                        : "idle";
+    char best[16] = "null";
+    char last[16] = "null";
+    if (st.best_score < 1.0e8f) {
+        snprintf(best, sizeof(best), "%.2f", (double) st.best_score);
+    }
+    if (st.last_score < 1.0e8f) {
+        snprintf(last, sizeof(last), "%.2f", (double) st.last_score);
+    }
+    char enroll[64] = "null";
+    if (st.have_enroll_result) {
+        snprintf(enroll, sizeof(enroll), "{\"status\":%d,\"frames\":%d}", st.enroll_status,
+                 st.enroll_frames);
+    }
+    char body[600];
+    snprintf(body, sizeof(body),
+             "{\"available\":%s,\"mode\":\"%s\",\"templates\":%d,\"max_templates\":%d,"
+             "\"threshold\":%.2f,\"threshold_manual\":%.2f,\"threshold_min\":%.0f,"
+             "\"threshold_max\":%.0f,\"alarm_stop\":%s,\"enroll\":%s,"
+             "\"test\":{\"utterances\":%u,\"detections\":%u,\"best_score\":%s,"
+             "\"last_score\":%s}}",
+             st.available ? "true" : "false", mode, st.templates, KWS_MAX_TEMPLATES,
+             (double) st.threshold, (double) st.threshold_manual, (double) KWS_THRESHOLD_MIN,
+             (double) KWS_THRESHOLD_MAX, st.alarm_stop ? "true" : "false", enroll,
+             st.test_utterances, st.test_detections, best, last);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, body);
+    return ESP_OK;
+}
+
+// PUT /api/kws/settings {"alarm_stop":true|false, "threshold":<number>|null} - both optional:
+// should a ringing alarm listen for the stop word, and the detection threshold (a distance,
+// smaller = stricter; null = automatic).
+static esp_err_t kws_settings_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    char buf[96];
+    int ret = httpd_req_recv(req, buf, MIN(req->content_len, sizeof(buf) - 1));
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to read request");
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+    cJSON *json = cJSON_Parse(buf);
+    cJSON *alarm = json ? cJSON_GetObjectItem(json, "alarm_stop") : NULL;
+    cJSON *thr = json ? cJSON_GetObjectItem(json, "threshold") : NULL;
+    bool valid = json && (alarm || thr) && (!alarm || cJSON_IsBool(alarm)) &&
+                 (!thr || cJSON_IsNull(thr) || cJSON_IsNumber(thr));
+    if (!valid) {
+        cJSON_Delete(json);
+        httpd_resp_set_status(req, HTTPD_400);
+        httpd_resp_sendstr(
+            req, "{\"error\":\"alarm_stop must be a boolean, threshold a number or null\"}");
+        return ESP_OK;
+    }
+    esp_err_t err = ESP_OK;
+    if (thr) {
+        err = kws_service_set_threshold(cJSON_IsNull(thr) ? 0.0f : (float) thr->valuedouble);
+        if (err == ESP_ERR_INVALID_ARG) {
+            cJSON_Delete(json);
+            httpd_resp_set_status(req, HTTPD_400);
+            httpd_resp_sendstr(req, "{\"error\":\"threshold must be from 2 to 30\"}");
+            return ESP_OK;
+        }
+    }
+    if (err == ESP_OK && alarm) {
+        err = kws_service_set_alarm_stop(cJSON_IsTrue(alarm));
+    }
+    cJSON_Delete(json);
+    if (err != ESP_OK) {
+        return kws_send_error(req, err);
+    }
+    httpd_resp_sendstr(req, "{\"status\":\"saved\"}");
+    return ESP_OK;
+}
+
+// POST /api/kws/enroll?seconds=3 - records and adds one template of the spoken word
+static esp_err_t kws_enroll_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = kws_service_enroll(kws_seconds_param(req, 3));
+    if (err != ESP_OK) {
+        return kws_send_error(req, err);
+    }
+    httpd_resp_sendstr(req, "{\"status\":\"recording\"}");
+    return ESP_OK;
+}
+
+// POST /api/kws/test?seconds=10 - listens and counts how often the word is heard
+static esp_err_t kws_test_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = kws_service_test(kws_seconds_param(req, 10));
+    if (err != ESP_OK) {
+        return kws_send_error(req, err);
+    }
+    httpd_resp_sendstr(req, "{\"status\":\"listening\"}");
+    return ESP_OK;
+}
+
+// DELETE /api/kws/templates - forget the enrolled word
+static esp_err_t kws_templates_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = kws_service_clear();
+    if (err != ESP_OK) {
+        return kws_send_error(req, err);
+    }
+    httpd_resp_sendstr(req, "{\"status\":\"cleared\"}");
+    return ESP_OK;
+}
+
+// POST /api/mic/tones?volume=100 - plays the self-test tone sequence on this
+// device's speaker only (async), for another device's microphone to listen to.
+static esp_err_t mic_tones_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    uint32_t volume = 100;
+    char query[32];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char value[8];
+        if (httpd_query_key_value(query, "volume", value, sizeof(value)) == ESP_OK) {
+            volume = (uint32_t) strtoul(value, NULL, 10);
+        }
+    }
+    esp_err_t err = mic_monitor_play_tones((uint8_t) (volume > 255 ? 255 : volume));
+    if (err == ESP_ERR_NOT_SUPPORTED) {
+        httpd_resp_set_status(req, HTTPD_404);
+        httpd_resp_sendstr(req, "{\"error\":\"no speaker on this board\"}");
+    } else if (err == ESP_ERR_INVALID_ARG) {
+        httpd_resp_set_status(req, HTTPD_400);
+        httpd_resp_sendstr(req, "{\"error\":\"volume must be 0-100\"}");
+    } else if (err == ESP_ERR_INVALID_STATE) {
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_sendstr(req, "{\"error\":\"audio already in use\"}");
+    } else if (err != ESP_OK) {
+        httpd_resp_set_status(req, HTTPD_500);
+        httpd_resp_sendstr(req, "{\"error\":\"could not start\"}");
+    } else {
+        char body[64];
+        snprintf(body, sizeof(body), "{\"status\":\"started\",\"volume\":%u}", (unsigned) volume);
+        httpd_resp_sendstr(req, body);
+    }
+    return ESP_OK;
+}
+
+#endif  // BOARD_HAL_VOICE_ENABLED
+
+#endif
+#if FEATURE_BATTERY_HISTORY
+static esp_err_t battery_history_handler(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return ESP_FAIL;
+    }
+
+    if (req->method == HTTP_DELETE) {
+        battery_history_reset();
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"status\":\"success\"}");
+        return ESP_OK;
+    }
+
+    cJSON *response = battery_history_build_json();
+    if (response == NULL) {
+        httpd_resp_set_status(req, HTTPD_500);
+        httpd_resp_sendstr(req, "Failed to build battery history JSON");
+        return ESP_FAIL;
+    }
+
+    char *json_str = cJSON_Print(response);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+
+    free(json_str);
+    cJSON_Delete(response);
+
+    return ESP_OK;
+}
+
+#endif
+#if FEATURE_CLIMATE
+static esp_err_t climate_history_handler(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return ESP_FAIL;
+    }
+
+    if (req->method == HTTP_DELETE) {
+        climate_history_reset();
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"status\":\"success\"}");
+        return ESP_OK;
+    }
+
+    cJSON *response = climate_history_build_json();
+    if (response == NULL) {
+        httpd_resp_set_status(req, HTTPD_500);
+        httpd_resp_sendstr(req, "Failed to build climate history JSON");
+        return ESP_FAIL;
+    }
+
+    char *json_str = cJSON_Print(response);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+
+    free(json_str);
+    cJSON_Delete(response);
+
+    return ESP_OK;
+}
+
+#endif
+#if FEATURE_DISPLAY_HISTORY
+// GET returns how many images have been marked shown in the current
+// no-repeat cycle (history_manager.h); DELETE clears it and restarts the
+// cycle - same effect as the "/clear_history" Telegram command, including
+// resetting the sequential-rotation cursor so both rotation modes start
+// fresh, not just the random-mode history set.
+static esp_err_t display_history_handler(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return ESP_FAIL;
+    }
+
+    if (req->method == HTTP_DELETE) {
+        history_manager_clear();
+        config_manager_set_last_index(-1);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"status\":\"success\"}");
+        return ESP_OK;
+    }
+
+    cJSON *response = cJSON_CreateObject();
+    if (response == NULL) {
+        httpd_resp_set_status(req, HTTPD_500);
+        httpd_resp_sendstr(req, "Failed to build display history JSON");
+        return ESP_FAIL;
+    }
+    cJSON_AddNumberToObject(response, "count", history_manager_count());
+
+    char *json_str = cJSON_Print(response);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+
+    free(json_str);
+    cJSON_Delete(response);
+
+    return ESP_OK;
+}
+
+#endif
+#if FEATURE_FACECROP
+// Web UI maintenance action for the Cover/Fit variant-selection feature
+// (see docs/FACE_CROP.md) - moves every loose "<name>.cover.<ext>" across
+// every album into that album's "crop" subdirectory. Global, no per-album
+// parameter (applies to every album, matching the button's own "organize
+// every album" scope).
+static esp_err_t organize_crop_variants_handler(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return ESP_FAIL;
+    }
+
+    int moved_count = 0;
+    esp_err_t err = album_manager_organize_crop_variants(&moved_count);
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                            "Failed to organize crop/ folders");
+        return ESP_FAIL;
+    }
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "status", "success");
+    cJSON_AddNumberToObject(response, "moved", moved_count);
+    char *json_str = cJSON_Print(response);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+    free(json_str);
+    cJSON_Delete(response);
+    return ESP_OK;
+}
+
+#endif
 static esp_err_t sensor_handler(httpd_req_t *req)
 {
     if (!system_ready) {
@@ -1491,6 +2090,35 @@ static esp_err_t debug_log_clear_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+#if FEATURE_OFFLINE_HOTSPOT
+// On-demand offline hotspot (github.com/aitjcize/esp32-photoframe#90) -
+// mirrors the long-BOOT-hold trigger in main.c, for a user without physical
+// access to the device. The response is sent BEFORE actually switching WiFi
+// modes, since a request that arrived over the STA network the device is
+// about to drop can't be answered afterward - the client needs the SSID in
+// hand to reconnect via the new hotspot regardless of whether this exact
+// request round-trip completes cleanly on their end.
+static esp_err_t wifi_hotspot_start_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    char resp[96];
+    snprintf(resp, sizeof(resp),
+             "{\"status\":\"starting\",\"ssid\":\"%s\",\"url\":\"http://192.168.4.1\"}",
+             get_setup_ap_ssid());
+    httpd_resp_sendstr(req, resp);
+    wifi_manager_start_ap_hotspot(NULL, 0);
+    return ESP_OK;
+}
+
+static esp_err_t wifi_hotspot_stop_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"stopping\"}");
+    wifi_manager_stop_ap_hotspot();
+    return ESP_OK;
+}
+
+#endif
 static esp_err_t config_handler(httpd_req_t *req)
 {
     if (!system_ready) {
@@ -1545,6 +2173,10 @@ static esp_err_t config_handler(httpd_req_t *req)
         rotation_mode_t rm = config_manager_get_rotation_mode();
         if (rm == ROTATION_MODE_URL)
             rotation_mode_str = "url";
+#if FEATURE_TELEGRAM
+        else if (rm == ROTATION_MODE_TELEGRAM)
+            rotation_mode_str = "telegram";
+#endif
         cJSON_AddStringToObject(root, "rotation_mode", rotation_mode_str);
 
         // Auto Rotate - SDCARD
@@ -1592,6 +2224,22 @@ static esp_err_t config_handler(httpd_req_t *req)
         // Home Assistant
         const char *ha_url = config_manager_get_ha_url();
         cJSON_AddStringToObject(root, "ha_url", ha_url ? ha_url : "");
+#if FORK_FIXES
+        cJSON_AddBoolToObject(root, "ha_enabled", config_manager_get_ha_enabled());
+
+#endif
+#if FEATURE_TELEGRAM
+        // Telegram Bot
+        const char *tg_token = config_manager_get_telegram_bot_token();
+        cJSON_AddStringToObject(root, "telegram_bot_token", tg_token ? tg_token : "");
+        const char *tg_chat_id = config_manager_get_telegram_chat_id();
+        cJSON_AddStringToObject(root, "telegram_chat_id", tg_chat_id ? tg_chat_id : "");
+        cJSON_AddBoolToObject(root, "telegram_configured", config_manager_telegram_is_configured());
+        cJSON_AddBoolToObject(root, "telegram_pairing_enabled",
+                              config_manager_get_telegram_pairing_enabled());
+        cJSON_AddBoolToObject(root, "telegram_wake_notify_enabled",
+                              config_manager_get_telegram_wake_notify_enabled());
+#endif
 
         // AI API Keys
         const char *openai_key = config_manager_get_openai_api_key();
@@ -1602,6 +2250,364 @@ static esp_err_t config_handler(httpd_req_t *req)
         // Other
         cJSON_AddBoolToObject(root, "deep_sleep_enabled", config_manager_get_deep_sleep_enabled());
         cJSON_AddBoolToObject(root, "debug_log_enabled", config_manager_get_debug_log_enabled());
+#if FEATURE_OTA_CHANNEL
+        cJSON_AddBoolToObject(root, "ota_check_enabled", config_manager_get_ota_check_enabled());
+#endif
+#if FEATURE_ERROR_BANNER
+        cJSON_AddBoolToObject(root, "error_overlay_enabled",
+                              config_manager_get_error_overlay_enabled());
+#endif
+#if FEATURE_WIFI_RESILIENCE
+        cJSON_AddBoolToObject(root, "wifi_performance_mode_enabled",
+                              config_manager_get_wifi_performance_mode_enabled());
+        cJSON_AddBoolToObject(root, "wifi_tx_power_cap_enabled",
+                              config_manager_get_wifi_tx_power_cap_enabled());
+        cJSON_AddBoolToObject(root, "wifi_extended_retry_enabled",
+                              config_manager_get_wifi_extended_retry_enabled());
+        cJSON_AddBoolToObject(root, "wifi_reprovision_on_fail_enabled",
+                              config_manager_get_wifi_reprovision_on_fail_enabled());
+#endif
+#if FEATURE_OFFLINE_HOTSPOT
+        // Read-only here - only ever set during initial setup (offline
+        // checkbox, wifi_provisioning.c) or by leaving the on-demand hotspot
+        // running is unrelated. Turning it back off needs real credentials,
+        // i.e. re-provisioning, not a PATCH.
+        cJSON_AddBoolToObject(root, "offline_mode_enabled",
+                              config_manager_get_offline_mode_enabled());
+        cJSON_AddBoolToObject(root, "ap_hotspot_active", wifi_manager_is_ap_hotspot_active());
+#endif
+#if FEATURE_HTTPS
+        cJSON_AddBoolToObject(root, "https_enabled", config_manager_get_https_enabled());
+#endif
+#if FEATURE_TELEGRAM
+        cJSON_AddBoolToObject(root, "rotation_pairing_enabled",
+                              config_manager_get_rotation_pairing_enabled());
+#endif
+#if FEATURE_FACECROP
+        cJSON_AddBoolToObject(root, "variant_selection_enabled",
+                              config_manager_get_variant_selection_enabled());
+#endif
+#if FEATURE_TELEGRAM
+        cJSON_AddBoolToObject(root, "telegram_rotation_notify_enabled",
+                              config_manager_get_telegram_rotation_notify_enabled());
+        cJSON_AddBoolToObject(root, "telegram_fallback_rotation_enabled",
+                              config_manager_get_telegram_fallback_rotation_enabled());
+        cJSON_AddBoolToObject(root, "telegram_fallback_on_error_enabled",
+                              config_manager_get_telegram_fallback_on_error_enabled());
+        cJSON_AddBoolToObject(root, "telegram_power_save_enabled",
+                              config_manager_get_telegram_power_save_enabled());
+        cJSON_AddBoolToObject(root, "telegram_power_save_latest_only",
+                              config_manager_get_telegram_power_save_latest_only());
+        cJSON_AddBoolToObject(root, "telegram_keep_originals_enabled",
+                              config_manager_get_telegram_keep_originals_enabled());
+        cJSON_AddStringToObject(root, "telegram_image_format",
+                                config_manager_get_telegram_image_format());
+        cJSON_AddBoolToObject(root, "telegram_dedup_enabled",
+                              config_manager_get_telegram_dedup_enabled());
+#endif
+#if FEATURE_OVERLAYS
+        cJSON_AddBoolToObject(root, "weather_overlay_enabled",
+                              config_manager_get_weather_overlay_enabled());
+        cJSON_AddStringToObject(root, "weather_location_name",
+                                config_manager_get_weather_location_name());
+        cJSON_AddStringToObject(root, "weather_lat", config_manager_get_weather_lat());
+        cJSON_AddStringToObject(root, "weather_lon", config_manager_get_weather_lon());
+        cJSON_AddStringToObject(root, "weather_provider", config_manager_get_weather_provider());
+        cJSON_AddBoolToObject(root, "headlines_overlay_enabled",
+                              config_manager_get_headlines_overlay_enabled());
+        cJSON_AddStringToObject(root, "headlines_rss_url", config_manager_get_headlines_rss_url());
+        cJSON_AddNumberToObject(root, "headlines_count", config_manager_get_headlines_count());
+        cJSON_AddBoolToObject(root, "overlay_invert_colors",
+                              config_manager_get_overlay_invert_colors());
+        cJSON_AddBoolToObject(root, "overlay_epdgz_enabled",
+                              config_manager_get_overlay_epdgz_enabled());
+        cJSON_AddStringToObject(root, "overlay_language", config_manager_get_overlay_language());
+        cJSON_AddNumberToObject(root, "headlines_wrap_lines",
+                                config_manager_get_headlines_wrap_lines());
+        cJSON_AddBoolToObject(root, "caption_invert_colors_enabled",
+                              config_manager_get_caption_invert_colors_enabled());
+        cJSON_AddBoolToObject(root, "weather_multiline_enabled",
+                              config_manager_get_weather_multiline_enabled());
+        cJSON_AddStringToObject(root, "weather_icon_set", config_manager_get_weather_icon_set());
+        cJSON_AddBoolToObject(root, "weather_icon_colored",
+                              config_manager_get_weather_icon_colored());
+#endif
+#if FORK_EXIF
+        cJSON_AddBoolToObject(root, "show_exif_datetime_enabled",
+                              config_manager_get_show_exif_datetime_enabled());
+#endif
+#if FEATURE_OVERLAYS
+        cJSON_AddBoolToObject(root, "low_battery_overlay_enabled",
+                              config_manager_get_low_battery_overlay_enabled());
+        cJSON_AddNumberToObject(root, "low_battery_overlay_threshold",
+                                config_manager_get_low_battery_overlay_threshold());
+#endif
+#if FEATURE_BATTERY_HISTORY
+        cJSON_AddBoolToObject(root, "battery_history_backup_enabled",
+                              config_manager_get_battery_history_backup_enabled());
+#endif
+#if FEATURE_CHIMES
+        // Hardware capability, not a user setting - lets the Web UI hide the
+        // whole Chimes tab on boards with no onboard speaker.
+        cJSON_AddBoolToObject(root, "chime_speaker_available", board_hal_has_speaker());
+#endif
+#if FEATURE_VOICE_STOP
+        // Voice tools (microphone level meter, stop word): only in an Alarm Clock
+        // build on a board with speaker + microphone - lets the Web UI show them
+        // in the Alarm tab (see BOARD_HAL_VOICE_ENABLED in board_hal.h).
+        cJSON_AddBoolToObject(root, "voice_available", BOARD_HAL_VOICE_ENABLED ? true : false);
+#endif
+#if FEATURE_CHIMES
+        const char *chime_mode_str = "off";
+        switch (config_manager_get_chime_speaker_mode()) {
+        case CHIME_SPEAKER_BATTERY_AND_MAINS:
+            chime_mode_str = "battery_and_mains";
+            break;
+        case CHIME_SPEAKER_MAINS_ONLY:
+            chime_mode_str = "mains_only";
+            break;
+        default:
+            break;
+        }
+        cJSON_AddStringToObject(root, "chime_speaker_mode", chime_mode_str);
+        cJSON_AddNumberToObject(root, "chime_volume", config_manager_get_chime_volume());
+        cJSON_AddBoolToObject(root, "chime_quiet_enabled",
+                              config_manager_get_chime_quiet_enabled());
+        cJSON_AddStringToObject(root, "chime_quiet_start", config_manager_get_chime_quiet_start());
+        cJSON_AddStringToObject(root, "chime_quiet_end", config_manager_get_chime_quiet_end());
+        cJSON_AddBoolToObject(root, "chime_event_rotation_enabled",
+                              config_manager_get_chime_event_enabled(CHIME_EVENT_ROTATION));
+        cJSON_AddBoolToObject(root, "chime_event_telegram_photo_enabled",
+                              config_manager_get_chime_event_enabled(CHIME_EVENT_TELEGRAM_PHOTO));
+        cJSON_AddBoolToObject(root, "chime_event_low_battery_enabled",
+                              config_manager_get_chime_event_enabled(CHIME_EVENT_LOW_BATTERY));
+        cJSON_AddBoolToObject(root, "chime_event_wifi_reprovision_enabled",
+                              config_manager_get_chime_event_enabled(CHIME_EVENT_WIFI_REPROVISION));
+        cJSON_AddBoolToObject(root, "chime_event_agenda_due_enabled",
+                              config_manager_get_chime_event_enabled(CHIME_EVENT_AGENDA_DUE));
+        cJSON_AddBoolToObject(root, "chime_event_ota_success_enabled",
+                              config_manager_get_chime_event_enabled(CHIME_EVENT_OTA_SUCCESS));
+        cJSON_AddBoolToObject(root, "chime_event_critical_error_enabled",
+                              config_manager_get_chime_event_enabled(CHIME_EVENT_CRITICAL_ERROR));
+
+#endif
+#if FEATURE_CLIMATE
+        // Climate (SHTC3 temperature/humidity). Generic feature - available
+        // on any board whose sensor actually answers, not tied to one
+        // specific board like the Chimes speaker check above. A live probe
+        // (not a compile-time capability flag) since the same board_hal
+        // function can fail at runtime even where the driver is wired up
+        // (unpowered rail, no sensor populated on a given unit, etc.).
+        float climate_probe_temp, climate_probe_hum;
+        bool climate_sensor_available =
+            (board_hal_get_temperature(&climate_probe_temp) == ESP_OK) &&
+            (board_hal_get_humidity(&climate_probe_hum) == ESP_OK);
+        cJSON_AddBoolToObject(root, "climate_sensor_available", climate_sensor_available);
+        const char *climate_room_str = "living_room";
+        switch (config_manager_get_climate_room_type()) {
+        case CLIMATE_ROOM_BEDROOM:
+            climate_room_str = "bedroom";
+            break;
+        case CLIMATE_ROOM_BATHROOM:
+            climate_room_str = "bathroom";
+            break;
+        case CLIMATE_ROOM_KITCHEN:
+            climate_room_str = "kitchen";
+            break;
+        case CLIMATE_ROOM_BASEMENT:
+            climate_room_str = "basement";
+            break;
+        default:
+            break;
+        }
+        cJSON_AddStringToObject(root, "climate_room_type", climate_room_str);
+        cJSON_AddStringToObject(root, "climate_temp_unit",
+                                config_manager_get_climate_temp_unit() == CLIMATE_UNIT_FAHRENHEIT
+                                    ? "fahrenheit"
+                                    : "celsius");
+        cJSON_AddBoolToObject(root, "climate_logging_enabled",
+                              config_manager_get_climate_logging_enabled());
+        cJSON_AddBoolToObject(root, "climate_history_backup_enabled",
+                              config_manager_get_climate_history_backup_enabled());
+        cJSON_AddBoolToObject(root, "climate_overlay_enabled",
+                              config_manager_get_climate_overlay_enabled());
+        cJSON_AddBoolToObject(root, "climate_agenda_header_enabled",
+                              config_manager_get_climate_agenda_header_enabled());
+        // Always Celsius/percentage-point deltas, regardless of
+        // climate_temp_unit - the Web UI converts for display in whichever
+        // unit is selected (see climate_temp_offset_c's doc comment,
+        // config.h).
+        cJSON_AddNumberToObject(root, "climate_temp_offset",
+                                atof(config_manager_get_climate_temp_offset()));
+        cJSON_AddNumberToObject(root, "climate_hum_offset",
+                                atof(config_manager_get_climate_hum_offset()));
+
+#endif
+#if FEATURE_AGENDA
+        // Agenda (ToDo + Calendar). agenda_cal_url/agenda_todo_url are
+        // deliberately NEVER added here - either can carry a credential
+        // (Google's Calendar "secret address" is the obvious case, but a
+        // ToDo feed URL can just as easily embed an auth token as a query
+        // param - todo_fetch()/http_fetch_get() don't care what kind of
+        // URL they're given), same write-only treatment as wifi_password
+        // above, which is also absent from this response. (Originally only
+        // agenda_cal_url got this treatment, on the assumption a ToDo feed
+        // is typically a public gist - found during a security review that
+        // the assumption doesn't hold for every possible ToDo source.)
+        cJSON_AddBoolToObject(root, "agenda_todo_enabled",
+                              config_manager_get_agenda_todo_enabled());
+        cJSON_AddBoolToObject(root, "agenda_cal_enabled", config_manager_get_agenda_cal_enabled());
+        cJSON_AddNumberToObject(root, "agenda_cal_days", config_manager_get_agenda_cal_days());
+        const char *agenda_cal_layout_str = "list";
+        switch (config_manager_get_agenda_cal_layout_mode()) {
+        case AGENDA_CAL_LAYOUT_GRID_A:
+            agenda_cal_layout_str = "grid_a";
+            break;
+        case AGENDA_CAL_LAYOUT_GRID_B:
+            agenda_cal_layout_str = "grid_b";
+            break;
+        default:
+            break;
+        }
+        cJSON_AddStringToObject(root, "agenda_cal_layout_mode", agenda_cal_layout_str);
+        const char *agenda_shift_model_str = "none";
+        switch (config_manager_get_agenda_shift_model()) {
+        case AGENDA_SHIFT_MODEL_2_2_3:
+            agenda_shift_model_str = "2-2-3";
+            break;
+        case AGENDA_SHIFT_MODEL_WEEK_WEEK:
+            agenda_shift_model_str = "week_week";
+            break;
+        case AGENDA_SHIFT_MODEL_3_4:
+            agenda_shift_model_str = "3-4";
+            break;
+        default:
+            break;
+        }
+        cJSON_AddStringToObject(root, "agenda_shift_model", agenda_shift_model_str);
+        cJSON_AddStringToObject(root, "agenda_shift_start",
+                                config_manager_get_agenda_shift_start());
+        cJSON_AddBoolToObject(root, "agenda_cal_weather_enabled",
+                              config_manager_get_agenda_cal_weather_enabled());
+        cJSON_AddBoolToObject(root, "agenda_cal_weather_right_aligned",
+                              config_manager_get_agenda_cal_weather_right_aligned());
+        const char *agenda_multiday_str = "repeat";
+        switch (config_manager_get_agenda_cal_multiday_mode()) {
+        case AGENDA_MULTIDAY_COMPACT:
+            agenda_multiday_str = "compact";
+            break;
+        case AGENDA_MULTIDAY_REPEAT_NUMBERED:
+            agenda_multiday_str = "repeat_numbered";
+            break;
+        default:
+            break;
+        }
+        cJSON_AddStringToObject(root, "agenda_cal_multiday_mode", agenda_multiday_str);
+        const char *agenda_time_str = "off";
+        switch (config_manager_get_agenda_cal_time_display_mode()) {
+        case AGENDA_TIME_DISPLAY_DURATION:
+            agenda_time_str = "duration";
+            break;
+        case AGENDA_TIME_DISPLAY_RANGE:
+            agenda_time_str = "range";
+            break;
+        default:
+            break;
+        }
+        cJSON_AddStringToObject(root, "agenda_cal_time_display_mode", agenda_time_str);
+        cJSON_AddStringToObject(root, "agenda_cal_name", config_manager_get_agenda_cal_name());
+        cJSON_AddStringToObject(root, "agenda_cal_name2", config_manager_get_agenda_cal_name2());
+        // Non-secret "is a source actually saved?" flags - the URL fields
+        // themselves are write-only (see the comment above), so without
+        // these the Web UI has no way to tell a freshly-saved, working
+        // calendar apart from one that was enabled but never actually given
+        // a URL/file, both before and after a page reload. A/B: was a URL
+        // ever saved. C/D/E: is there a raw .ics file on disk right now
+        // (from a URL fetch or a direct upload) - matches exactly what
+        // load_extra_ics_source() in agenda_manager.c needs to find
+        // anything at all.
+        cJSON_AddBoolToObject(root, "agenda_cal_url_configured",
+                              config_manager_get_agenda_cal_url()[0] != '\0');
+        cJSON_AddBoolToObject(root, "agenda_cal_url2_configured",
+                              config_manager_get_agenda_cal_url2()[0] != '\0');
+        struct stat cal_c_st, cal_d_st, cal_e_st;
+        cJSON_AddBoolToObject(root, "agenda_cal_c_configured",
+                              stat(AGENDA_CAL_CACHE_PATH_C, &cal_c_st) == 0);
+        cJSON_AddBoolToObject(root, "agenda_cal_d_configured",
+                              stat(AGENDA_CAL_CACHE_PATH_D, &cal_d_st) == 0);
+        cJSON_AddBoolToObject(root, "agenda_cal_e_configured",
+                              stat(AGENDA_CAL_CACHE_PATH_E, &cal_e_st) == 0);
+        // Three extra ICS sources (e.g. holidays/school-holidays) - same
+        // write-only URL treatment as agenda_cal_url/_url2 above, but their
+        // enabled flag/name/color are plain, non-secret settings.
+        cJSON_AddBoolToObject(root, "agenda_cal_c_enabled",
+                              config_manager_get_agenda_cal_c_enabled());
+        cJSON_AddStringToObject(root, "agenda_cal_c_name", config_manager_get_agenda_cal_c_name());
+        cJSON_AddBoolToObject(root, "agenda_cal_d_enabled",
+                              config_manager_get_agenda_cal_d_enabled());
+        cJSON_AddStringToObject(root, "agenda_cal_d_name", config_manager_get_agenda_cal_d_name());
+        cJSON_AddBoolToObject(root, "agenda_cal_e_enabled",
+                              config_manager_get_agenda_cal_e_enabled());
+        cJSON_AddStringToObject(root, "agenda_cal_e_name", config_manager_get_agenda_cal_e_name());
+        cJSON *agenda_cron_arr = cJSON_CreateArray();
+        int agenda_cron_count = config_manager_get_agenda_cron_rule_count();
+        for (int i = 0; i < agenda_cron_count; i++) {
+            const char *rule = config_manager_get_agenda_cron_rule(i);
+            if (rule) {
+                cJSON_AddItemToArray(agenda_cron_arr, cJSON_CreateString(rule));
+            }
+        }
+        cJSON_AddItemToObject(root, "agenda_cron", agenda_cron_arr);
+
+#endif
+#if FEATURE_ALARMCLOCK
+        // Alarm Clock - always reported (not just on a build compiled with
+        // FEATURE_ALARMCLOCK): config_manager_get_alarm_*() and
+        // alarm_manager_is_compiled_in() are harmless no-ops on every other
+        // build, so the Web UI always sees a well-formed but empty/disabled
+        // shape and can decide for itself (via alarm_clock_available)
+        // whether to show the settings tab at all.
+        cJSON_AddBoolToObject(root, "alarm_clock_available", alarm_manager_is_compiled_in());
+        cJSON *alarm_cron_arr = cJSON_CreateArray();
+        int alarm_cron_count = config_manager_get_alarm_cron_rule_count();
+        for (int i = 0; i < alarm_cron_count; i++) {
+            const char *rule = config_manager_get_alarm_cron_rule(i);
+            if (rule) {
+                cJSON_AddItemToArray(alarm_cron_arr, cJSON_CreateString(rule));
+            }
+        }
+        cJSON_AddItemToObject(root, "alarm_cron", alarm_cron_arr);
+        cJSON_AddNumberToObject(root, "alarm_ring_duration_sec",
+                                config_manager_get_alarm_ring_duration_sec());
+        cJSON_AddNumberToObject(root, "alarm_volume", config_manager_get_alarm_volume());
+        cJSON_AddNumberToObject(root, "alarm_ramp_sec", config_manager_get_alarm_ramp_sec());
+        cJSON_AddNumberToObject(root, "alarm_tune", config_manager_get_alarm_tune());
+
+#endif
+#if FEATURE_AGENDA
+        cJSON_AddBoolToObject(root, "agenda_stack_layout",
+                              config_manager_get_agenda_stack_layout());
+        cJSON_AddNumberToObject(root, "agenda_color_profile_active",
+                                config_manager_get_agenda_color_profile_active());
+        cJSON_AddStringToObject(root, "agenda_pri_a_color",
+                                config_manager_get_agenda_pri_a_color());
+        cJSON_AddStringToObject(root, "agenda_pri_b_color",
+                                config_manager_get_agenda_pri_b_color());
+        cJSON_AddStringToObject(root, "agenda_pri_c_color",
+                                config_manager_get_agenda_pri_c_color());
+        cJSON_AddStringToObject(root, "agenda_pri_d_color",
+                                config_manager_get_agenda_pri_d_color());
+        cJSON_AddStringToObject(root, "agenda_due_overdue_color",
+                                config_manager_get_agenda_due_overdue_color());
+        cJSON_AddStringToObject(root, "agenda_due_today_color",
+                                config_manager_get_agenda_due_today_color());
+        cJSON_AddStringToObject(root, "agenda_due_later_color",
+                                config_manager_get_agenda_due_later_color());
+        cJSON_AddStringToObject(root, "agenda_project_color",
+                                config_manager_get_agenda_project_color());
+        cJSON_AddStringToObject(root, "agenda_context_color",
+                                config_manager_get_agenda_context_color());
+#endif
 
         char *json_str = cJSON_Print(root);
         httpd_resp_set_type(req, "application/json");
@@ -1613,11 +2619,30 @@ static esp_err_t config_handler(httpd_req_t *req)
         return ESP_OK;
     } else if (req->method == HTTP_POST || req->method == HTTP_PATCH) {
         size_t buf_size = req->content_len + 1;
+#if FORK_ANY
+        // 32768: this endpoint's own settings surface has grown well past
+        // what the original 4096-byte cap here allowed for - confirmed live
+        // (2026-09-20) that a full Settings-page "Export Config" JSON (with
+        // "Include credentials and URLs" on: 3 Agenda Calendar URLs + a ToDo
+        // URL + Telegram token/chat ID pushing it past 4.7KB) got REJECTED
+        // outright by this check on re-import, silently dropping every
+        // field in one shot - the Vue side's Promise.all() doesn't check
+        // response.ok, so the UI reported "imported successfully" anyway
+        // (see webapp's performImport() fix, same incident). PSRAM-backed
+        // since this buffer can now be meaningfully large; freed well before
+        // the eventual e-paper render pipeline would need that RAM back.
+        if (buf_size > 32768) {
+#else
         if (buf_size > 4096) {
+#endif
             httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Request body too large");
             return ESP_FAIL;
         }
+#if FORK_ANY
+        char *buf = heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM);
+#else
         char *buf = malloc(buf_size);
+#endif
         if (!buf) {
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
             return ESP_FAIL;
@@ -1702,6 +2727,47 @@ static esp_err_t config_handler(httpd_req_t *req)
     httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
     return ESP_FAIL;
 }
+#if FEATURE_AGENDA
+
+// Deliberately NOT part of GET /api/config's response (see the write-only
+// comment on agenda_todo_url/agenda_cal_url etc. there - either can carry a
+// credential embedded as a query param) - this exists only so the Web UI's
+// "Export Config" opt-in checkbox can include a fully self-contained
+// backup on request, without these URLs being readable on every normal
+// Settings-page load. Same fields, same plain-text-JSON exposure as the
+// existing credential fields GET /api/config already returns unconditionally
+// - reachable by anyone who can reach this device's HTTP server either way.
+static esp_err_t config_urls_handler(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return ESP_FAIL;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) {
+        httpd_resp_set_status(req, HTTPD_500);
+        httpd_resp_sendstr(req, "Failed to create JSON response");
+        return ESP_FAIL;
+    }
+    cJSON_AddStringToObject(root, "agenda_todo_url", config_manager_get_agenda_todo_url());
+    cJSON_AddStringToObject(root, "agenda_cal_url", config_manager_get_agenda_cal_url());
+    cJSON_AddStringToObject(root, "agenda_cal_url2", config_manager_get_agenda_cal_url2());
+    cJSON_AddStringToObject(root, "agenda_cal_c_url", config_manager_get_agenda_cal_c_url());
+    cJSON_AddStringToObject(root, "agenda_cal_d_url", config_manager_get_agenda_cal_d_url());
+    cJSON_AddStringToObject(root, "agenda_cal_e_url", config_manager_get_agenda_cal_e_url());
+
+    char *json_str = cJSON_Print(root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+
+    free(json_str);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+#endif
 static esp_err_t albums_handler(httpd_req_t *req)
 {
     if (!system_ready) {
@@ -1886,6 +2952,26 @@ static esp_err_t album_enabled_handler(httpd_req_t *req)
     esp_err_t err = album_manager_set_album_enabled(decoded_album_name, enabled);
     cJSON_Delete(root);
 
+#if FORK_FIXES
+    // Enabling an album whose folder doesn't exist on THIS device yet (album
+    // folders are created by uploading a photo into them, not by config) is
+    // a client-side "not found" condition, not a server fault - surfacing it
+    // as a generic 500 (as this used to) reads as a firmware bug to anyone
+    // importing a config exported from a different device with a different
+    // photo library. Disabling a nonexistent album is unaffected (see
+    // album_manager_set_album_enabled()'s own comment) and still succeeds.
+    if (err == ESP_ERR_NOT_FOUND) {
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND,
+                            "Album does not exist on this device - upload at least one photo "
+                            "to it first");
+        return ESP_FAIL;
+    }
+    if (err == ESP_ERR_TIMEOUT) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "Album list is busy, try again");
+        return ESP_OK;
+    }
+#endif
     if (err != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to update album");
         return ESP_FAIL;
@@ -1915,9 +3001,19 @@ static esp_err_t album_images_handler(httpd_req_t *req)
 
     char query[256];
     char album_name[128] = "";
+#if FORK_FIXES
+    bool include_thumbnails = true;
+#endif
 
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
         httpd_query_key_value(query, "album", album_name, sizeof(album_name));
+#if FORK_FIXES
+        char thumbnails_param[8] = "";
+        if (httpd_query_key_value(query, "thumbnails", thumbnails_param,
+                                  sizeof(thumbnails_param)) == ESP_OK) {
+            include_thumbnails = (strcmp(thumbnails_param, "0") != 0);
+        }
+#endif
     }
 
     if (strlen(album_name) == 0) {
@@ -1942,6 +3038,48 @@ static esp_err_t album_images_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
+#if FORK_FIXES
+    // Collect the base names of every thumbnail (".jpg", never used by a main
+    // image - see the extension check below) present in this album with a
+    // single readdir() pass, so the loop below can check existence via an
+    // in-memory string compare instead of a stat() syscall per image. On a
+    // large album (hundreds of images) that used to mean hundreds of
+    // sequential storage lookups inside one handler call - since
+    // esp_http_server processes requests on a single task, that blocked the
+    // entire Web UI (not just this request) for as long as the scan ran.
+    char(*thumb_bases)[256] = NULL;
+    size_t thumb_count = 0;
+    size_t thumb_capacity = 0;
+    if (include_thumbnails) {
+        struct dirent *tentry;
+        while ((tentry = readdir(dir)) != NULL) {
+            if (tentry->d_type != DT_REG) {
+                continue;
+            }
+            const char *tent_ext = strrchr(tentry->d_name, '.');
+            if (!tent_ext || strcasecmp(tent_ext, ".jpg") != 0) {
+                continue;
+            }
+            if (thumb_count == thumb_capacity) {
+                size_t new_capacity = thumb_capacity == 0 ? 32 : thumb_capacity * 2;
+                char(*grown)[256] = heap_caps_realloc(thumb_bases, new_capacity * sizeof(*grown),
+                                                      MALLOC_CAP_SPIRAM);
+                if (!grown) {
+                    break;  // Keep what we have - a missed thumbnail just falls back to the
+                            // placeholder icon.
+                }
+                thumb_bases = grown;
+                thumb_capacity = new_capacity;
+            }
+            int tbase_len = (int) (tent_ext - tentry->d_name);
+            snprintf(thumb_bases[thumb_count], sizeof(thumb_bases[0]), "%.*s", tbase_len,
+                     tentry->d_name);
+            thumb_count++;
+        }
+        rewinddir(dir);
+    }
+
+#endif
     cJSON *response = cJSON_CreateArray();
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
@@ -1950,12 +3088,51 @@ static esp_err_t album_images_handler(httpd_req_t *req)
                 continue;
             }
             const char *ext = strrchr(entry->d_name, '.');
+#if FORK_FIXES
+            if (ext &&
+                (strcasecmp(ext, ".bmp") == 0 || strcasecmp(ext, ".png") == 0 ||
+                 strcasecmp(ext, ".epdgz") == 0) &&
+                display_manager_is_photo_anchor(album_path, entry->d_name)) {
+#else
             if (ext && (strcasecmp(ext, ".bmp") == 0 || strcasecmp(ext, ".png") == 0 ||
                         strcasecmp(ext, ".epdgz") == 0)) {
+#endif
                 cJSON *image_obj = cJSON_CreateObject();
                 cJSON_AddStringToObject(image_obj, "filename", entry->d_name);
                 cJSON_AddStringToObject(image_obj, "album", decoded_album_name);
 
+#if FORK_FIXES
+                // Check if a corresponding JPG-named thumbnail exists (Web UI
+                // uploads generate a real one client-side; Telegram downloads
+                // get one generated server-side - see
+                // generate_original_thumbnail() in telegram_bot.c - as
+                // PNG-encoded bytes under a ".jpg" name, since the firmware
+                // has no JPEG encoder; browsers sniff content, not
+                // extension, so this displays fine either way). Always a
+                // different filename than the main image itself, since a
+                // ".jpg" thumbnail can never collide with a listed
+                // .bmp/.png/.epdgz main image. Skipped entirely when the
+                // client doesn't want thumbnails (Web UI "Show thumbnails"
+                // off). Checked against the thumb_bases[] set collected
+                // above instead of stat()-ing the candidate path directly -
+                // see the comment above that pass for why.
+                if (include_thumbnails) {
+                    int base_len = (int) (ext - entry->d_name);
+                    bool has_thumb = false;
+                    for (size_t i = 0; i < thumb_count; i++) {
+                        if ((int) strlen(thumb_bases[i]) == base_len &&
+                            strncmp(thumb_bases[i], entry->d_name, base_len) == 0) {
+                            has_thumb = true;
+                            break;
+                        }
+                    }
+                    if (has_thumb) {
+                        char thumbnail_name[256];
+                        snprintf(thumbnail_name, sizeof(thumbnail_name), "%.*s.jpg", base_len,
+                                 entry->d_name);
+                        cJSON_AddStringToObject(image_obj, "thumbnail", thumbnail_name);
+                    }
+#else
                 // Check if a corresponding JPG thumbnail exists for any image type
                 char thumbnail_name[256];
                 char thumbnail_path[512];
@@ -1971,6 +3148,7 @@ static esp_err_t album_images_handler(httpd_req_t *req)
                 struct stat st;
                 if (stat(thumbnail_path, &st) == 0) {
                     cJSON_AddStringToObject(image_obj, "thumbnail", thumbnail_name);
+#endif
                 }
 
                 cJSON_AddItemToArray(response, image_obj);
@@ -1978,6 +3156,9 @@ static esp_err_t album_images_handler(httpd_req_t *req)
         }
     }
     closedir(dir);
+#if FORK_FIXES
+    free(thumb_bases);
+#endif
 
     char *json_str = cJSON_Print(response);
     httpd_resp_set_type(req, "application/json");
@@ -2084,6 +3265,10 @@ static esp_err_t ota_status_handler(httpd_req_t *req)
     cJSON_AddStringToObject(response, "current_version", status.current_version);
     cJSON_AddStringToObject(response, "latest_version", status.latest_version);
     cJSON_AddNumberToObject(response, "progress_percent", status.progress_percent);
+#if FEATURE_OTA_CHANNEL
+    cJSON_AddBoolToObject(response, "latest_prerelease", status.latest_prerelease);
+    cJSON_AddBoolToObject(response, "variant_switch", status.variant_switch);
+#endif
 
     if (status.error_message[0] != '\0') {
         cJSON_AddStringToObject(response, "error_message", status.error_message);
@@ -2098,6 +3283,88 @@ static esp_err_t ota_status_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+#if FEATURE_OTA_CHANNEL
+// Which release channel / firmware variant the OTA check and update use.
+static esp_err_t ota_options_handler(httpd_req_t *req)
+{
+    if (req->method == HTTP_PUT) {
+        char buf[128];
+        int ret = httpd_req_recv(req, buf, MIN(req->content_len, sizeof(buf) - 1));
+        if (ret <= 0) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to read request");
+            return ESP_FAIL;
+        }
+        buf[ret] = '\0';
+        cJSON *body = cJSON_Parse(buf);
+        if (!body) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+            return ESP_FAIL;
+        }
+
+        ota_options_t current;
+        ota_get_options(&current);
+        ota_channel_t channel = current.channel;
+        bool alarmclock = current.alarmclock;
+        bool valid = true;
+
+        cJSON *item = cJSON_GetObjectItem(body, "channel");
+        if (item) {
+            if (cJSON_IsString(item) && strcmp(item->valuestring, "stable") == 0) {
+                channel = OTA_CHANNEL_STABLE;
+            } else if (cJSON_IsString(item) && strcmp(item->valuestring, "prerelease") == 0) {
+                channel = OTA_CHANNEL_PRERELEASE;
+            } else {
+                valid = false;
+            }
+        }
+        item = cJSON_GetObjectItem(body, "alarmclock");
+        if (item) {
+            if (cJSON_IsBool(item)) {
+                alarmclock = cJSON_IsTrue(item);
+            } else {
+                valid = false;
+            }
+        }
+        cJSON_Delete(body);
+
+        if (!valid) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid channel or alarmclock value");
+            return ESP_FAIL;
+        }
+        esp_err_t err = ota_set_options(channel, alarmclock);
+        if (err == ESP_ERR_NOT_SUPPORTED) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Alarm Clock needs a board speaker");
+            return ESP_FAIL;
+        }
+        if (err == ESP_ERR_INVALID_STATE) {
+            httpd_resp_set_status(req, "409 Conflict");
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_sendstr(req, "{\"error\":\"a check or update is running\"}");
+            return ESP_OK;
+        }
+        if (err != ESP_OK) {
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save options");
+            return ESP_FAIL;
+        }
+    }
+
+    ota_options_t options;
+    ota_get_options(&options);
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "channel",
+                            options.channel == OTA_CHANNEL_PRERELEASE ? "prerelease" : "stable");
+    cJSON_AddBoolToObject(response, "alarmclock", options.alarmclock);
+    cJSON_AddBoolToObject(response, "alarmclock_available", options.alarmclock_available);
+    cJSON_AddBoolToObject(response, "running_alarmclock", options.running_alarmclock);
+    char *json_str = cJSON_Print(response);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+    free(json_str);
+    cJSON_Delete(response);
+    return ESP_OK;
+}
+
+#endif
 static esp_err_t ota_check_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_POST) {
@@ -2198,6 +3465,28 @@ static esp_err_t factory_reset_handler(httpd_req_t *req)
 
     ESP_LOGI(TAG, "NVS erased successfully");
 
+#if FEATURE_AGENDA
+    // The Agenda ETag cache files live on the SD card/internal flash, not in
+    // NVS - erasing NVS alone would leave them orphaned (their matching NVS
+    // ETag validators are gone, so they'd never be read again, just sitting
+    // there unused). Best-effort: a factory reset should leave storage as
+    // clean as the config it just wiped. A missing file (e.g. Agenda was
+    // never enabled) is expected, not an error - logged at INFO either way
+    // so a factory reset's actual cleanup effect is visible in the log
+    // rather than silently assumed.
+    const char *agenda_cache_paths[] = {
+        AGENDA_TODO_CACHE_PATH,       AGENDA_CAL_CACHE_PATH,        AGENDA_CAL_CACHE_PATH2,
+        AGENDA_CAL_CACHE_PATH_C,      AGENDA_CAL_CACHE_PATH_D,      AGENDA_CAL_CACHE_PATH_E,
+        AGENDA_CAL_CACHE_PATH_C_FLAT, AGENDA_CAL_CACHE_PATH_D_FLAT, AGENDA_CAL_CACHE_PATH_E_FLAT};
+    for (size_t i = 0; i < sizeof(agenda_cache_paths) / sizeof(agenda_cache_paths[0]); i++) {
+        if (unlink(agenda_cache_paths[i]) == 0) {
+            ESP_LOGI(TAG, "Removed orphaned Agenda cache file: %s", agenda_cache_paths[i]);
+        } else {
+            ESP_LOGI(TAG, "No Agenda cache file to remove at: %s", agenda_cache_paths[i]);
+        }
+    }
+
+#endif
     // Send success response
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req,
@@ -2231,6 +3520,298 @@ static esp_err_t display_calibration_handler(httpd_req_t *req)
     }
 }
 
+#if FEATURE_OVERLAYS
+static esp_err_t error_overlay_test_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "Testing error overlay display");
+
+    esp_err_t ret = utils_test_error_overlay();
+
+    httpd_resp_set_type(req, "application/json");
+    if (ret == ESP_OK) {
+        httpd_resp_sendstr(req, "{\"status\":\"success\",\"message\":\"Error overlay displayed\"}");
+        return ESP_OK;
+    } else {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(
+            req, "{\"status\":\"error\",\"message\":\"Failed to display error overlay\"}");
+        return ESP_FAIL;
+    }
+}
+
+#endif
+#if FEATURE_CHIMES
+// POST /api/chimes/test - plays a beep pattern directly on the onboard
+// speaker (board_hal_has_speaker()), bypassing every Chimes policy gate
+// (master mode, quiet hours, mains-only) on purpose: the whole point of a
+// test button is to hear it regardless of current settings. Optional JSON
+// body {"pattern": "success"|"warning"|"error"}, defaults to "success".
+static esp_err_t chime_test_handler(httpd_req_t *req)
+{
+    if (!board_hal_has_speaker()) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"status\":\"error\",\"message\":\"This board has no speaker\"}");
+        return ESP_FAIL;
+    }
+
+    board_hal_chime_kind_t kind = BOARD_HAL_CHIME_SUCCESS;
+    char buf[128];
+    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (len > 0) {
+        buf[len] = '\0';
+        cJSON *root = cJSON_Parse(buf);
+        if (root) {
+            cJSON *pattern = cJSON_GetObjectItem(root, "pattern");
+            if (pattern && cJSON_IsString(pattern)) {
+                const char *p = cJSON_GetStringValue(pattern);
+                if (strcmp(p, "warning") == 0) {
+                    kind = BOARD_HAL_CHIME_WARNING;
+                } else if (strcmp(p, "error") == 0) {
+                    kind = BOARD_HAL_CHIME_ERROR;
+                }
+            }
+            cJSON_Delete(root);
+        }
+    }
+
+    ESP_LOGI(TAG, "Testing speaker chime (kind=%d)", (int) kind);
+    // Uses the configured volume, same as a real chime, so the test button
+    // shows exactly what the user will actually hear.
+    esp_err_t ret = board_hal_play_beep_pattern(kind, (uint8_t) config_manager_get_chime_volume());
+
+    httpd_resp_set_type(req, "application/json");
+    if (ret == ESP_OK) {
+        httpd_resp_sendstr(req, "{\"status\":\"success\",\"message\":\"Chime played\"}");
+        return ESP_OK;
+    } else {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "{\"status\":\"error\",\"message\":\"Failed to play chime\"}");
+        return ESP_FAIL;
+    }
+}
+
+#endif
+#if FEATURE_AGENDA
+// Maximum accepted size for a directly-uploaded extra ICS file - generous
+// vs. a realistic holidays/school-holidays/special-days feed (calendar_ics.c
+// itself caps a normal fetch at 2MB for a full personal calendar's years of
+// history; a hand-curated or single-purpose feed like these is expected to
+// be far smaller), but still bounded rather than accepting an arbitrarily
+// large body into a heap allocation.
+#define AGENDA_EXTRA_ICS_UPLOAD_MAX_BYTES (512 * 1024)
+
+// POST /api/agenda/extra-ics?slot=c|d|e - lets the user upload a .ics file
+// directly instead of providing a URL, for one of the three extra Calendar
+// sources that never auto-refresh (see NVS_AGENDA_CAL_C_URL_KEY etc. in
+// config.h). The raw request body is the .ics content itself (not
+// multipart - these are plain text files, unlike the photo uploads
+// elsewhere in this file); it's written straight to that slot's cache file,
+// with no network fetch involved at all. A minimal sanity check
+// ("BEGIN:VCALENDAR" prefix) guards against silently caching something that
+// clearly isn't an ICS file, matching this project's fail-soft-but-not-
+// blind style elsewhere.
+static esp_err_t agenda_extra_ics_upload_handler(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return ESP_FAIL;
+    }
+
+    char query[32];
+    char slot[4] = {0};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+        httpd_query_key_value(query, "slot", slot, sizeof(slot)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing ?slot=c|d|e");
+        return ESP_FAIL;
+    }
+    const char *cache_path;
+    const char *flat_cache_path;
+    if (strcmp(slot, "c") == 0) {
+        cache_path = AGENDA_CAL_CACHE_PATH_C;
+        flat_cache_path = AGENDA_CAL_CACHE_PATH_C_FLAT;
+    } else if (strcmp(slot, "d") == 0) {
+        cache_path = AGENDA_CAL_CACHE_PATH_D;
+        flat_cache_path = AGENDA_CAL_CACHE_PATH_D_FLAT;
+    } else if (strcmp(slot, "e") == 0) {
+        cache_path = AGENDA_CAL_CACHE_PATH_E;
+        flat_cache_path = AGENDA_CAL_CACHE_PATH_E_FLAT;
+    } else {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "slot must be c, d, or e");
+        return ESP_FAIL;
+    }
+
+    if (req->content_len <= 0 || req->content_len > AGENDA_EXTRA_ICS_UPLOAD_MAX_BYTES) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "File missing or too large");
+        return ESP_FAIL;
+    }
+
+    power_manager_reset_sleep_timer();
+
+    char *buf = heap_caps_malloc((size_t) req->content_len + 1, MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    int received = 0;
+    while (received < req->content_len) {
+        int ret = httpd_req_recv(req, buf + received, req->content_len - received);
+        if (ret <= 0) {
+            heap_caps_free(buf);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
+            return ESP_FAIL;
+        }
+        received += ret;
+    }
+    buf[received] = '\0';
+
+    if (strncmp(buf, "BEGIN:VCALENDAR", 15) != 0) {
+        heap_caps_free(buf);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                            "Not an ICS file (missing BEGIN:VCALENDAR)");
+        return ESP_FAIL;
+    }
+
+    FILE *fp = fopen(cache_path, "wb");
+    if (!fp) {
+        heap_caps_free(buf);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save file");
+        return ESP_FAIL;
+    }
+    fwrite(buf, 1, (size_t) received, fp);
+    fclose(fp);
+    // Invalidate the expanded-cache tier too - otherwise a stale-but-not-
+    // yet-exhausted expansion from before this upload would keep being
+    // served for up to AGENDA_EXTRA_ICS_EXPAND_DAYS, silently ignoring the
+    // file just uploaded (see load_extra_ics_source() in agenda_manager.c).
+    unlink(flat_cache_path);
+    heap_caps_free(buf);
+
+    ESP_LOGI(TAG, "Extra ICS source '%s' updated via upload (%d bytes)", slot, received);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"success\"}");
+    return ESP_OK;
+}
+
+// GET/POST/DELETE /api/agenda/color-profile?slot=1|2|3 - manages the up-to-
+// AGENDA_COLOR_PROFILE_SLOTS stored Calendar-view color profiles imported
+// from profile-editor.html's JSON export (see agenda_color_profile.h).
+// GET (no ?slot=) lists all slots' names + which one is active; POST
+// imports/replaces one slot's profile (raw JSON body, same non-multipart
+// convention as agenda_extra_ics_upload_handler() above); DELETE removes
+// one slot, clearing the active pointer first if it pointed there.
+// Selecting which slot is *active* is a plain scalar setting instead
+// (agenda_color_profile_active via PATCH /api/config), not part of this
+// endpoint.
+static esp_err_t agenda_color_profile_handler(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return ESP_FAIL;
+    }
+
+    if (req->method == HTTP_GET) {
+        cJSON *root = cJSON_CreateObject();
+        cJSON *slots = cJSON_CreateArray();
+        for (int slot = 1; slot <= AGENDA_COLOR_PROFILE_SLOTS; slot++) {
+            cJSON *entry = cJSON_CreateObject();
+            cJSON_AddNumberToObject(entry, "slot", slot);
+            char name[AGENDA_CAL_CDE_NAME_MAX_LEN * 2];
+            if (agenda_color_profile_slot_name(slot, name, sizeof(name))) {
+                cJSON_AddStringToObject(entry, "name", name);
+            } else {
+                cJSON_AddNullToObject(entry, "name");
+            }
+            cJSON_AddItemToArray(slots, entry);
+        }
+        cJSON_AddItemToObject(root, "slots", slots);
+        cJSON_AddNumberToObject(root, "active", config_manager_get_agenda_color_profile_active());
+        char *json_str = cJSON_Print(root);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, json_str);
+        free(json_str);
+        cJSON_Delete(root);
+        return ESP_OK;
+    }
+
+    char query[32];
+    char slot_str[4] = {0};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+        httpd_query_key_value(query, "slot", slot_str, sizeof(slot_str)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing ?slot=1|2|3");
+        return ESP_FAIL;
+    }
+    int slot = atoi(slot_str);
+    if (slot < 1 || slot > AGENDA_COLOR_PROFILE_SLOTS) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "slot must be 1..3");
+        return ESP_FAIL;
+    }
+    char path[64];
+    agenda_color_profile_path(slot, path, sizeof(path));
+
+    if (req->method == HTTP_DELETE) {
+        unlink(path);
+        if (config_manager_get_agenda_color_profile_active() == slot) {
+            config_manager_set_agenda_color_profile_active(0);
+        }
+        ESP_LOGI(TAG, "Color profile slot %d removed", slot);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"status\":\"success\"}");
+        return ESP_OK;
+    }
+
+    // POST: raw JSON body, same non-multipart convention as
+    // agenda_extra_ics_upload_handler() above.
+    if (req->content_len <= 0 || req->content_len > AGENDA_COLOR_PROFILE_MAX_BYTES) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Profile missing or too large");
+        return ESP_FAIL;
+    }
+
+    power_manager_reset_sleep_timer();
+
+    char *buf = heap_caps_malloc((size_t) req->content_len + 1, MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    int received = 0;
+    while (received < req->content_len) {
+        int ret = httpd_req_recv(req, buf + received, req->content_len - received);
+        if (ret <= 0) {
+            heap_caps_free(buf);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
+            return ESP_FAIL;
+        }
+        received += ret;
+    }
+    buf[received] = '\0';
+
+    char err[96];
+    if (!agenda_color_profile_validate(buf, NULL, 0, err, sizeof(err))) {
+        heap_caps_free(buf);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, err);
+        return ESP_FAIL;
+    }
+
+    FILE *fp = fopen(path, "wb");
+    if (!fp) {
+        heap_caps_free(buf);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save profile");
+        return ESP_FAIL;
+    }
+    fwrite(buf, 1, (size_t) received, fp);
+    fclose(fp);
+    heap_caps_free(buf);
+
+    ESP_LOGI(TAG, "Color profile slot %d updated via import (%d bytes)", slot, received);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"success\"}");
+    return ESP_OK;
+}
+
+#endif
 static esp_err_t processing_settings_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
@@ -2491,11 +4072,160 @@ static esp_err_t color_palette_handler(httpd_req_t *req)
     return ESP_FAIL;
 }
 
+#if FORK_ANY
+// Registers every route this device serves onto whichever handle is passed
+// in - the plain-HTTP `server` (always) and, if HTTPS is enabled, a second
+// TLS-wrapped instance too (see http_server_init() below). Extracted so both
+// instances share one definition instead of two copies drifting apart -
+// httpd_ssl_start() (esp_https_server) is a thin wrapper that still hands
+// back an ordinary httpd_handle_t, so register_uri() works unchanged on
+// either kind of handle. Every route goes through register_uri() so the
+// optional HTTP-auth gate (see above) cannot be forgotten when a new
+// endpoint is added.
+static void register_all_handlers(httpd_handle_t handle)
+{
+    register_uri(handle, "/", HTTP_GET, index_handler);
+    register_uri(handle, "/assets/index.css", HTTP_GET, index_css_handler);
+    register_uri(handle, "/assets/index.js", HTTP_GET, index_js_handler);
+    register_uri(handle, "/assets/index2.js", HTTP_GET, index2_js_handler);
+    register_uri(handle, "/assets/exif-reader.js", HTTP_GET, exif_reader_js_handler);
+    register_uri(handle, "/assets/browser.js", HTTP_GET, browser_js_handler);
+    register_uri(handle, "/assets/__vite-browser-external.js", HTTP_GET,
+                 vite_browser_external_js_handler);
+    register_uri(handle, "/icon.svg", HTTP_GET, icon_handler);
+#endif
+#if FEATURE_AGENDA
+    register_uri(handle, "/profile-editor.html", HTTP_GET, profile_editor_handler);
+#endif
+#if FORK_ANY
+    register_uri(handle, "/measurement_sample.jpg", HTTP_GET, measurement_sample_handler);
+    register_uri(handle, "/api/rotate", HTTP_POST, rotate_handler);
+    register_uri(handle, "/api/current_image", HTTP_GET, current_image_handler);
+    register_uri(handle, "/api/config", HTTP_GET, config_handler);
+    register_uri(handle, "/api/config", HTTP_POST, config_handler);
+    register_uri(handle, "/api/config", HTTP_PATCH, config_handler);
+    register_uri(handle, "/api/config/urls", HTTP_GET, config_urls_handler);
+    register_uri(handle, "/api/debug/log", HTTP_GET, debug_log_download_handler);
+    register_uri(handle, "/api/debug/log", HTTP_DELETE, debug_log_clear_handler);
+    register_uri(handle, "/api/battery", HTTP_GET, battery_handler);
+#endif
+#if FEATURE_BATTERY_HISTORY
+    register_uri(handle, "/api/battery-history", HTTP_GET, battery_history_handler);
+    register_uri(handle, "/api/battery-history", HTTP_DELETE, battery_history_handler);
+#endif
+#if FORK_ANY
+#if FEATURE_ALARMCLOCK
+    register_uri(handle, "/api/alarm/test", HTTP_GET, alarm_test_handler);
+    register_uri(handle, "/api/alarm/test", HTTP_POST, alarm_test_handler);
+    register_uri(handle, "/api/alarm/test", HTTP_DELETE, alarm_test_handler);
+#endif
+#if BOARD_HAL_VOICE_ENABLED
+    register_uri(handle, "/api/mic/level", HTTP_GET, mic_level_handler);
+    register_uri(handle, "/api/mic/level", HTTP_POST, mic_level_handler);
+    register_uri(handle, "/api/mic/level", HTTP_DELETE, mic_level_handler);
+    register_uri(handle, "/api/mic/tones", HTTP_POST, mic_tones_handler);
+    register_uri(handle, "/api/mic/settings", HTTP_GET, mic_settings_handler);
+    register_uri(handle, "/api/mic/settings", HTTP_PUT, mic_settings_handler);
+    register_uri(handle, "/api/kws/status", HTTP_GET, kws_status_handler);
+    register_uri(handle, "/api/kws/settings", HTTP_PUT, kws_settings_handler);
+    register_uri(handle, "/api/kws/enroll", HTTP_POST, kws_enroll_handler);
+    register_uri(handle, "/api/kws/test", HTTP_POST, kws_test_handler);
+    register_uri(handle, "/api/kws/templates", HTTP_DELETE, kws_templates_handler);
+#endif
+#endif
+#if FEATURE_DISPLAY_HISTORY
+    register_uri(handle, "/api/history", HTTP_GET, display_history_handler);
+    register_uri(handle, "/api/history", HTTP_DELETE, display_history_handler);
+#endif
+#if FEATURE_FACECROP
+    register_uri(handle, "/api/albums/organize-crop", HTTP_POST, organize_crop_variants_handler);
+#endif
+#if FORK_ANY
+    register_uri(handle, "/api/sensor", HTTP_GET, sensor_handler);
+#endif
+#if FEATURE_CLIMATE
+    register_uri(handle, "/api/climate-history", HTTP_GET, climate_history_handler);
+    register_uri(handle, "/api/climate-history", HTTP_DELETE, climate_history_handler);
+#endif
+#if FORK_ANY
+    register_uri(handle, "/api/sleep", HTTP_POST, sleep_handler);
+    register_uri(handle, "/api/system-info", HTTP_GET, system_info_handler);
+    register_uri(handle, "/api/time", HTTP_GET, time_handler);
+    register_uri(handle, "/api/time/sync", HTTP_POST, time_sync_handler);
+    register_uri(handle, "/api/ota/status", HTTP_GET, ota_status_handler);
+#endif
+#if FEATURE_OTA_CHANNEL
+    register_uri(handle, "/api/ota/options", HTTP_GET, ota_options_handler);
+    register_uri(handle, "/api/ota/options", HTTP_PUT, ota_options_handler);
+#endif
+#if FORK_ANY
+    register_uri(handle, "/api/ota/check", HTTP_POST, ota_check_handler);
+    register_uri(handle, "/api/ota/update", HTTP_POST, ota_update_handler);
+    register_uri(handle, "/api/keep_alive", HTTP_POST, keep_alive_handler);
+    register_uri(handle, "/api/format-storage", HTTP_POST, format_storage_handler);
+    register_uri(handle, "/api/display-image", HTTP_POST, display_image_direct_handler);
+    register_uri(handle, "/api/albums", HTTP_GET, albums_handler);
+    register_uri(handle, "/api/albums", HTTP_POST, albums_handler);
+    register_uri(handle, "/api/albums", HTTP_DELETE, album_delete_handler);
+    register_uri(handle, "/api/albums/enabled", HTTP_PUT, album_enabled_handler);
+    register_uri(handle, "/api/images", HTTP_GET, album_images_handler);
+    register_uri(handle, "/api/upload", HTTP_POST, upload_image_handler);
+    register_uri(handle, "/api/display", HTTP_POST, display_image_handler);
+    register_uri(handle, "/api/delete", HTTP_POST, delete_image_handler);
+    register_uri(handle, "/api/image", HTTP_GET, serve_image_handler);
+    register_uri(handle, "/api/settings/processing", HTTP_GET, processing_settings_handler);
+    register_uri(handle, "/api/settings/processing", HTTP_POST, processing_settings_handler);
+    register_uri(handle, "/api/settings/processing", HTTP_DELETE, processing_settings_handler);
+    register_uri(handle, "/api/settings/palette", HTTP_GET, color_palette_handler);
+    register_uri(handle, "/api/settings/palette", HTTP_POST, color_palette_handler);
+    register_uri(handle, "/api/settings/palette", HTTP_DELETE, color_palette_handler);
+    register_uri(handle, "/api/factory-reset", HTTP_POST, factory_reset_handler);
+    register_uri(handle, "/api/calibration/display", HTTP_POST, display_calibration_handler);
+#endif
+#if FEATURE_ERROR_BANNER
+    register_uri(handle, "/api/error-overlay/test", HTTP_POST, error_overlay_test_handler);
+#endif
+#if FEATURE_CHIMES
+    register_uri(handle, "/api/chimes/test", HTTP_POST, chime_test_handler);
+#endif
+#if FEATURE_AGENDA
+    register_uri(handle, "/api/agenda/extra-ics", HTTP_POST, agenda_extra_ics_upload_handler);
+    register_uri(handle, "/api/agenda/color-profile", HTTP_GET, agenda_color_profile_handler);
+    register_uri(handle, "/api/agenda/color-profile", HTTP_POST, agenda_color_profile_handler);
+    register_uri(handle, "/api/agenda/color-profile", HTTP_DELETE, agenda_color_profile_handler);
+#endif
+#if FEATURE_OFFLINE_HOTSPOT
+    register_uri(handle, "/api/wifi/hotspot/start", HTTP_POST, wifi_hotspot_start_handler);
+    register_uri(handle, "/api/wifi/hotspot/stop", HTTP_POST, wifi_hotspot_stop_handler);
+#endif
+#if FORK_ANY
+}
+
+#endif
 esp_err_t http_server_init(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+#if FORK_ANY
+    // 88: up to 78 handlers are registered below as of this comment (the microphone
+    // endpoints pushed the previous 72-handler margin - raised before from 64,
+    // 55 and 50 - down to 2 free slots). Keep real margin above the exact count so the next handler
+    // added here doesn't silently fail to register
+    // (httpd_register_uri_handler() only logs a warning on overflow, never a
+    // hard error, and every following handler in the same init function
+    // still gets registered fine - only the ones actually over the limit
+    // silently vanish, which is what made this so easy to miss before -
+    // run `grep -c "register_uri(handle," main/http_server.c` and compare
+    // against this number whenever you add a new endpoint).
+    config.max_uri_handlers = 88;
+    // 16384: rotate_handler() (/api/rotate) calls trigger_image_rotation()
+    // synchronously on this worker task - the same heavy pipeline that's
+    // needed the same bump on button_task/deep_sleep_wake_task (12288 wasn't
+    // enough there either, confirmed by a live coredump - see main.c).
+    config.stack_size = 16384;
+#else
     config.max_uri_handlers = 50;
-    config.stack_size = 12288;       // Increased from 8192 to 12KB
+    config.stack_size = 12288;  // Increased from 8192 to 12KB
+#endif
     config.max_open_sockets = 10;    // Limit concurrent connections to prevent memory exhaustion
     config.lru_purge_enable = true;  // Enable LRU purging of connections
 
@@ -2601,6 +4331,13 @@ esp_err_t http_server_init(void)
 
 esp_err_t http_server_stop(void)
 {
+#if FEATURE_HTTPS
+    if (https_server) {
+        httpd_ssl_stop(https_server);
+        https_server = NULL;
+        ESP_LOGI(TAG, "HTTPS server stopped");
+    }
+#endif
     if (server) {
         httpd_stop(server);
         server = NULL;

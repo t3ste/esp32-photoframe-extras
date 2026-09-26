@@ -8,6 +8,7 @@
 #include "config.h"
 #include "cron.h"
 #include "esp_err.h"
+#include "feature_config.h"
 
 esp_err_t config_manager_init(void);
 
@@ -130,6 +131,67 @@ const char *config_manager_get_image_etag(void);
 void config_manager_set_ha_url(const char *url);
 const char *config_manager_get_ha_url(void);
 
+#if FORK_FIXES
+// Master switch for all Home Assistant integration (online/offline/update
+// notifications and the rotation-veto piggyback). Defaults to false on a
+// fresh device; a device upgrading from a firmware version that predates
+// this switch keeps HA enabled automatically if a ha_url was already
+// configured, so existing setups don't silently break.
+void config_manager_set_ha_enabled(bool enabled);
+bool config_manager_get_ha_enabled(void);
+
+#endif
+#if FEATURE_TELEGRAM
+// ============================================================================
+// Telegram Bot
+// ============================================================================
+
+void config_manager_set_telegram_bot_token(const char *token);
+const char *config_manager_get_telegram_bot_token(void);
+
+void config_manager_set_telegram_chat_id(const char *chat_id);
+const char *config_manager_get_telegram_chat_id(void);
+
+// True once both a bot token and a chat ID are configured.
+bool config_manager_telegram_is_configured(void);
+
+// Highest Telegram update_id processed so far (0 = none yet). The next
+// getUpdates poll should request offset = value + 1.
+void config_manager_set_telegram_last_update_id(int64_t update_id);
+int64_t config_manager_get_telegram_last_update_id(void);
+
+// Orientation-pairing mode: combine two mismatched-orientation Telegram
+// photos into one composed image instead of ever showing one alone.
+// Togglable via the web UI and the "/pairing" bot command.
+void config_manager_set_telegram_pairing_enabled(bool enabled);
+bool config_manager_get_telegram_pairing_enabled(void);
+
+// Queue of images waiting for an orientation partner (FIFO - oldest first).
+// Every mismatched image is appended here, not just one, so nothing is lost
+// if several arrive before a partner shows up. Persisted so it survives deep
+// sleep even on MemFS-only boards where the files themselves won't (callers
+// should stat() before trusting a path is still there).
+void config_manager_add_telegram_pending_image(const char *path, const char *caption);
+int config_manager_get_telegram_pending_image_count(void);
+bool config_manager_get_telegram_pending_image_at(int index, char *path_out, size_t path_out_len,
+                                                  char *caption_out, size_t caption_out_len);
+void config_manager_remove_telegram_pending_image_at(int index);
+// Clears the tracking queue only - does NOT delete the underlying files
+// (they remain on storage like any other received image).
+void config_manager_clear_telegram_pending_images(void);
+
+// Whether a low-battery Telegram warning has already been sent for the
+// current discharge episode (cleared once the battery recovers), so the
+// warning fires once rather than on every poll.
+void config_manager_set_telegram_low_battery_warned(bool warned);
+bool config_manager_get_telegram_low_battery_warned(void);
+
+// Wake-up status ping (SSID/IP/battery/wake reason/rotation schedule) sent to
+// Telegram on every poll, even when there are no new updates.
+void config_manager_set_telegram_wake_notify_enabled(bool enabled);
+bool config_manager_get_telegram_wake_notify_enabled(void);
+
+#endif
 // ============================================================================
 // AI API Keys
 // ============================================================================
@@ -140,6 +202,416 @@ const char *config_manager_get_openai_api_key(void);
 void config_manager_set_google_api_key(const char *key);
 const char *config_manager_get_google_api_key(void);
 
+#if FEATURE_ERROR_BANNER
+// ============================================================================
+// Error overlay / WiFi failure tracking
+// ============================================================================
+
+// On-display error overlay for persistent failures (currently: repeated WiFi
+// connect failure on a scheduled wake). Togglable via web UI and bot command.
+void config_manager_set_error_overlay_enabled(bool enabled);
+bool config_manager_get_error_overlay_enabled(void);
+
+// Consecutive scheduled-wake WiFi connection failures (reset to 0 on any
+// success). Persisted so it survives deep sleep between wakes.
+void config_manager_set_wifi_fail_count(int count);
+int config_manager_get_wifi_fail_count(void);
+
+#endif
+#if FEATURE_WIFI_RESILIENCE
+// ============================================================================
+// WiFi
+// ============================================================================
+
+// When false, WiFi always stays in power-save mode regardless of the
+// interactive/USB-triggered "full RX" policy in power_manager - lower draw,
+// slower web UI. Defaults to true (existing tiered behavior unchanged).
+void config_manager_set_wifi_performance_mode_enabled(bool enabled);
+bool config_manager_get_wifi_performance_mode_enabled(void);
+
+// Whether wifi_manager.c caps TX power while a battery is present (see
+// WIFI_BATTERY_MAX_TX_POWER_QUARTER_DBM in config.h). Defaults to true.
+void config_manager_set_wifi_tx_power_cap_enabled(bool enabled);
+bool config_manager_get_wifi_tx_power_cap_enabled(void);
+
+// Extended cold-boot retry for non-credential-reject WiFi failures - see
+// NVS_WIFI_EXT_RETRY_ENABLED_KEY in config.h. Defaults to false (opt-in -
+// worst case is up to ~6x the energy use of the default behavior).
+void config_manager_set_wifi_extended_retry_enabled(bool enabled);
+bool config_manager_get_wifi_extended_retry_enabled(void);
+
+// Internal cross-reboot attempt counter backing the above - see
+// NVS_WIFI_COLDBOOT_FAIL_COUNT_KEY in config.h. Never exposed via the HTTP
+// API. Reset to 0 on any successful cold-boot connect or once the device
+// gives up and reprovisions.
+void config_manager_set_wifi_coldboot_fail_count(int count);
+int config_manager_get_wifi_coldboot_fail_count(void);
+
+// Whether a cold-boot connect exhaustion may wipe the saved SSID/password
+// and reprovision at all - see NVS_WIFI_REPROV_ON_FAIL_KEY in config.h.
+// Defaults to true (unchanged existing behavior); a genuine credential
+// rejection always wipes regardless of this setting.
+void config_manager_set_wifi_reprovision_on_fail_enabled(bool enabled);
+bool config_manager_get_wifi_reprovision_on_fail_enabled(void);
+
+#endif
+#if FEATURE_OFFLINE_HOTSPOT
+// Set during first-time setup when the user picks offline/no-WiFi use - see
+// NVS_OFFLINE_MODE_KEY in config.h. Defaults to false.
+void config_manager_set_offline_mode_enabled(bool enabled);
+bool config_manager_get_offline_mode_enabled(void);
+
+#endif
+#if FEATURE_HTTPS
+// Opt-in second HTTPS listener - see NVS_HTTPS_ENABLED_KEY in config.h.
+// Defaults to false. Takes effect on the next http_server_init().
+void config_manager_set_https_enabled(bool enabled);
+bool config_manager_get_https_enabled(void);
+
+#endif
+#if FEATURE_TELEGRAM
+// Orientation pairing during normal (non-Telegram) auto-rotation - random
+// mode only. Defaults to false. See NVS_ROTATION_PAIRING_ENABLED_KEY in
+// config.h.
+void config_manager_set_rotation_pairing_enabled(bool enabled);
+bool config_manager_get_rotation_pairing_enabled(void);
+
+#endif
+#if FEATURE_FACECROP
+// Cover/Fit pre-rendered variant selection during Storage/SD rotation.
+// Defaults to false. See NVS_VARIANT_SELECTION_ENABLED_KEY in config.h.
+void config_manager_set_variant_selection_enabled(bool enabled);
+bool config_manager_get_variant_selection_enabled(void);
+
+#endif
+#if FEATURE_TELEGRAM
+// Send a thumbnail to Telegram whenever a Telegram-mode wake falls back to
+// album rotation (no new Telegram image). Defaults to false. See
+// NVS_TELEGRAM_ROTATION_NOTIFY_KEY in config.h.
+void config_manager_set_telegram_rotation_notify_enabled(bool enabled);
+bool config_manager_get_telegram_rotation_notify_enabled(void);
+
+// Whether a Telegram-mode wake with no new image falls back to normal album
+// rotation. See NVS_TELEGRAM_FALLBACK_ROTATION_ENABLED_KEY in config.h.
+// Defaults to enabled (preserves existing behavior).
+void config_manager_set_telegram_fallback_rotation_enabled(bool enabled);
+bool config_manager_get_telegram_fallback_rotation_enabled(void);
+
+// Only consulted while the setting above is disabled - see
+// NVS_TELEGRAM_FALLBACK_ON_ERROR_ENABLED_KEY in config.h. Defaults to
+// enabled (preserves existing behavior).
+void config_manager_set_telegram_fallback_on_error_enabled(bool enabled);
+bool config_manager_get_telegram_fallback_on_error_enabled(void);
+
+// Minimizes wake duration and WiFi-on time on an automatic Telegram-mode
+// wake. Defaults to false. See NVS_TELEGRAM_POWER_SAVE_ENABLED_KEY in
+// config.h.
+void config_manager_set_telegram_power_save_enabled(bool enabled);
+bool config_manager_get_telegram_power_save_enabled(void);
+
+// Only consulted while the setting above is also on - see
+// NVS_TELEGRAM_POWER_SAVE_LATEST_ONLY_KEY in config.h. Defaults to false.
+void config_manager_set_telegram_power_save_latest_only(bool enabled);
+bool config_manager_get_telegram_power_save_latest_only(void);
+
+// Keep a copy of each Telegram photo exactly as received (pre-processing) in
+// TELEGRAM_ORIGINALS_DIRECTORY. Defaults to false. See
+// NVS_TELEGRAM_KEEP_ORIGINALS_KEY in config.h.
+void config_manager_set_telegram_keep_originals_enabled(bool enabled);
+bool config_manager_get_telegram_keep_originals_enabled(void);
+
+// On-device output format for Telegram-ingested photos: "png" or "epdgz".
+// Defaults to TELEGRAM_IMAGE_FORMAT_DEFAULT ("epdgz"). See
+// NVS_TELEGRAM_IMAGE_FORMAT_KEY in config.h.
+void config_manager_set_telegram_image_format(const char *format);
+const char *config_manager_get_telegram_image_format(void);
+
+// Duplicate detection: skip re-downloading/re-displaying a Telegram photo or
+// document whose "file_unique_id" was already seen. See
+// NVS_TELEGRAM_DEDUP_ENABLED_KEY in config.h. Defaults to disabled.
+void config_manager_set_telegram_dedup_enabled(bool enabled);
+bool config_manager_get_telegram_dedup_enabled(void);
+
+// Returns true if `unique_id` is already in the remembered FIFO (see
+// TELEGRAM_DEDUP_MAX_ENTRIES in config.h) - independent of whether
+// duplicate detection is currently enabled, so callers decide that.
+bool config_manager_telegram_has_seen_unique_id(const char *unique_id);
+// Records `unique_id` as seen, evicting the oldest entry if the FIFO is
+// full, and persists the updated list to NVS. No-op if already recorded.
+void config_manager_telegram_mark_seen_unique_id(const char *unique_id);
+
+#endif
+#if FEATURE_OVERLAYS
+// Weather + headline overlays: composited on-device, no companion server
+// needed. Both default to false. See NVS_WEATHER_*/NVS_HEADLINES_* in
+// config.h.
+void config_manager_set_weather_overlay_enabled(bool enabled);
+bool config_manager_get_weather_overlay_enabled(void);
+// Free-text location name, geocoded once (see weather.c); lat/lon below can
+// instead be set directly to skip geocoding entirely.
+void config_manager_set_weather_location_name(const char *name);
+const char *config_manager_get_weather_location_name(void);
+void config_manager_set_weather_lat(const char *lat);
+const char *config_manager_get_weather_lat(void);
+void config_manager_set_weather_lon(const char *lon);
+const char *config_manager_get_weather_lon(void);
+// Internal cache-invalidation marker (weather.c only, not user-facing).
+void config_manager_set_weather_geocoded_name(const char *name);
+const char *config_manager_get_weather_geocoded_name(void);
+// One of WEATHER_PROVIDER_OPEN_METEO/_WTTR_IN/_YR_NO (config.h); anything
+// else is coerced to WEATHER_PROVIDER_DEFAULT.
+void config_manager_set_weather_provider(const char *provider);
+const char *config_manager_get_weather_provider(void);
+// The provider that actually produced the currently-displayed weather data -
+// updated by weather.c on every successful fetch, regardless of which
+// provider is configured. Empty string if no fetch has ever succeeded.
+void config_manager_set_weather_last_source(const char *provider);
+const char *config_manager_get_weather_last_source(void);
+
+void config_manager_set_headlines_overlay_enabled(bool enabled);
+bool config_manager_get_headlines_overlay_enabled(void);
+void config_manager_set_headlines_rss_url(const char *url);
+const char *config_manager_get_headlines_rss_url(void);
+// Clamped to [HEADLINES_COUNT_MIN, HEADLINES_COUNT_MAX] (1-3).
+void config_manager_set_headlines_count(int count);
+int config_manager_get_headlines_count(void);
+// Only takes effect when headlines_count == 1. Clamped to
+// [HEADLINES_WRAP_LINES_MIN, HEADLINES_WRAP_LINES_MAX] (1-3); 1 (default) =
+// unchanged single-line-with-ellipsis truncation.
+void config_manager_set_headlines_wrap_lines(int lines);
+int config_manager_get_headlines_wrap_lines(void);
+
+// Overlay bar appearance/language (shared by weather + headlines content).
+// Colors default to false (black bar, white text); swapped when true.
+void config_manager_set_overlay_invert_colors(bool enabled);
+bool config_manager_get_overlay_invert_colors(void);
+
+// Extends weather/headline overlays to already-rendered EPDGZ album images
+// (see NVS_OVERLAY_EPDGZ_ENABLED_KEY in config.h). Defaults to disabled.
+void config_manager_set_overlay_epdgz_enabled(bool enabled);
+bool config_manager_get_overlay_epdgz_enabled(void);
+// "en" (default) or "de" - anything else is coerced to the default.
+void config_manager_set_overlay_language(const char *language);
+const char *config_manager_get_overlay_language(void);
+// Also apply overlay_invert_colors to Telegram photo captions. Off by
+// default (captions keep the fixed black-bar/white-text look).
+void config_manager_set_caption_invert_colors_enabled(bool enabled);
+bool config_manager_get_caption_invert_colors_enabled(void);
+// Telegram-only (see NVS_SHOW_EXIF_DATETIME_KEY in config.h for why). Off by
+// default.
+void config_manager_set_show_exif_datetime_enabled(bool enabled);
+bool config_manager_get_show_exif_datetime_enabled(void);
+// Small always-on-render corner badge shown below a configurable battery
+// threshold, independent of Telegram/Web UI reachability. Off by default.
+// See NVS_LOW_BATTERY_OVERLAY_ENABLED_KEY in config.h.
+void config_manager_set_low_battery_overlay_enabled(bool enabled);
+bool config_manager_get_low_battery_overlay_enabled(void);
+// Percent (default 16, clamped 1-50) - see NVS_LOW_BATTERY_OVERLAY_THRESHOLD_KEY.
+void config_manager_set_low_battery_overlay_threshold(int threshold);
+int config_manager_get_low_battery_overlay_threshold(void);
+// Auto-backup to persistent storage before battery_history.c's automatic
+// 180-day-age reset discards the log. Off by default - see
+// NVS_BATTERY_HISTORY_BACKUP_KEY in config.h.
+void config_manager_set_battery_history_backup_enabled(bool enabled);
+bool config_manager_get_battery_history_backup_enabled(void);
+// Internal hysteresis state, not a user setting - never exposed to the Web
+// UI. See NVS_LOW_BATTERY_OVERLAY_ACTIVE_KEY in config.h.
+void config_manager_set_low_battery_overlay_active(bool active);
+bool config_manager_get_low_battery_overlay_active(void);
+// Render the weather overlay as 3 lines (one per day) instead of one
+// combined line - only takes effect while headlines_overlay is disabled;
+// weather always renders as one line whenever headlines are also enabled.
+void config_manager_set_weather_multiline_enabled(bool enabled);
+bool config_manager_get_weather_multiline_enabled(void);
+// Weather condition as icon instead of text - "none" (default), "flaticon",
+// or "metno". See NVS_WEATHER_ICON_SET_KEY in config.h. An unrecognized
+// value falls back to "none".
+void config_manager_set_weather_icon_set(const char *icon_set);
+const char *config_manager_get_weather_icon_set(void);
+// Traffic-light severity coloring for the icon above. See
+// NVS_WEATHER_ICON_COLORED_KEY in config.h.
+void config_manager_set_weather_icon_colored(bool enabled);
+bool config_manager_get_weather_icon_colored(void);
+
+#endif
+#if FEATURE_AGENDA
+// ============================================================================
+// Agenda (ToDo + Calendar) - a full-screen display mode, not a photo
+// overlay. See NVS_AGENDA_*_KEY in config.h and agenda_manager.h.
+// ============================================================================
+
+// Brackets a run of agenda_*_set_* calls so they share one NVS open/commit
+// instead of one each - utils.c's apply_config_from_json() wraps its whole
+// agenda field-handling block in these. Purely a performance/flash-wear
+// optimization: every agenda_*_set_* function still works correctly (with
+// its own open/commit) when called outside a batch, exactly as before this
+// existed. Safe to call config_manager_end_agenda_batch() even if begin
+// failed to open NVS (no-op in that case).
+void config_manager_begin_agenda_batch(void);
+void config_manager_end_agenda_batch(void);
+
+void config_manager_set_agenda_todo_enabled(bool enabled);
+bool config_manager_get_agenda_todo_enabled(void);
+void config_manager_set_agenda_cal_enabled(bool enabled);
+bool config_manager_get_agenda_cal_enabled(void);
+
+void config_manager_set_agenda_todo_url(const char *url);
+const char *config_manager_get_agenda_todo_url(void);
+// Write-only from the Web UI's perspective - never included in GET
+// /api/config, same treatment as the WiFi password. See http_server.c.
+void config_manager_set_agenda_cal_url(const char *url);
+const char *config_manager_get_agenda_cal_url(void);
+// Optional second calendar - same write-only treatment.
+void config_manager_set_agenda_cal_url2(const char *url);
+const char *config_manager_get_agenda_cal_url2(void);
+
+// Three extra, independently-enabled ICS sources (e.g. holidays/school
+// holidays/other special-days feeds) shown in the same Calendar column as
+// A/B - see AGENDA_CAL_CACHE_PATH_C etc. and NVS_AGENDA_CAL_C_URL_KEY etc.
+// in config.h for the key behavioral difference from A/B: these are never
+// refreshed automatically, only on an explicit URL change, a "refresh now"
+// request, or a direct file upload (agenda_manager_refresh_extra_ics()).
+// Same write-only URL treatment as agenda_cal_url/_url2 above.
+void config_manager_set_agenda_cal_c_enabled(bool enabled);
+bool config_manager_get_agenda_cal_c_enabled(void);
+void config_manager_set_agenda_cal_c_url(const char *url);
+const char *config_manager_get_agenda_cal_c_url(void);
+void config_manager_set_agenda_cal_c_name(const char *name);
+const char *config_manager_get_agenda_cal_c_name(void);
+void config_manager_set_agenda_cal_d_enabled(bool enabled);
+bool config_manager_get_agenda_cal_d_enabled(void);
+void config_manager_set_agenda_cal_d_url(const char *url);
+const char *config_manager_get_agenda_cal_d_url(void);
+void config_manager_set_agenda_cal_d_name(const char *name);
+const char *config_manager_get_agenda_cal_d_name(void);
+void config_manager_set_agenda_cal_e_enabled(bool enabled);
+bool config_manager_get_agenda_cal_e_enabled(void);
+void config_manager_set_agenda_cal_e_url(const char *url);
+const char *config_manager_get_agenda_cal_e_url(void);
+void config_manager_set_agenda_cal_e_name(const char *name);
+const char *config_manager_get_agenda_cal_e_name(void);
+
+// Cached ETag validators for each source's conditional GET (see
+// AGENDA_TODO_CACHE_PATH etc. in config.h) - internal fetch-cache state,
+// not user data: not exposed via the HTTP API, same as the getters above are
+// (deliberately) not either. Automatically cleared by the matching URL
+// setter above when the URL actually changes.
+void config_manager_set_agenda_todo_etag(const char *etag);
+const char *config_manager_get_agenda_todo_etag(void);
+void config_manager_set_agenda_cal_etag(const char *etag);
+const char *config_manager_get_agenda_cal_etag(void);
+void config_manager_set_agenda_cal_etag2(const char *etag);
+const char *config_manager_get_agenda_cal_etag2(void);
+
+// Clamped [AGENDA_CAL_DAYS_MIN, AGENDA_CAL_DAYS_MAX].
+void config_manager_set_agenda_cal_days(int days);
+int config_manager_get_agenda_cal_days(void);
+
+// Calendar-only-fullscreen layout - see agenda_cal_layout_mode_t (config.h).
+// GRID_A/GRID_B only take effect when the Calendar column is shown alone.
+void config_manager_set_agenda_cal_layout_mode(agenda_cal_layout_mode_t mode);
+agenda_cal_layout_mode_t config_manager_get_agenda_cal_layout_mode(void);
+
+// 2-group rotation/"shift" coloring for the 7-day grid layouts - see
+// agenda_shift_model_t (config.h). NONE (default) means no coloring at all,
+// regardless of the start date/colors below.
+void config_manager_set_agenda_shift_model(agenda_shift_model_t model);
+agenda_shift_model_t config_manager_get_agenda_shift_model(void);
+// "YYYY-MM-DD", empty = unset (treated as "no coloring" even if a model is
+// selected above).
+void config_manager_set_agenda_shift_start(const char *start_date);
+const char *config_manager_get_agenda_shift_start(void);
+// The rotation's marker color now comes from the active color profile's
+// "mark" field (agenda_color_profile.h) rather than a device setting.
+
+#endif
+#if FEATURE_AGENDA && FEATURE_OVERLAYS
+// Opt-in per-day weather annotation on the Calendar column - see
+// NVS_AGENDA_CAL_WEATHER_KEY in config.h.
+void config_manager_set_agenda_cal_weather_enabled(bool enabled);
+bool config_manager_get_agenda_cal_weather_enabled(void);
+
+// Opt-in right-alignment of the forecast chip (default: centered) - see
+// NVS_AGENDA_CAL_WTHR_ALIGN_KEY in config.h.
+void config_manager_set_agenda_cal_weather_right_aligned(bool enabled);
+bool config_manager_get_agenda_cal_weather_right_aligned(void);
+
+#endif
+#if FEATURE_AGENDA
+// Multi-day event display mode - see agenda_multiday_mode_t/
+// NVS_AGENDA_CAL_COMPACT_KEY in config.h.
+void config_manager_set_agenda_cal_multiday_mode(agenda_multiday_mode_t mode);
+agenda_multiday_mode_t config_manager_get_agenda_cal_multiday_mode(void);
+
+// How a timed event's time is shown - see agenda_time_display_mode_t/
+// NVS_AGENDA_CAL_SHOW_DURATION_KEY in config.h. Default off.
+void config_manager_set_agenda_cal_time_display_mode(agenda_time_display_mode_t mode);
+agenda_time_display_mode_t config_manager_get_agenda_cal_time_display_mode(void);
+
+// Optional display names for the Calendar header - see
+// NVS_AGENDA_CAL_NAME_KEY/_NAME2_KEY in config.h. May return "" (never
+// set/cleared) - agenda_renderer.c falls back to "Calendar A"/"Calendar B"
+// itself when rendering.
+void config_manager_set_agenda_cal_name(const char *name);
+const char *config_manager_get_agenda_cal_name(void);
+void config_manager_set_agenda_cal_name2(const char *name);
+const char *config_manager_get_agenda_cal_name2(void);
+
+// Independent schedule, same cron grammar/storage shape as the rotate
+// schedule above (config_manager_get/set_cron_rules()) but its own rule
+// set - see agenda_manager_wake_matches_now()/agenda_manager_seconds_until_next_wake().
+int config_manager_get_agenda_cron_rule_count(void);
+const char *config_manager_get_agenda_cron_rule(int index);
+void config_manager_set_agenda_cron_rules(const char *const *rules, int count);
+int config_manager_get_compiled_agenda_cron_rules(cron_rule_t *out, int max);
+
+// Landscape-only layout choice (portrait always stacks) - see
+// AGENDA_STACK_DEFAULT in config.h.
+void config_manager_set_agenda_stack_layout(bool stacked);
+bool config_manager_get_agenda_stack_layout(void);
+
+// Per-role color customization for the ToDo column (Spectra6/color boards
+// only) - each is one of "red"/"yellow"/"blue"/"green", see the
+// NVS_AGENDA_*_DEFAULT comment in config.h for why free RGB isn't offered
+// here. agenda_renderer.c's role_hue() is the sole reader. (The Calendar
+// column's colors come from the profile system below instead.)
+void config_manager_set_agenda_pri_a_color(const char *color);
+const char *config_manager_get_agenda_pri_a_color(void);
+void config_manager_set_agenda_pri_b_color(const char *color);
+const char *config_manager_get_agenda_pri_b_color(void);
+void config_manager_set_agenda_pri_c_color(const char *color);
+const char *config_manager_get_agenda_pri_c_color(void);
+void config_manager_set_agenda_pri_d_color(const char *color);
+const char *config_manager_get_agenda_pri_d_color(void);
+void config_manager_set_agenda_due_overdue_color(const char *color);
+const char *config_manager_get_agenda_due_overdue_color(void);
+void config_manager_set_agenda_due_today_color(const char *color);
+const char *config_manager_get_agenda_due_today_color(void);
+void config_manager_set_agenda_due_later_color(const char *color);
+const char *config_manager_get_agenda_due_later_color(void);
+void config_manager_set_agenda_project_color(const char *color);
+const char *config_manager_get_agenda_project_color(void);
+void config_manager_set_agenda_context_color(const char *color);
+const char *config_manager_get_agenda_context_color(void);
+
+// Which Calendar-view color-profile slot (1..AGENDA_COLOR_PROFILE_SLOTS) is
+// currently active; 0 = none (built-in plain default) - see
+// agenda_color_profile.h. Clamped to [0, AGENDA_COLOR_PROFILE_SLOTS].
+void config_manager_set_agenda_color_profile_active(int slot);
+int config_manager_get_agenda_color_profile_active(void);
+
+#endif
+#if FEATURE_OTA_CHANNEL
+// ============================================================================
+// OTA
+// ============================================================================
+
+// Automatic OTA checks (periodic + cold-boot). A manual "check now" from the
+// web UI is unaffected by this setting.
+void config_manager_set_ota_check_enabled(bool enabled);
+bool config_manager_get_ota_check_enabled(void);
+
+#endif
 // ============================================================================
 // Power
 // ============================================================================
@@ -162,4 +634,116 @@ void config_manager_set_config_last_updated(int64_t timestamp);
 int64_t config_manager_get_config_last_updated(void);
 void config_manager_touch_config(void);
 
+#if FEATURE_CHIMES
+// ============================================================================
+// Chimes (speaker feedback) - see chime_speaker_mode_t/chime_event_t in
+// config.h and main/chime.c for the policy layer that consumes these.
+// ============================================================================
+
+void config_manager_set_chime_speaker_mode(chime_speaker_mode_t mode);
+chime_speaker_mode_t config_manager_get_chime_speaker_mode(void);
+
+// 0-100%, clamped. Applies to every chime alike - see CHIME_REPEAT_MAX in
+// config.h for why urgency is conveyed by repetition instead.
+void config_manager_set_chime_volume(int percent);
+int config_manager_get_chime_volume(void);
+
+void config_manager_set_chime_quiet_enabled(bool enabled);
+bool config_manager_get_chime_quiet_enabled(void);
+// "HH:MM" strings, not validated beyond length - a malformed value just
+// fails to match in chime.c's time-window check (quiet hours off).
+void config_manager_set_chime_quiet_start(const char *time_str);
+const char *config_manager_get_chime_quiet_start(void);
+void config_manager_set_chime_quiet_end(const char *time_str);
+const char *config_manager_get_chime_quiet_end(void);
+
+// One enable flag per chime_event_t - index with the enum, out-of-range
+// indices are clamped to false/no-op.
+void config_manager_set_chime_event_enabled(chime_event_t event, bool enabled);
+bool config_manager_get_chime_event_enabled(chime_event_t event);
+
+// Persisted repeat-until-resolved counter - see chime_repeat_gate() in
+// main/chime.c. Only meaningful for CHIME_EVENT_LOW_BATTERY/
+// CRITICAL_ERROR/AGENDA_DUE (see CHIME_REPEAT_MAX's comment in config.h);
+// any other event is a no-op get (0)/set (ignored).
+void config_manager_set_chime_repeat_count(chime_event_t event, int count);
+int config_manager_get_chime_repeat_count(chime_event_t event);
+
+#endif
+#if FEATURE_CLIMATE
+// ============================================================================
+// Climate (SHTC3 temperature/humidity) - see climate_room_type_t/
+// climate_temp_unit_t in config.h and main/climate.[ch] for the
+// classification logic that consumes these. Generic feature: available on
+// any board whose board_hal_get_temperature()/get_humidity() succeed.
+// ============================================================================
+
+void config_manager_set_climate_room_type(climate_room_type_t room);
+climate_room_type_t config_manager_get_climate_room_type(void);
+
+void config_manager_set_climate_temp_unit(climate_temp_unit_t unit);
+climate_temp_unit_t config_manager_get_climate_temp_unit(void);
+
+void config_manager_set_climate_logging_enabled(bool enabled);
+bool config_manager_get_climate_logging_enabled(void);
+
+void config_manager_set_climate_history_backup_enabled(bool enabled);
+bool config_manager_get_climate_history_backup_enabled(void);
+
+void config_manager_set_climate_overlay_enabled(bool enabled);
+bool config_manager_get_climate_overlay_enabled(void);
+
+#endif
+#if FEATURE_CLIMATE && FEATURE_AGENDA
+void config_manager_set_climate_agenda_header_enabled(bool enabled);
+bool config_manager_get_climate_agenda_header_enabled(void);
+
+#endif
+#if FEATURE_CLIMATE
+// Calibration offsets applied to every displayed/logged reading (never to
+// GET /api/sensor's raw value) - see climate_read_temperature()/
+// climate_read_humidity() in main/climate.c. Always Celsius/percentage-point
+// deltas, string-stored (same convention as weather_lat/weather_lon), parsed
+// with strtof() at the point of use. Default "0".
+void config_manager_set_climate_temp_offset(const char *offset_c_str);
+const char *config_manager_get_climate_temp_offset(void);
+void config_manager_set_climate_hum_offset(const char *offset_str);
+const char *config_manager_get_climate_hum_offset(void);
+
+// Persisted anchor for the shared debounce in climate_history_record() - see
+// CLIMATE_LOG_MIN_INTERVAL_SEC in config.h. Same int64 NVS pattern as
+// config_manager_get/set_config_last_updated().
+void config_manager_set_climate_last_log_time(int64_t timestamp);
+int64_t config_manager_get_climate_last_log_time(void);
+
+#endif
+#if FEATURE_ALARMCLOCK
+// Alarm clock schedule - independent third cron rule set (see the rotate and
+// agenda schedules above), same shape as
+// config_manager_get_agenda_cron_rule_count()/_get_agenda_cron_rule()/
+// _set_agenda_cron_rules()/_get_compiled_agenda_cron_rules(). Only present in
+// a build compiled with FEATURE_ALARMCLOCK; harmless no-ops (empty
+// schedule, setter silently discards) on every other build so callers never
+// need their own #ifdef.
+int config_manager_get_alarm_cron_rule_count(void);
+const char *config_manager_get_alarm_cron_rule(int index);
+void config_manager_set_alarm_cron_rules(const char *const *rules, int count);
+int config_manager_get_compiled_alarm_cron_rules(cron_rule_t *out, int max);
+
+// How long the alarm rings before giving up if never stopped by a long KEY
+// press (ALARM_RING_DURATION_DEFAULT_SEC/_MAX_SEC in config.h).
+void config_manager_set_alarm_ring_duration_sec(uint16_t seconds);
+uint16_t config_manager_get_alarm_ring_duration_sec(void);
+
+// The alarm's own volume in percent (ALARM_VOLUME_MIN..MAX; not the Chimes volume), the time in
+// seconds the volume takes to rise from a quiet start to that volume (0 = no ramp) and the
+// melody number (alarm_pattern.h). Setters ignore out-of-range values.
+void config_manager_set_alarm_volume(int percent);
+int config_manager_get_alarm_volume(void);
+void config_manager_set_alarm_ramp_sec(int seconds);
+int config_manager_get_alarm_ramp_sec(void);
+void config_manager_set_alarm_tune(int tune);
+int config_manager_get_alarm_tune(void);
+
+#endif
 #endif
