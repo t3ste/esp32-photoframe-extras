@@ -5,6 +5,10 @@ import PaletteCalibration from "./PaletteCalibration.vue";
 import GrayscaleCalibration from "./GrayscaleCalibration.vue";
 import ProcessingControls from "./ProcessingControls.vue";
 import RotationSchedule from "./RotationSchedule.vue";
+// #if FEATURE_VOICE_STOP
+import MicrophoneTools from "./MicrophoneTools.vue";
+import VoiceStopTools from "./VoiceStopTools.vue";
+// #endif
 import { isValidCron } from "../utils/cron";
 import { TIMEZONES } from "../data/timezones";
 import {
@@ -23,6 +27,88 @@ import { wideEdit } from "../utils/uiPrefs";
 const settingsStore = useSettingsStore();
 const appStore = useAppStore();
 
+// #if FORK_ANY
+const snackbar = ref(false);
+const snackbarText = ref("");
+const snackbarColor = ref("success");
+
+// #endif
+// #if FEATURE_OFFLINE_HOTSPOT
+const hotspotBusy = ref(false);
+const hotspotMessage = ref("");
+
+async function handleStartHotspot() {
+  hotspotBusy.value = true;
+  hotspotMessage.value = "";
+  const result = await settingsStore.startApHotspot();
+  hotspotBusy.value = false;
+  hotspotMessage.value = result.ssid
+    ? `Hotspot starting - reconnect your phone/laptop to "${result.ssid}", then open ${result.url}`
+    : `Hotspot starting - reconnect to the device's hotspot, then open ${result.url}`;
+}
+
+async function handleStopHotspot() {
+  hotspotBusy.value = true;
+  hotspotMessage.value = "";
+  await settingsStore.stopApHotspot();
+  hotspotBusy.value = false;
+  hotspotMessage.value = "Hotspot stopping - the device is reconnecting to its saved WiFi network.";
+}
+function showSnackbar(text, color) {
+  snackbarText.value = text;
+  snackbarColor.value = color;
+  snackbar.value = true;
+}
+
+// #endif
+// #if FEATURE_ERROR_BANNER
+const testingErrorOverlay = ref(false);
+async function testErrorOverlay() {
+  testingErrorOverlay.value = true;
+  try {
+    const response = await fetch("/api/error-overlay/test", { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      showSnackbar(data.message || "Error overlay displayed", "success");
+    } else {
+      showSnackbar(data.message || "Failed to display error overlay", "error");
+    }
+  } catch (_error) {
+    showSnackbar("Failed to display error overlay", "error");
+  } finally {
+    testingErrorOverlay.value = false;
+  }
+}
+
+// #endif
+// #if FEATURE_CHIMES
+// Plays a beep directly on the speaker, bypassing every Chimes policy gate
+// (master mode, quiet hours, mains-only) - the whole point of a test button
+// is to hear it regardless of current settings. Doubles as the "does the
+// hardware/wiring even work" calibration check right after enabling.
+const testingChime = ref(false);
+async function testChime() {
+  testingChime.value = true;
+  try {
+    const response = await fetch("/api/chimes/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pattern: "success" }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      showSnackbar(data.message || "Chime played", "success");
+    } else {
+      showSnackbar(data.message || "Failed to play chime", "error");
+    }
+  } catch (_error) {
+    showSnackbar("Failed to play chime", "error");
+  } finally {
+    testingChime.value = false;
+  }
+}
+
+// #endif
 // The device rejects the entire config request when any schedule rule is
 // invalid, empty or over the 7-rule budget — gate saving on the same checks.
 const scheduleValid = computed(() => {
@@ -146,6 +232,12 @@ onMounted(() => {
   fetchDeviceTime();
   // Tick every second to update display
   tickInterval = setInterval(updateDisplayTime, 1000);
+// #if FEATURE_DISPLAY_HISTORY
+  loadDisplayHistoryCount();
+// #endif
+// #if FEATURE_AGENDA
+  loadAgendaColorProfiles();
+// #endif
 });
 
 onUnmounted(() => {
@@ -171,6 +263,127 @@ const orientationOptions = computed(() => {
   ];
 });
 
+// #if FEATURE_AGENDA
+// Per-role color pickers (agendaPriAColor etc.) only make sense on a color
+// panel - grayscale has no spare hue to assign, see agenda_renderer.c's
+// role_hue() comment.
+const agendaIsGrayscaleBoard = computed(() => {
+  const displayType = appStore.systemInfo.display_type || "";
+  return displayType.startsWith("gc");
+});
+
+// Mirrors role_hue() in agenda_renderer.c exactly - only these 4 chromatic
+// Spectra6 hues are ever offered, never a free color, since anything
+// off-palette dithers into visual noise on real hardware (see
+// priority_color()'s comment there for the full story).
+const agendaHueOptions = [
+  { title: "Yellow", value: "yellow" },
+  { title: "Red", value: "red" },
+  { title: "Blue", value: "blue" },
+  { title: "Green", value: "green" },
+];
+
+// Drives the two v-for color-picker grids below (same "field list + v-for"
+// shape PaletteCalibration.vue already uses for its own per-color inputs) -
+// one array entry per settingsStore.deviceSettings key, instead of a
+// hand-written <v-select> block per role.
+const agendaTodoColorFields = [
+  { key: "agendaPriAColor", label: "Priority (A)" },
+  { key: "agendaPriBColor", label: "Priority (B)" },
+  { key: "agendaPriCColor", label: "Priority (C)" },
+  { key: "agendaPriDColor", label: "Priority (D)" },
+  { key: "agendaDueOverdueColor", label: "Overdue" },
+  { key: "agendaDueTodayColor", label: "Due today" },
+  { key: "agendaDueLaterColor", label: "Due later" },
+  { key: "agendaProjectColor", label: "+Project" },
+  { key: "agendaContextColor", label: "@Context" },
+];
+// Up to AGENDA_COLOR_PROFILE_SLOTS (3) user-imported Calendar-view color
+// profiles - see agenda_color_profile.h. Fetched separately from
+// /api/agenda/color-profile (not part of GET /api/config's settings blob),
+// since it's device-file state rather than a scalar setting; only the
+// *active* slot index (agendaColorProfileActive) lives in deviceSettings.
+const agendaColorProfileSlots = ref([]);
+const agendaColorProfileUploading = ref({ 1: false, 2: false, 3: false });
+// Plain (non-reactive) DOM element bookkeeping, not state - only ever used
+// imperatively to forward an "Import" button click to its slot's hidden
+// file input, so a v-for-friendly function ref is enough (no need for the
+// $refs array-collection behavior a repeated static ref name would trigger).
+const colorProfileFileInputs = {};
+
+async function loadAgendaColorProfiles() {
+  try {
+    const response = await fetch("/api/agenda/color-profile");
+    if (response.ok) {
+      const data = await response.json();
+      agendaColorProfileSlots.value = data.slots || [];
+    }
+  } catch (error) {
+    console.error("Failed to load Calendar color profiles:", error);
+  }
+}
+
+function onAgendaColorProfileFileSelected(event, slot) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  agendaColorProfileUploading.value[slot] = true;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const response = await fetch(`/api/agenda/color-profile?slot=${slot}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: e.target.result,
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      await loadAgendaColorProfiles();
+      saveSuccess.value = true;
+      saveMessage.value = `Color profile imported into slot ${slot}`;
+      setTimeout(() => (saveSuccess.value = false), 3000);
+    } catch (error) {
+      console.error(`Failed to import color profile into slot ${slot}:`, error);
+      saveError.value = true;
+      saveMessage.value = `Failed to import profile: ${error.message || "invalid file"}`;
+      setTimeout(() => (saveError.value = false), 5000);
+    } finally {
+      agendaColorProfileUploading.value[slot] = false;
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = "";
+}
+
+async function deleteAgendaColorProfile(slot) {
+  try {
+    const response = await fetch(`/api/agenda/color-profile?slot=${slot}`, { method: "DELETE" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    await loadAgendaColorProfiles();
+    if (settingsStore.deviceSettings.agendaColorProfileActive === slot) {
+      settingsStore.deviceSettings.agendaColorProfileActive = 0;
+    }
+    saveSuccess.value = true;
+    saveMessage.value = `Color profile slot ${slot} removed`;
+    setTimeout(() => (saveSuccess.value = false), 3000);
+  } catch (error) {
+    console.error(`Failed to delete color profile slot ${slot}:`, error);
+    saveError.value = true;
+    saveMessage.value = `Failed to remove profile slot ${slot}`;
+    setTimeout(() => (saveError.value = false), 5000);
+  }
+}
+
+const agendaColorProfileActiveOptions = computed(() => [
+  { title: "None (plain black/white default)", value: 0 },
+  ...agendaColorProfileSlots.value
+    .filter((s) => s.name)
+    .map((s) => ({ title: `${s.slot}: ${s.name}`, value: s.slot })),
+]);
+
+// #endif
 // 90/270 would swap the panel's logical dimensions, which the streaming
 // pipeline and dimensionless .epdgz payloads can't represent; portrait
 // mounting is handled by the orientation setting instead
@@ -179,8 +392,210 @@ const rotationOptions = [
   { title: "180°", value: 180 },
 ];
 
+// #if FEATURE_AGENDA
+const agendaMultidayModeOptions = [
+  { title: "Repeat (default)", value: "repeat" },
+  { title: "Compact (once, numbered)", value: "compact" },
+  { title: "Repeat + number", value: "repeat_numbered" },
+];
+
+const agendaTimeDisplayModeOptions = [
+  { title: "Off (default) - start time only", value: "off" },
+  { title: "Duration - e.g. 08:15 [45m]", value: "duration" },
+  { title: "Range - e.g. 08:15-09:00", value: "range" },
+];
+
+const agendaCalLayoutModeOptions = [
+  { title: "List (default)", value: "list" },
+  { title: "7-Day Grid - Template A (today: full width)", value: "grid_a" },
+  { title: "7-Day Grid - Template B (today: double height)", value: "grid_b" },
+];
+
+const agendaShiftModelOptions = [
+  { title: "Off (default)", value: "none" },
+  { title: "2-2-3", value: "2-2-3" },
+  { title: "Week / week", value: "week_week" },
+  { title: "3-4", value: "3-4" },
+];
+
+// #endif
+// #if FEATURE_CHIMES
+const chimeSpeakerModeOptions = [
+  { title: "Off (default)", value: "off" },
+  { title: "Battery + mains", value: "battery_and_mains" },
+  { title: "Mains/USB only", value: "mains_only" },
+];
+
+// #endif
+// #if FEATURE_CLIMATE
+const climateRoomTypeOptions = [
+  { title: "Living Room / Office (default)", value: "living_room" },
+  { title: "Bedroom", value: "bedroom" },
+  { title: "Bathroom", value: "bathroom" },
+  { title: "Kitchen", value: "kitchen" },
+  { title: "Basement", value: "basement" },
+];
+
+// #endif
+// #if FEATURE_ALARMCLOCK
+// Numbering is stored on the device (alarm_tune) - see alarm_pattern.c.
+const alarmTuneOptions = [
+  { title: "G4–C5–E5–C5 – classic (default)", value: 0 },
+  { title: "C5–E5–G5–E5 – bright and friendly", value: 1 },
+  { title: "A4–C5–E5–C5 – soft and pleasant", value: 2 },
+  { title: "G4–D5–B4–D5 – clear and attention-grabbing", value: 3 },
+  { title: "F4–A4–C5–A4 – warm and calm", value: 4 },
+  { title: "C5–G4–E5–C5 – distinctive, a little more dynamic", value: 5 },
+];
+const climateTempUnitOptions = [
+  { title: "Celsius (default)", value: "celsius" },
+  { title: "Fahrenheit", value: "fahrenheit" },
+];
+
+// #endif
+// #if FEATURE_CLIMATE
+// Reference legend only (never sent to the device - classification always
+// happens firmware-side, in Celsius, from the identical table). Bad is
+// everything outside these bounds; Super is the innermost range; any gap
+// between the two (e.g. 18.0-18.9°C in the Living Room row) counts as Good,
+// same "not Bad, not Super" fallback rule the firmware uses.
+const climateRoomProfilesC = {
+  living_room: { badT: [18, 24], superT: [20, 21], badH: [35, 65], superH: [45, 55] },
+  bedroom: { badT: [15, 21], superT: [16, 18], badH: [35, 65], superH: [45, 55] },
+  bathroom: { badT: [19, 25], superT: [22, 23], badH: [40, 75], superH: [50, 60] },
+  kitchen: { badT: [16, 22], superT: [18, 19], badH: [35, 70], superH: [45, 55] },
+  basement: { badT: [10, 18], superT: [15, 17], badH: [0, 70], superH: [50, 55] },
+};
+
+function celsiusToFahrenheit(c) {
+  return Math.round((c * 9) / 5 + 32);
+}
+
+function formatTempC(c, unit) {
+  return unit === "fahrenheit" ? `${celsiusToFahrenheit(c)}°F` : `${c}°C`;
+}
+
+// Builds the current room type's legend as plain text lines, in whichever
+// unit the user has selected - shown under the room-type selector so "Bad"
+// vs. "Good" vs. "Super" has a concrete meaning without needing to look
+// anything up elsewhere.
+const climateRoomLegend = computed(() => {
+  const p =
+    climateRoomProfilesC[settingsStore.deviceSettings.climateRoomType] ||
+    climateRoomProfilesC.living_room;
+  const unit = settingsStore.deviceSettings.climateTempUnit;
+  const t = (c) => formatTempC(c, unit);
+  return {
+    tempBad: `<${t(p.badT[0])} or >${t(p.badT[1])}`,
+    tempSuper: `${t(p.superT[0])}-${t(p.superT[1])}`,
+    humBad: p.badH[0] > 0 ? `<${p.badH[0]}% or >${p.badH[1]}%` : `>${p.badH[1]}%`,
+    humSuper: `${p.superH[0]}-${p.superH[1]}%`,
+  };
+});
+
+// Calibration offset for temperature - always stored/sent as a Celsius
+// DELTA (climateTempOffset), but shown/edited in whichever unit is
+// currently selected. A delta conversion has no "+32" term, unlike
+// converting an absolute temperature (formatTempC() above) - +2°C of
+// offset is +3.6°F of offset, not +35.6°F.
+const climateTempOffsetDisplay = computed({
+  get() {
+    const c = settingsStore.deviceSettings.climateTempOffset;
+    return settingsStore.deviceSettings.climateTempUnit === "fahrenheit"
+      ? Math.round(((c * 9) / 5) * 10) / 10
+      : c;
+  },
+  set(value) {
+    const v = Number(value) || 0;
+    settingsStore.deviceSettings.climateTempOffset =
+      settingsStore.deviceSettings.climateTempUnit === "fahrenheit" ? (v * 5) / 9 : v;
+  },
+});
+
+// #endif
+// #if FEATURE_AGENDA
+// Guards against enabling a calendar with nothing behind it (no persisted
+// visual confirmation existed before, so this state was easy to fall into
+// silently - see agendaCalUrlConfigured etc. below). Each computed is true
+// once that slot has either a server-confirmed source (the "_configured"
+// flag GET /api/config now reports) or a URL just typed into its own field
+// this session, not yet saved. Turning a calendar OFF is always allowed -
+// only the ON transition is gated, via the setter below.
+const canEnableCalendarAB = computed(
+  () =>
+    settingsStore.deviceSettings.agendaCalUrlConfigured ||
+    settingsStore.deviceSettings.agendaCalUrl2Configured ||
+    !!settingsStore.deviceSettings.agendaCalUrl ||
+    !!settingsStore.deviceSettings.agendaCalUrl2
+);
+function canEnableExtraCal(slot) {
+  const configuredKey = `agendaCal${slot.toUpperCase()}Configured`;
+  const urlKey = `agendaCal${slot.toUpperCase()}Url`;
+  return !!settingsStore.deviceSettings[configuredKey] || !!settingsStore.deviceSettings[urlKey];
+}
+function flashBlockedEnable(message) {
+  saveError.value = true;
+  saveMessage.value = message;
+  setTimeout(() => (saveError.value = false), 4000);
+}
+
+// #endif
+// #if FEATURE_ALARMCLOCK
+// Alarm Clock arm/disarm switch. There's still no separate NVS-level
+// "enabled" flag on the device (armed purely means "has at least one
+// schedule rule" - see config.h's own comment on this) - this switch is
+// just a friendlier front for that same underlying state: off clears the
+// schedule, on with nothing configured yet is blocked with a hint rather
+// than silently doing nothing.
+const alarmArmedModel = computed({
+  get: () => settingsStore.deviceSettings.alarmCron.length > 0,
+  set: (val) => {
+    if (val) {
+      if (settingsStore.deviceSettings.alarmCron.length === 0) {
+        flashBlockedEnable("Add a schedule below first");
+      }
+    } else {
+      settingsStore.deviceSettings.alarmCron = [];
+    }
+  },
+});
+const calendarAbEnabledModel = computed({
+  get: () => settingsStore.deviceSettings.agendaCalEnabled,
+  set: (val) => {
+    if (val && !canEnableCalendarAB.value) {
+      flashBlockedEnable("Add a Calendar A or B URL first");
+      return;
+    }
+    settingsStore.deviceSettings.agendaCalEnabled = val;
+  },
+});
+function extraCalEnabledModel(slot) {
+  const key = `agendaCal${slot.toUpperCase()}Enabled`;
+  return computed({
+    get: () => settingsStore.deviceSettings[key],
+    set: (val) => {
+      if (val && !canEnableExtraCal(slot)) {
+        flashBlockedEnable(`Add a Calendar ${slot.toUpperCase()} URL or upload a file first`);
+        return;
+      }
+      settingsStore.deviceSettings[key] = val;
+    },
+  });
+}
+const calendarCEnabledModel = extraCalEnabledModel("c");
+const calendarDEnabledModel = extraCalEnabledModel("d");
+const calendarEEnabledModel = extraCalEnabledModel("e");
+
+// #endif
 const rotationModeOptions = computed(() => {
+// #if FEATURE_TELEGRAM
+  const options = [
+    { title: "URL - Fetch image from URL", value: "url" },
+    { title: "Telegram - Receive images via Telegram bot", value: "telegram" },
+  ];
+// #else
   const options = [{ title: "URL - Fetch image from URL", value: "url" }];
+// #endif
   if (appStore.systemInfo.sdcard_inserted || appStore.systemInfo.has_flash_storage) {
     options.unshift({ title: "Storage - Rotate through images", value: "storage" });
   }
@@ -214,24 +629,125 @@ const showImportDialog = ref(false);
 const importData = ref(null);
 const importFileName = ref("");
 
+// #if FEATURE_DISPLAY_HISTORY
+const displayHistoryCount = ref(null);
+const confirmingHistoryReset = ref(false);
+const resettingHistory = ref(false);
+
+async function loadDisplayHistoryCount() {
+  try {
+    const response = await fetch("/api/history");
+    if (!response.ok || response.headers.get("content-type")?.includes("text/html")) {
+      return;
+    }
+    const data = await response.json();
+    displayHistoryCount.value = data.count ?? null;
+  } catch (_error) {
+    console.log("Display history API not available (standalone mode)");
+  }
+}
+
+async function resetDisplayHistory() {
+  resettingHistory.value = true;
+  try {
+    await fetch("/api/history", { method: "DELETE" });
+    await loadDisplayHistoryCount();
+  } catch (_error) {
+    console.log("Failed to reset display history");
+  } finally {
+    resettingHistory.value = false;
+    confirmingHistoryReset.value = false;
+  }
+}
+
+// #endif
+// #if FORK_FIXES
+// Default OFF: an export is downloaded to disk as plaintext JSON, so
+// credentials should only end up in it when the user explicitly opts in
+// (e.g. to get a fully self-contained backup for re-import elsewhere).
+// Note this can only cover fields GET /api/config actually returns -
+// wifi_password/agenda_todo_url/agenda_cal_url/agenda_cal_url2 are
+// deliberately write-only at the device level (never in the GET response
+// at all), so no frontend checkbox can include them; those must always be
+// re-entered by hand after an import.
+const exportIncludeSecrets = ref(false);
+
+// #endif
 async function exportConfig() {
   try {
+// #if FORK_FIXES
+    const [configRes, processingRes, paletteRes, albumsRes] = await Promise.all([
+// #else
     const [configRes, processingRes, paletteRes] = await Promise.all([
+// #endif
       fetch("/api/config"),
       fetch("/api/settings/processing"),
       fetch("/api/settings/palette"),
+// #if FORK_FIXES
+      fetch("/api/albums"),
+// #endif
     ]);
 
     const exported = {};
 
     if (configRes.ok) {
       const config = await configRes.json();
+// #if FORK_FIXES
+      // Always write-only at the device level - never returned by GET, so
+      // these deletes are belt-and-suspenders (the real source of these
+      // fields, when opted in below, is the dedicated /api/config/urls
+      // fetch further down - GET /api/config itself never carries them).
+// #else
       // Remove sensitive fields
+// #endif
       delete config.wifi_password;
+// #if FEATURE_AGENDA
+      delete config.agenda_todo_url;
+      delete config.agenda_cal_url;
+      delete config.agenda_cal_url2;
+      delete config.agenda_cal_c_url;
+      delete config.agenda_cal_d_url;
+      delete config.agenda_cal_e_url;
+      // These 5 ARE returned by GET /api/config in plaintext - only strip
+      // them when the user hasn't opted in to a full-credentials export.
+      if (!exportIncludeSecrets.value) {
+        delete config.access_token;
+        delete config.http_header_value;
+        delete config.telegram_bot_token;
+        delete config.openai_api_key;
+        delete config.google_api_key;
+      }
+// #endif
       exported.config = config;
     }
+// #if FEATURE_AGENDA
+    // ToDo/Calendar URLs are write-only at the device level (GET /api/config
+    // never returns them - either can carry a credential embedded as a
+    // query param), so a full backup needs this dedicated opt-in fetch
+    // instead. Only requested when the checkbox is checked, same opt-in
+    // gate as the credential fields above.
+    if (exportIncludeSecrets.value && exported.config) {
+      try {
+        const urlsRes = await fetch("/api/config/urls");
+        if (urlsRes.ok) {
+          Object.assign(exported.config, await urlsRes.json());
+        }
+      } catch (_error) {
+        console.log("Failed to fetch URLs for export");
+      }
+    }
+// #endif
     if (processingRes.ok) exported.processing = await processingRes.json();
     if (paletteRes.ok) exported.palette = await paletteRes.json();
+// #if FORK_FIXES
+    if (albumsRes.ok && albumsRes.headers.get("content-type")?.includes("application/json")) {
+      const albums = await albumsRes.json();
+      // Per-album enable/disable toggle - the rest (name, image_count) is
+      // content, not a setting, and wouldn't make sense to "import" onto a
+      // different device's storage anyway.
+      exported.albums = albums.map((a) => ({ name: a.name, enabled: a.enabled }));
+    }
+// #endif
 
     const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -298,6 +814,133 @@ async function clearDebugLog() {
   }
 }
 
+// #if FEATURE_FACECROP
+const organizingCropVariants = ref(false);
+
+async function organizeCropVariants() {
+  organizingCropVariants.value = true;
+  try {
+    const response = await fetch("/api/albums/organize-crop", { method: "POST" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    saveSuccess.value = true;
+    saveMessage.value =
+      data.moved > 0
+        ? `Moved ${data.moved} file(s) into crop/ folders`
+        : "Every album's crop/ folder is already up to date";
+    setTimeout(() => (saveSuccess.value = false), 3000);
+  } catch (error) {
+    console.error("Failed to organize crop/ folders:", error);
+    saveError.value = true;
+    saveMessage.value = "Failed to organize crop/ folders";
+    setTimeout(() => (saveError.value = false), 5000);
+  } finally {
+    organizingCropVariants.value = false;
+  }
+}
+
+// #endif
+// #if FEATURE_AGENDA
+// Three extra ICS calendar sources (e.g. holidays/school-holidays) - unlike
+// Calendar A/B, these never refresh themselves, so the Web UI needs two
+// one-shot actions per slot: re-download the currently-saved URL ("refresh
+// now", a bare PATCH flag the backend consumes without persisting it - see
+// utils.c's apply_extra_ics_url()), or upload a replacement .ics file
+// directly (POST /api/agenda/extra-ics?slot=<c|d|e>, raw file content as
+// the body - these are plain text files, not an image, so no multipart
+// form is needed).
+const refreshingExtraIcs = ref({ c: false, d: false, e: false });
+const uploadingExtraIcs = ref({ c: false, d: false, e: false });
+
+// Re-reads all five calendars' "is a source actually saved?" flags from the
+// device (agenda_cal_url_configured etc. - a stat() of the raw cache file
+// for C/D/E, a non-empty check for A/B's URL - see GET /api/config in
+// http_server.c) after a save/refresh/upload action. Deliberately just
+// these five fields, not a full settingsStore reload, which would also
+// discard any unsaved edits the user has pending elsewhere in the panel.
+async function refreshConfiguredFlags() {
+  try {
+    const response = await fetch("/api/config");
+    if (response.ok) {
+      const data = await response.json();
+      settingsStore.deviceSettings.agendaCalUrlConfigured = data.agenda_cal_url_configured === true;
+      settingsStore.deviceSettings.agendaCalUrl2Configured =
+        data.agenda_cal_url2_configured === true;
+      settingsStore.deviceSettings.agendaCalCConfigured = data.agenda_cal_c_configured === true;
+      settingsStore.deviceSettings.agendaCalDConfigured = data.agenda_cal_d_configured === true;
+      settingsStore.deviceSettings.agendaCalEConfigured = data.agenda_cal_e_configured === true;
+    }
+  } catch (error) {
+    console.error("Failed to refresh calendar source status:", error);
+  }
+}
+const extraIcsFileC = ref(null);
+const extraIcsFileD = ref(null);
+const extraIcsFileE = ref(null);
+
+async function refreshExtraIcs(slot) {
+  refreshingExtraIcs.value[slot] = true;
+  try {
+    const response = await fetch("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [`agenda_cal_${slot}_refetch`]: true }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    // "refresh now" on a slot with no URL saved yet is a silent no-op
+    // backend-side (see apply_extra_ics_url() in utils.c), so re-check the
+    // actual on-device state rather than assuming this click succeeded.
+    await refreshConfiguredFlags();
+    saveSuccess.value = true;
+    saveMessage.value = `Calendar ${slot.toUpperCase()} refreshed`;
+    setTimeout(() => (saveSuccess.value = false), 3000);
+  } catch (error) {
+    console.error(`Failed to refresh Calendar ${slot}:`, error);
+    saveError.value = true;
+    saveMessage.value = `Failed to refresh Calendar ${slot.toUpperCase()} - check the URL is reachable`;
+    setTimeout(() => (saveError.value = false), 5000);
+  } finally {
+    refreshingExtraIcs.value[slot] = false;
+  }
+}
+
+function onExtraIcsFileSelected(event, slot) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  uploadingExtraIcs.value[slot] = true;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const response = await fetch(`/api/agenda/extra-ics?slot=${slot}`, {
+        method: "POST",
+        headers: { "Content-Type": "text/calendar" },
+        body: e.target.result,
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      await refreshConfiguredFlags();
+      saveSuccess.value = true;
+      saveMessage.value = `Calendar ${slot.toUpperCase()} updated from file`;
+      setTimeout(() => (saveSuccess.value = false), 3000);
+    } catch (error) {
+      console.error(`Failed to upload ICS file for Calendar ${slot}:`, error);
+      saveError.value = true;
+      saveMessage.value = `Failed to upload file for Calendar ${slot.toUpperCase()} - is it a valid .ics file?`;
+      setTimeout(() => (saveError.value = false), 5000);
+    } finally {
+      uploadingExtraIcs.value[slot] = false;
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = "";
+}
+
+// #endif
 function onImportFileSelected(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -406,6 +1049,12 @@ async function saveSettings() {
 
     // Refresh device time in case timezone changed
     await fetchDeviceTime();
+// #if FEATURE_AGENDA
+    // A URL just saved (A/B/C/D/E) may or may not have actually fetched
+    // successfully server-side - re-check the persistent "configured"
+    // confirmation rather than assuming the save alone means success.
+    await refreshConfiguredFlags();
+// #endif
   } else {
     // Show error message
     saveError.value = true;
@@ -446,7 +1095,28 @@ async function performFactoryReset() {
       <v-tabs v-model="tab" color="primary" show-arrows density="compact">
         <v-tab value="general"> General </v-tab>
         <v-tab value="autoRotate"> Auto Rotate </v-tab>
+<!-- #if FEATURE_AGENDA -->
+        <v-tab value="agenda"> Agenda </v-tab>
+<!-- #endif -->
         <v-tab value="power"> Power </v-tab>
+<!-- #if FEATURE_OVERLAYS -->
+        <v-tab value="overlays"> Overlays </v-tab>
+<!-- #endif -->
+<!-- #if FEATURE_CHIMES -->
+        <v-tab v-if="settingsStore.deviceSettings.chimeSpeakerAvailable" value="chimes">
+          Chimes
+        </v-tab>
+<!-- #endif -->
+<!-- #if FEATURE_ALARMCLOCK -->
+        <v-tab v-if="settingsStore.deviceSettings.alarmClockAvailable" value="alarmClock">
+          Alarm Clock
+        </v-tab>
+<!-- #endif -->
+<!-- #if FEATURE_CLIMATE -->
+        <v-tab v-if="settingsStore.deviceSettings.climateSensorAvailable" value="climate">
+          Climate
+        </v-tab>
+<!-- #endif -->
         <v-tab value="homeAssistant"> Home Assistant </v-tab>
         <v-tab value="processing"> Processing </v-tab>
         <v-tab value="ai"> AI Generation </v-tab>
@@ -495,6 +1165,110 @@ async function performFactoryReset() {
               </v-col>
             </v-row>
 
+<!-- #if FEATURE_WIFI_RESILIENCE -->
+            <v-switch
+              v-model="settingsStore.deviceSettings.wifiExtendedRetryEnabled"
+              label="Extended WiFi retry before reprovisioning"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-4">
+              Off (default) - gives up and reprovisions after 3 attempts in a single boot, same as
+              always. Turn on if brief router outages or a weak/flaky signal keep forcing your frame
+              to reprovision even though the password is fine: the frame will then keep retrying
+              across several reboots - up to 10 attempts total - before finally clearing the saved
+              credentials. A confirmed-wrong password is never affected either way and always
+              reprovisions immediately. Worst case with this on (WiFi stays hard to reach the whole
+              time): up to ~6x the energy use of the default behavior, since the frame stays fully
+              awake through every retry and reboot instead of reprovisioning quickly - recommended
+              only for mains/USB-powered frames, not battery-only ones.
+            </div>
+
+            <v-switch
+              v-model="settingsStore.deviceSettings.wifiReprovisionOnFailEnabled"
+              label="Reprovision (clear saved WiFi credentials) when connection attempts run out"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-4">
+              On (default) - unchanged existing behavior: once every retry above is exhausted, the
+              frame clears its saved WiFi password and reboots into setup mode. Turn off if that
+              reprovisioning cycle keeps repeating even though your password is correct (e.g. a
+              nearby repeater the frame still can't reliably reach) - the frame then keeps the saved
+              credentials instead of wiping them: if Deep Sleep is enabled it goes to sleep until
+              its next scheduled wake and tries again fresh from there, otherwise it just continues
+              starting up without WiFi this cycle (nothing here blocks - every later network step
+              already tolerates being offline) and retries on the next cold boot. A confirmed-wrong
+              password is never affected by this switch and always reprovisions immediately either
+              way.
+            </div>
+
+<!-- #endif -->
+<!-- #if FEATURE_OFFLINE_HOTSPOT -->
+            <v-alert
+              v-if="settingsStore.deviceSettings.offlineModeEnabled"
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mb-4"
+            >
+              This device is configured for offline use (no WiFi network) - it was set up that way
+              on the setup form. Use the hotspot below to manage photos/settings any time.
+            </v-alert>
+
+            <v-card variant="outlined" class="pa-4 mb-4">
+              <div class="text-subtitle-2 mb-1">Offline hotspot</div>
+              <div class="text-caption text-medium-emphasis mb-3">
+                Starts the device's own WiFi hotspot (same as first-time setup) with the full web UI
+                reachable at http://192.168.4.1 - no WiFi network needed. Useful anywhere without
+                WiFi, or as a manual alternative to holding the BOOT button for 3 seconds on the
+                device itself. Starting it drops this device's current WiFi connection, so this page
+                will disconnect too - reconnect your phone/laptop to the hotspot SSID shown, then
+                reopen the same address.
+              </div>
+              <v-btn
+                v-if="!settingsStore.deviceSettings.apHotspotActive"
+                color="primary"
+                variant="tonal"
+                :loading="hotspotBusy"
+                @click="handleStartHotspot"
+              >
+                Start offline hotspot
+              </v-btn>
+              <v-btn
+                v-else
+                color="warning"
+                variant="tonal"
+                :loading="hotspotBusy"
+                @click="handleStopHotspot"
+              >
+                Stop hotspot (reconnect to WiFi)
+              </v-btn>
+              <div v-if="hotspotMessage" class="text-caption mt-2">{{ hotspotMessage }}</div>
+            </v-card>
+
+<!-- #endif -->
+<!-- #if FEATURE_HTTPS -->
+            <v-switch
+              v-model="settingsStore.deviceSettings.httpsEnabled"
+              label="Enable HTTPS (self-signed certificate)"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-4">
+              Off by default. Adds a second, encrypted web UI on port 443 alongside the existing one
+              on port 80 (which keeps working unchanged - nothing that already talks to this device
+              over plain HTTP, like Home Assistant, breaks). Each device generates its own
+              self-signed certificate on first use, so browsers will show a one-time "not secure"
+              warning to click through - this protects your session from passive snooping on the
+              local network, not from an attacker willing to ignore that warning. Takes effect after
+              the device restarts or reconnects to WiFi.
+            </div>
+
+<!-- #endif -->
             <v-row>
               <v-col cols="12" md="6">
                 <v-select
@@ -736,6 +1510,24 @@ async function performFactoryReset() {
                 :disabled="!settingsStore.deviceSettings.autoRotate"
               />
 
+<!-- #if FEATURE_DISPLAY_HISTORY -->
+              <div class="d-flex align-center flex-wrap ga-3 mb-4">
+                <span class="text-caption text-medium-emphasis">
+                  <template v-if="displayHistoryCount !== null">
+                    {{ displayHistoryCount }} image{{ displayHistoryCount === 1 ? "" : "s" }} shown
+                    this cycle
+                  </template>
+                  <template v-else>Display history unavailable</template>
+                </span>
+                <v-btn
+                  v-if="displayHistoryCount"
+                  variant="outlined"
+                  size="small"
+                  color="error"
+                  @click="confirmingHistoryReset = true"
+<!-- #endif -->
+<!-- #if FORK_ANY -->
+<!-- #else -->
               <v-expand-transition>
                 <v-card
                   v-if="
@@ -744,7 +1536,32 @@ async function performFactoryReset() {
                   "
                   variant="tonal"
                   class="mb-4"
+<!-- #endif -->
+<!-- #if FEATURE_DISPLAY_HISTORY || !FORK_ANY -->
                 >
+<!-- #endif -->
+<!-- #if FEATURE_DISPLAY_HISTORY -->
+                  <v-icon icon="mdi-history" start />
+                  Reset History
+                </v-btn>
+              </div>
+              <div class="text-caption text-medium-emphasis mb-4">
+                Random rotation (and the Telegram-mode fallback) tracks which images have already
+                been shown so it can cycle through every one once before repeating - this is that
+                count. Resetting starts a fresh cycle immediately. Also available via the
+                "/clear_history" Telegram bot command.
+              </div>
+
+<!-- #endif -->
+<!-- #if FORK_ANY -->
+              <v-expand-transition>
+                <!-- Not restricted to rotation_mode "storage": every rotation mode can end
+                     up calling display_manager_rotate_from_storage() (Telegram/URL-mode
+                     fallback reuse the exact same random/sequential-pick + pairing logic
+                     as the primary Storage mode), so these settings matter regardless of
+                     which mode is currently active. -->
+                <v-card v-if="settingsStore.deviceSettings.autoRotate" variant="tonal" class="mb-4">
+<!-- #endif -->
                   <v-card-text>
                     <v-select
                       v-model="settingsStore.deviceSettings.sdRotationMode"
@@ -754,7 +1571,63 @@ async function performFactoryReset() {
                       label="Storage Rotation Logic"
                       variant="outlined"
                       hide-details
+<!-- #if FORK_ANY -->
+                      class="mb-4"
+<!-- #endif -->
                     />
+<!-- #if FEATURE_TELEGRAM -->
+
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.rotationPairingEnabled"
+                      label="Combine mismatched-orientation images picked during rotation"
+                      color="primary"
+                      hide-details
+                    />
+                    <div class="text-caption text-medium-emphasis">
+                      Not to be confused with the similarly-named "Combine mismatched-orientation
+                      Telegram receives" option in the Telegram tab - that one pairs incoming photos
+                      as they arrive; this one applies whenever an image gets picked from an album
+                      during rotation, which also includes the fallback picture shown on a Telegram-
+                      or URL-mode wake with nothing new to display. When the next image to show
+                      doesn't match the panel's orientation, looks for another mismatched image in
+                      the active album(s) and combines them side by side instead of showing one
+                      letterboxed. The combined image is saved permanently in the album (the two
+                      originals are kept too). Also togglable via the "/rotation_pairing" Telegram
+                      bot command.
+                    </div>
+                    <v-alert
+                      v-if="
+                        settingsStore.deviceSettings.rotationPairingEnabled &&
+                        settingsStore.deviceSettings.sdRotationMode === 'sequential'
+                      "
+                      type="warning"
+                      variant="tonal"
+                      density="compact"
+                      class="mt-2"
+                    >
+                      Only takes effect in Random rotation logic - Sequential mode ignores this
+                      setting.
+                    </v-alert>
+
+<!-- #endif -->
+<!-- #if FEATURE_FACECROP -->
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.variantSelectionEnabled"
+                      label="Use pre-rendered Cover/Fit variants"
+                      color="primary"
+                      hide-details
+                      class="mt-2"
+                    />
+                    <div class="text-caption text-medium-emphasis">
+                      For albums produced by process-cli's <code>--crop-output both</code> (a
+                      "&lt;name&gt;.fit.&lt;ext&gt;" next to the original,
+                      "&lt;name&gt;.cover.&lt;ext&gt;" in a "crop" subfolder, plus an optional
+                      "&lt;name&gt;.facecrop.json"): picks whichever file matches the Scale Mode
+                      setting (Processing tab) instead of re-rendering it on the device. Renders and
+                      caches the missing one on-device if needed (only for a genuine,
+                      not-yet-processed original). Ordinary albums are unaffected either way.
+                    </div>
+<!-- #endif -->
                   </v-card-text>
                 </v-card>
               </v-expand-transition>
@@ -846,9 +1719,910 @@ async function performFactoryReset() {
                   </v-card-text>
                 </v-card>
               </v-expand-transition>
+<!-- #if FEATURE_TELEGRAM -->
+
+              <v-expand-transition>
+                <v-card
+                  v-if="
+                    settingsStore.deviceSettings.autoRotate &&
+                    settingsStore.deviceSettings.rotationMode === 'telegram'
+                  "
+                  variant="tonal"
+                  class="mb-4"
+                >
+                  <v-card-text>
+                    <v-chip
+                      :color="
+                        settingsStore.deviceSettings.telegramConfigured ? 'success' : 'warning'
+                      "
+                      size="small"
+                      variant="tonal"
+                      class="mb-4"
+                    >
+                      <v-icon start>{{
+                        settingsStore.deviceSettings.telegramConfigured
+                          ? "mdi-check-circle"
+                          : "mdi-alert-circle-outline"
+                      }}</v-icon>
+                      {{
+                        settingsStore.deviceSettings.telegramConfigured
+                          ? "Telegram bot configured"
+                          : "Bot token and chat ID required"
+                      }}
+                    </v-chip>
+
+                    <v-text-field
+                      v-model="settingsStore.deviceSettings.telegramBotToken"
+                      label="Telegram Bot Token"
+                      variant="outlined"
+                      hint="From @BotFather, e.g. 123456789:AAbecomes..."
+                      persistent-hint
+                      class="mb-4"
+                    />
+
+                    <v-text-field
+                      v-model="settingsStore.deviceSettings.telegramChatId"
+                      label="Telegram Chat ID"
+                      variant="outlined"
+                      hint="Only messages from this numeric chat/group ID are processed"
+                      persistent-hint
+                      class="mb-4"
+                    />
+
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.telegramPairingEnabled"
+                      label="Combine mismatched-orientation Telegram receives"
+                      color="primary"
+                      class="mb-2"
+                      hide-details
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4">
+                      Not to be confused with the similarly-named "Combine mismatched-orientation
+                      images picked during rotation" option in the Auto Rotate tab - that one
+                      applies to album picks during rotation; this one pairs incoming Telegram
+                      photos as they arrive. Two portrait photos on a landscape frame (or two
+                      landscape photos on a portrait frame) are combined side by side / stacked. A
+                      lone mismatched photo is held back until its partner arrives. Also togglable
+                      via the "/pairing" bot command.
+                    </div>
+
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.telegramWakeNotifyEnabled"
+                      label="Send a status ping on every wake"
+                      color="primary"
+                      class="mb-2"
+                      hide-details
+                      :disabled="settingsStore.deviceSettings.telegramPowerSaveEnabled"
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4">
+                      Sends SSID, IP, battery, reset/wake reason and rotation schedule to the bot on
+                      every poll, even when there are no new messages. Also togglable via the
+                      "/wake_notify" bot command. Suppressed while Power save mode is on (this
+                      setting is remembered, not cleared, and resumes if it's turned back off).
+                    </div>
+
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.telegramFallbackRotationEnabled"
+                      label="Change display on a wake with no new photo"
+                      color="primary"
+                      class="mb-2"
+                      hide-details
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4">
+                      On (default): a wake with no new Telegram image still falls back to normal
+                      album rotation, same as the other rotation modes. Off: the display only
+                      changes on a wake that actually receives a new Telegram photo - every other
+                      wake (timer/button) leaves the current image untouched. Also togglable via the
+                      "/fallback_rotation" bot command.
+                    </div>
+
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.telegramFallbackOnErrorEnabled"
+                      label="Still fall back to album rotation if the Telegram connection fails"
+                      color="primary"
+                      class="mb-2 ml-4"
+                      hide-details
+                      :disabled="settingsStore.deviceSettings.telegramFallbackRotationEnabled"
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4 ml-4">
+                      Only relevant while the option above is off. On (default): a poll that fails
+                      outright (Telegram unreachable, or not configured at all) is still treated as
+                      an exception and falls back to normal album rotation. Off: a failed poll also
+                      leaves the display unchanged, folded into the same strict policy as "no new
+                      photo". Also togglable via the "/fallback_rotation_on_error" bot command.
+                    </div>
+
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.telegramRotationNotifyEnabled"
+                      label="Notify when a wake shows a non-Telegram image"
+                      color="primary"
+                      class="mb-2"
+                      hide-details
+                      :disabled="
+                        !settingsStore.deviceSettings.telegramFallbackRotationEnabled ||
+                        settingsStore.deviceSettings.telegramPowerSaveEnabled
+                      "
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4">
+                      When a wake falls back to normal album rotation (no new Telegram image that
+                      cycle), sends a thumbnail of whatever got displayed instead, so the chat still
+                      shows what's currently on the frame. Also togglable via the "/rotation_notify"
+                      bot command. Suppressed while Power save mode is on (this setting is
+                      remembered, not cleared, and resumes if it's turned back off).
+                    </div>
+
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.telegramPowerSaveEnabled"
+                      label="Power save mode"
+                      color="primary"
+                      class="mb-2"
+                      hide-details
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4">
+                      Minimizes wake duration and WiFi-on time on an automatic (timer) wake: fewer
+                      WiFi/Telegram retries before giving up, skips the post-rotation config-sync
+                      window, and skips the per-photo "saved" confirmation reply, the wake status
+                      ping, and the fallback-rotation photo notification (those three settings are
+                      only grayed out, not cleared - they resume as configured if this is turned
+                      back off). Never affects a manual button-triggered wake, which always keeps
+                      its full retry budget and window - a deliberate escape hatch to reach this
+                      page even with this on. Also togglable via the "/power_save" bot command.
+                    </div>
+
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.telegramPowerSaveLatestOnly"
+                      label="Only process the newest update"
+                      color="primary"
+                      class="mb-2 ml-4"
+                      hide-details
+                      :disabled="!settingsStore.deviceSettings.telegramPowerSaveEnabled"
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4 ml-4">
+                      Only relevant while the option above is on. Processes only the single newest
+                      photo/document in a poll batch and discards every other update, message, and
+                      "/" command in that batch - permanently (Telegram never redelivers them). The
+                      surviving image always displays alone, never combined via orientation-pairing.
+                      Also togglable via the "/power_save_latest_only" bot command.
+                    </div>
+
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.telegramKeepOriginalsEnabled"
+                      label="Keep original photos as received"
+                      color="primary"
+                      class="mb-2"
+                      hide-details
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4">
+                      Saves a copy of each Telegram photo exactly as received, before e-paper
+                      processing (dithering/palette quantization), under Telegram/Originals on the
+                      SD card. Not shown in the gallery or rotation. Also togglable via the
+                      "/keep_originals" bot command.
+                    </div>
+
+                    <v-select
+                      v-model="settingsStore.deviceSettings.telegramImageFormat"
+                      :items="[
+                        {
+                          title: 'EPDGZ (recommended - smaller, faster to display)',
+                          value: 'epdgz',
+                        },
+                        { title: 'PNG (larger, for compatibility/inspection)', value: 'png' },
+                      ]"
+                      label="On-device image format"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      class="mb-2"
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4">
+                      Format used when the device itself converts a received Telegram photo for the
+                      album. EPDGZ stores the already-resolved palette index, gzip-compressed - no
+                      per-pixel color re-matching needed on every future display, unlike PNG.
+                    </div>
+
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.telegramDedupEnabled"
+                      label="Skip duplicate photos/files"
+                      color="primary"
+                      class="mb-2"
+                      hide-details
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4">
+                      Compares Telegram's own content-based file identifier before downloading, so
+                      the same photo or file resent/forwarded again is skipped instead of downloaded
+                      and displayed a second time. Remembers the last 30 received items across deep
+                      sleep; a skipped duplicate gets a short reply instead of an error.
+                    </div>
+
+<!-- #endif -->
+<!-- #if FORK_EXIF -->
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.showExifDatetimeEnabled"
+                      label="Show capture date as caption when a photo has none"
+                      color="primary"
+                      class="mb-2"
+                      hide-details
+                    />
+                    <div class="text-caption text-medium-emphasis mb-4">
+                      When a photo has no caption of its own, falls back to its EXIF
+                      "DateTimeOriginal" (the camera's capture date), if present - otherwise no
+                      caption is shown. Applies to Telegram-received photos and to Storage/
+                      Auto-Rotate album images processed by process-cli (see
+                      docs/OVERLAYS.md#capture-date-caption-for-storageauto-rotate-photos) - not to
+                      Web UI album uploads, which are converted entirely in the browser and don't
+                      currently extract EXIF. Also togglable via the "/exif_date" bot command.
+                    </div>
+
+<!-- #endif -->
+<!-- #if FEATURE_TELEGRAM -->
+                    <v-alert
+                      v-if="settingsStore.deviceSettings.lastFetchError"
+                      type="error"
+                      variant="tonal"
+                      density="compact"
+                      class="mb-2"
+                    >
+                      Last fetch error: {{ settingsStore.deviceSettings.lastFetchError }}
+                    </v-alert>
+
+                    <div class="text-caption text-medium-emphasis">
+                      Send a photo or image file to the bot, or a "/" command (/status, /restart,
+                      /clear). Send /telegram_reset to immediately clear a stuck message queue.
+                    </div>
+                  </v-card-text>
+                </v-card>
+              </v-expand-transition>
+<!-- #endif -->
             </div>
           </v-tabs-window-item>
 
+<!-- #if FEATURE_AGENDA -->
+          <!-- Agenda Tab (ToDo + Calendar) -->
+          <v-tabs-window-item value="agenda">
+            <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+              Not an overlay on a photo - whenever a wake matches the schedule below, the display is
+              used exclusively to show ToDo and/or Calendar content instead of a photo, then goes
+              back to sleep. Normal photo auto-rotation is unaffected and keeps running on its own
+              separate schedule.
+            </v-alert>
+
+            <div class="text-subtitle-2 mb-2">ToDo</div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.agendaTodoEnabled"
+              label="Show ToDo list"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              A plain todo.txt file, re-checked every agenda wake - no API key needed. An unchanged
+              file is detected via a conditional request and skips re-downloading. Completed tasks
+              ("x " prefix) are never shown. Treated like a password field (never shown back to you)
+              since a private feed's URL can embed an access token, the same way a Google Calendar
+              link can.
+            </div>
+            <v-text-field
+              v-model="settingsStore.deviceSettings.agendaTodoUrl"
+              label="todo.txt URL"
+              type="password"
+              variant="outlined"
+              density="compact"
+              hint="Leave empty to keep the current URL"
+              persistent-hint
+              placeholder="••••••••"
+              class="mb-4"
+              :disabled="!settingsStore.deviceSettings.agendaTodoEnabled"
+            />
+
+            <v-divider class="mb-4" />
+
+            <div class="text-subtitle-2 mb-2">Calendar</div>
+            <v-switch
+              v-model="calendarAbEnabledModel"
+              label="Show upcoming events"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              On a device with no calendar configured yet, enter a URL below first, then turn this
+              on - it can't be enabled with no source behind it. An iCalendar/ICS feed - e.g. a
+              Google Calendar "Secret address in iCal format" (Calendar Settings → Integrate
+              calendar). Google's own docs warn that only you should know this address - treat it
+              like a password, never share it. A second calendar is optional (e.g. work alongside
+              personal) - events from both are merged into one list, sorted by time, and colored by
+              origin: Calendar A is blue, Calendar B is green (shown as a filled background on a
+              light agenda background, plain colored text on a dark one - see Appearance below).
+            </div>
+            <v-row dense>
+              <v-col cols="12" sm="6">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.agendaCalUrl"
+                  label="Calendar A ICS URL"
+                  type="password"
+                  variant="outlined"
+                  density="compact"
+                  hint="Leave empty to keep the current URL"
+                  persistent-hint
+                  placeholder="••••••••"
+                >
+                  <template #append-inner>
+                    <v-icon
+                      v-if="settingsStore.deviceSettings.agendaCalUrlConfigured"
+                      color="success"
+                      size="20"
+                      title="URL saved on device"
+                    >
+                      mdi-check-circle
+                    </v-icon>
+                  </template>
+                </v-text-field>
+              </v-col>
+              <v-col cols="8" sm="3">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.agendaCalName"
+                  label="Display name"
+                  variant="outlined"
+                  density="compact"
+                  placeholder="Calendar A"
+                  hint='Shown in the Calendar header instead of "Calendar A"'
+                  persistent-hint
+                />
+              </v-col>
+              <v-col cols="4" sm="3">
+                <v-select
+                  v-model="settingsStore.deviceSettings.agendaCalDays"
+                  :items="[1, 2, 3]"
+                  label="Days ahead"
+                  variant="outlined"
+                  density="compact"
+                />
+              </v-col>
+            </v-row>
+            <v-row dense>
+              <v-col cols="12" sm="8">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.agendaCalUrl2"
+                  label="Calendar B ICS URL (optional)"
+                  type="password"
+                  variant="outlined"
+                  density="compact"
+                  hint="Leave empty to keep the current URL, or to use only one calendar"
+                  persistent-hint
+                  placeholder="••••••••"
+                >
+                  <template #append-inner>
+                    <v-icon
+                      v-if="settingsStore.deviceSettings.agendaCalUrl2Configured"
+                      color="success"
+                      size="20"
+                      title="URL saved on device"
+                    >
+                      mdi-check-circle
+                    </v-icon>
+                  </template>
+                </v-text-field>
+              </v-col>
+              <v-col cols="12" sm="4">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.agendaCalName2"
+                  label="Display name"
+                  variant="outlined"
+                  density="compact"
+                  placeholder="Calendar B"
+                  hint='Shown in the Calendar header instead of "Calendar B"'
+                  persistent-hint
+                />
+              </v-col>
+            </v-row>
+            <v-switch
+              v-model="settingsStore.deviceSettings.agendaCalWeatherEnabled"
+              label="Show forecast on day dividers"
+              color="primary"
+              class="mt-2 mb-1"
+              hide-details
+              :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Appends each day's forecast to its divider, e.g. "Fr 11. [18/25 cloudy]" - reuses the
+              same location/provider settings as the photo Weather Overlay (Settings → Power →
+              Weather + Headline Overlays), just for this independent display path. The list layout
+              shows up to 3 days of forecast and the 7-day grid up to 7 (wttr.in only returns 3
+              days, the rest then comes from Open-Meteo); a day beyond the forecast simply shows
+              none.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.agendaCalWeatherRightAligned"
+              label="Right-align forecast"
+              color="primary"
+              class="mb-1"
+              hide-details
+              :disabled="
+                !settingsStore.deviceSettings.agendaCalEnabled ||
+                !settingsStore.deviceSettings.agendaCalWeatherEnabled
+              "
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Off (default): forecast centered on the divider line. On: forecast flush against the
+              right edge instead - just a placement preference, doesn't change how much of it fits
+              (works the same in both the stacked and side-by-side layout).
+            </div>
+            <v-select
+              v-model="settingsStore.deviceSettings.agendaCalMultidayMode"
+              :items="agendaMultidayModeOptions"
+              item-title="title"
+              item-value="value"
+              label="Multi-day events"
+              variant="outlined"
+              class="mt-2 mb-1"
+              hide-details
+              :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Repeat (default): a multi-day event appears under every day it spans, plain. Compact:
+              shown only once, on the first visible day, with an "N/M:" prefix (which day of the
+              event's full span, out of how many) - e.g. an 8-day trip whose 4th day is the first
+              one visible shows "4/8: Trip" that one time only. Repeat + number: combines both -
+              still repeated under every day, but each occurrence also gets its own "N/M:" prefix.
+            </div>
+            <v-select
+              v-model="settingsStore.deviceSettings.agendaCalTimeDisplayMode"
+              :items="agendaTimeDisplayModeOptions"
+              item-title="title"
+              item-value="value"
+              label="Event time display"
+              variant="outlined"
+              class="mt-2 mb-1"
+              hide-details
+              :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Duration is more compact for short events but longer once an event runs over an hour
+              (e.g. "08:00 [1h30m]" vs. "08:00-09:30" for Range) - pick whichever reads better for
+              your events. Neither affects all-day events.
+            </div>
+            <v-select
+              v-model="settingsStore.deviceSettings.agendaCalLayoutMode"
+              :items="agendaCalLayoutModeOptions"
+              item-title="title"
+              item-value="value"
+              label="Layout"
+              variant="outlined"
+              class="mt-2 mb-1"
+              hide-details
+              :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              List (default): today's existing 1-3 day list, set by "Days ahead" above. 7-Day Grid:
+              a full week at a glance, laid out as 4 rows x 2 columns with today getting extra space
+              (Template A: full width; Template B: double height) - only takes effect when the ToDo
+              column above is off (Calendar shown full-screen), falling back to List otherwise.
+              Forecasts (if enabled above) cover all 7 days in grid mode, still 3 in List mode.
+            </div>
+            <template v-if="settingsStore.deviceSettings.agendaCalLayoutMode !== 'list'">
+              <v-select
+                v-model="settingsStore.deviceSettings.agendaShiftModel"
+                :items="agendaShiftModelOptions"
+                item-title="title"
+                item-value="value"
+                label="Rotation pattern"
+                variant="outlined"
+                class="mt-2 mb-1"
+                hide-details
+                :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+              />
+              <div class="text-caption text-medium-emphasis mb-2">
+                Marks every other grid day by an alternating custody-style schedule (e.g. "2-2-3": 2
+                days/2 days/3 days, then which side starts flips the following week) - off by
+                default. Needs a start date below to anchor which day the pattern begins on. Which
+                color the marked days get, and whether it colors the day header or the appointment
+                area, comes from the active Color Profile below (its "mark" color and
+                "markColorsHeader" setting) rather than from a setting here.
+              </div>
+              <v-row v-if="settingsStore.deviceSettings.agendaShiftModel !== 'none'" dense>
+                <v-col cols="6" sm="4">
+                  <v-text-field
+                    v-model="settingsStore.deviceSettings.agendaShiftStart"
+                    label="Start date"
+                    type="date"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                  />
+                </v-col>
+              </v-row>
+            </template>
+
+            <v-divider class="mb-4 mt-2" />
+
+            <div class="text-subtitle-2 mb-2">Extra ICS Calendars</div>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Up to three additional calendars (e.g. holidays, school holidays, or any other .ics
+              feed) shown in the same Calendar column above, each in its own color (set per-source
+              in the active Color Profile below) with a colored letter (C/D/E) in the header when
+              active. Unlike Calendar A/B, these are <strong>never refreshed automatically</strong>
+              - only when you save a new/changed URL, click "Refresh now", or upload a replacement
+              file directly. If a source runs out of upcoming events, a permanent reminder appears
+              in the calendar identifying which one needs updating. Each source shows up to 48
+              events within its 30-day window - plenty for holidays/school-holidays, but a very
+              densely-booked file could hit that cap.
+            </div>
+
+            <v-card variant="tonal" class="mb-3">
+              <v-card-text>
+                <v-switch
+                  v-model="calendarCEnabledModel"
+                  label="Calendar C enabled"
+                  color="primary"
+                  hide-details
+                  class="mb-2"
+                  :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                />
+                <v-row dense>
+                  <v-col cols="12" sm="7">
+                    <v-text-field
+                      v-model="settingsStore.deviceSettings.agendaCalCUrl"
+                      label="Calendar C ICS URL"
+                      type="password"
+                      variant="outlined"
+                      density="compact"
+                      hint="Leave empty to keep the current URL - fetched once on save, never again automatically"
+                      persistent-hint
+                      placeholder="••••••••"
+                      :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    >
+                      <template #append-inner>
+                        <v-icon
+                          v-if="settingsStore.deviceSettings.agendaCalCConfigured"
+                          color="success"
+                          size="20"
+                          title="Source saved on device"
+                        >
+                          mdi-check-circle
+                        </v-icon>
+                      </template>
+                    </v-text-field>
+                  </v-col>
+                  <v-col cols="12" sm="5">
+                    <v-text-field
+                      v-model="settingsStore.deviceSettings.agendaCalCName"
+                      label="Display name"
+                      variant="outlined"
+                      density="compact"
+                      placeholder="Calendar C"
+                      :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    />
+                  </v-col>
+                </v-row>
+                <div class="d-flex flex-wrap ga-2 mt-1">
+                  <v-btn
+                    size="small"
+                    variant="tonal"
+                    :loading="refreshingExtraIcs.c"
+                    :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    @click="refreshExtraIcs('c')"
+                  >
+                    Refresh now
+                  </v-btn>
+                  <v-btn
+                    size="small"
+                    variant="tonal"
+                    :loading="uploadingExtraIcs.c"
+                    :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    @click="extraIcsFileC?.click()"
+                  >
+                    Upload .ics file
+                  </v-btn>
+                  <input
+                    ref="extraIcsFileC"
+                    type="file"
+                    accept=".ics"
+                    hidden
+                    @change="onExtraIcsFileSelected($event, 'c')"
+                  />
+                </div>
+              </v-card-text>
+            </v-card>
+
+            <v-card variant="tonal" class="mb-3">
+              <v-card-text>
+                <v-switch
+                  v-model="calendarDEnabledModel"
+                  label="Calendar D enabled"
+                  color="primary"
+                  hide-details
+                  class="mb-2"
+                  :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                />
+                <v-row dense>
+                  <v-col cols="12" sm="7">
+                    <v-text-field
+                      v-model="settingsStore.deviceSettings.agendaCalDUrl"
+                      label="Calendar D ICS URL"
+                      type="password"
+                      variant="outlined"
+                      density="compact"
+                      hint="Leave empty to keep the current URL - fetched once on save, never again automatically"
+                      persistent-hint
+                      placeholder="••••••••"
+                      :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    >
+                      <template #append-inner>
+                        <v-icon
+                          v-if="settingsStore.deviceSettings.agendaCalDConfigured"
+                          color="success"
+                          size="20"
+                          title="Source saved on device"
+                        >
+                          mdi-check-circle
+                        </v-icon>
+                      </template>
+                    </v-text-field>
+                  </v-col>
+                  <v-col cols="12" sm="5">
+                    <v-text-field
+                      v-model="settingsStore.deviceSettings.agendaCalDName"
+                      label="Display name"
+                      variant="outlined"
+                      density="compact"
+                      placeholder="Calendar D"
+                      :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    />
+                  </v-col>
+                </v-row>
+                <div class="d-flex flex-wrap ga-2 mt-1">
+                  <v-btn
+                    size="small"
+                    variant="tonal"
+                    :loading="refreshingExtraIcs.d"
+                    :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    @click="refreshExtraIcs('d')"
+                  >
+                    Refresh now
+                  </v-btn>
+                  <v-btn
+                    size="small"
+                    variant="tonal"
+                    :loading="uploadingExtraIcs.d"
+                    :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    @click="extraIcsFileD?.click()"
+                  >
+                    Upload .ics file
+                  </v-btn>
+                  <input
+                    ref="extraIcsFileD"
+                    type="file"
+                    accept=".ics"
+                    hidden
+                    @change="onExtraIcsFileSelected($event, 'd')"
+                  />
+                </div>
+              </v-card-text>
+            </v-card>
+
+            <v-card variant="tonal" class="mb-3">
+              <v-card-text>
+                <v-switch
+                  v-model="calendarEEnabledModel"
+                  label="Calendar E enabled"
+                  color="primary"
+                  hide-details
+                  class="mb-2"
+                  :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                />
+                <v-row dense>
+                  <v-col cols="12" sm="7">
+                    <v-text-field
+                      v-model="settingsStore.deviceSettings.agendaCalEUrl"
+                      label="Calendar E ICS URL"
+                      type="password"
+                      variant="outlined"
+                      density="compact"
+                      hint="Leave empty to keep the current URL - fetched once on save, never again automatically"
+                      persistent-hint
+                      placeholder="••••••••"
+                      :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    >
+                      <template #append-inner>
+                        <v-icon
+                          v-if="settingsStore.deviceSettings.agendaCalEConfigured"
+                          color="success"
+                          size="20"
+                          title="Source saved on device"
+                        >
+                          mdi-check-circle
+                        </v-icon>
+                      </template>
+                    </v-text-field>
+                  </v-col>
+                  <v-col cols="12" sm="5">
+                    <v-text-field
+                      v-model="settingsStore.deviceSettings.agendaCalEName"
+                      label="Display name"
+                      variant="outlined"
+                      density="compact"
+                      placeholder="Calendar E"
+                      :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    />
+                  </v-col>
+                </v-row>
+                <div class="d-flex flex-wrap ga-2 mt-1">
+                  <v-btn
+                    size="small"
+                    variant="tonal"
+                    :loading="refreshingExtraIcs.e"
+                    :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    @click="refreshExtraIcs('e')"
+                  >
+                    Refresh now
+                  </v-btn>
+                  <v-btn
+                    size="small"
+                    variant="tonal"
+                    :loading="uploadingExtraIcs.e"
+                    :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+                    @click="extraIcsFileE?.click()"
+                  >
+                    Upload .ics file
+                  </v-btn>
+                  <input
+                    ref="extraIcsFileE"
+                    type="file"
+                    accept=".ics"
+                    hidden
+                    @change="onExtraIcsFileSelected($event, 'e')"
+                  />
+                </div>
+              </v-card-text>
+            </v-card>
+
+            <v-divider class="mb-4 mt-2" />
+
+            <div class="text-subtitle-2 mb-2">Schedule</div>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Independent from the Auto-Rotate schedule above - only applies while ToDo and/or
+              Calendar is enabled.
+            </div>
+            <RotationSchedule
+              v-model="settingsStore.deviceSettings.agendaCron"
+              :disabled="
+                !(
+                  settingsStore.deviceSettings.agendaTodoEnabled ||
+                  settingsStore.deviceSettings.agendaCalEnabled
+                )
+              "
+            />
+
+            <v-divider class="mb-4 mt-2" />
+
+            <div class="text-subtitle-2 mb-2">Appearance</div>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Layout only matters when both ToDo and Calendar are shown together - portrait boards
+              always stack them regardless of this setting (a side-by-side split would make each
+              column too narrow there).
+            </div>
+            <v-radio-group
+              v-model="settingsStore.deviceSettings.agendaStackLayout"
+              inline
+              density="compact"
+              hide-details
+              class="mb-4"
+            >
+              <v-radio label="Stacked (ToDo above Calendar)" :value="true" />
+              <v-radio label="Side by side" :value="false" />
+            </v-radio-group>
+            <div class="text-caption text-medium-emphasis mb-2">
+              The ToDo column always uses a plain black-on-white page. The Calendar column's entire
+              appearance - background, header colors, per-source colors, and marking - is controlled
+              by the Color Profile you import below instead.
+            </div>
+
+            <template v-if="!agendaIsGrayscaleBoard">
+              <v-divider class="mb-4 mt-4" />
+              <div class="text-subtitle-2 mb-2">ToDo Colors</div>
+              <div class="text-caption text-medium-emphasis mb-3">
+                Color panels only - grayscale boards have no spare hue to assign here. Any color
+                that happens to match the fixed white page is automatically swapped for a safe
+                fallback, so nothing can silently disappear.
+              </div>
+              <v-row dense>
+                <v-col
+                  v-for="field in agendaTodoColorFields"
+                  :key="field.key"
+                  cols="6"
+                  sm="4"
+                  md="3"
+                >
+                  <v-select
+                    v-model="settingsStore.deviceSettings[field.key]"
+                    :items="agendaHueOptions"
+                    :label="field.label"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                  />
+                </v-col>
+              </v-row>
+            </template>
+
+            <v-divider class="mb-4 mt-4" />
+            <div class="text-subtitle-2 mb-2">Calendar Color Profiles</div>
+            <div class="text-caption text-medium-emphasis mb-3">
+              Import a color profile JSON exported from the standalone "profile-editor.html" visual
+              editor tool to control exactly how the Calendar view is colored - text/background,
+              per-day headers, the shared top header, each Calendar source's color, and (if a
+              rotation pattern is set above) which single color marks a day. Up to 3 profiles can be
+              stored on the device; only one is active at a time. On a grayscale/monochrome display,
+              a color-mode profile is shown as a plain black/white inversion instead of its authored
+              hues - its "mode" only matters directly on a color panel.
+            </div>
+            <v-btn
+              variant="outlined"
+              size="small"
+              class="mb-4"
+              href="/profile-editor.html"
+              target="_blank"
+              rel="noopener"
+            >
+              Open Color Profile Editor
+            </v-btn>
+            <div class="text-caption text-medium-emphasis mb-3">
+              Opens the editor tool served directly by this device (new tab) - its own "An Gerät
+              senden" (send to device) button saves straight into a slot below, no manual
+              export/import round-trip needed.
+            </div>
+            <v-select
+              v-model="settingsStore.deviceSettings.agendaColorProfileActive"
+              :items="agendaColorProfileActiveOptions"
+              item-title="title"
+              item-value="value"
+              label="Active profile"
+              variant="outlined"
+              density="compact"
+              hide-details
+              class="mb-4"
+              style="max-width: 420px"
+            />
+            <v-row dense>
+              <v-col v-for="slot in [1, 2, 3]" :key="slot" cols="12" sm="4">
+                <v-card variant="tonal">
+                  <v-card-text>
+                    <div class="text-caption text-medium-emphasis">Slot {{ slot }}</div>
+                    <div class="text-body-2 mb-2">
+                      {{ agendaColorProfileSlots.find((s) => s.slot === slot)?.name || "(empty)" }}
+                    </div>
+                    <v-btn
+                      size="small"
+                      variant="outlined"
+                      :loading="agendaColorProfileUploading[slot]"
+                      @click="colorProfileFileInputs[slot]?.click()"
+                    >
+                      Import
+                    </v-btn>
+                    <v-btn
+                      v-if="agendaColorProfileSlots.find((s) => s.slot === slot)?.name"
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                      class="ml-2"
+                      @click="deleteAgendaColorProfile(slot)"
+                    >
+                      Remove
+                    </v-btn>
+                    <input
+                      :ref="(el) => (colorProfileFileInputs[slot] = el)"
+                      type="file"
+                      accept=".json,application/json"
+                      style="display: none"
+                      @change="onAgendaColorProfileFileSelected($event, slot)"
+                    />
+                  </v-card-text>
+                </v-card>
+              </v-col>
+            </v-row>
+          </v-tabs-window-item>
+
+<!-- #endif -->
           <!-- Power Tab -->
           <v-tabs-window-item value="power">
             <v-switch
@@ -869,10 +2643,836 @@ async function performFactoryReset() {
                 power consumption. Only disable if permanently powered via USB.
               </v-alert>
             </v-expand-transition>
+<!-- #if FEATURE_OTA_CHANNEL -->
+
+            <v-switch
+              v-model="settingsStore.deviceSettings.otaCheckEnabled"
+              label="Enable automatic update checks"
+              color="primary"
+              class="mb-2 mt-4"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-4">
+              Checks for a new firmware release once a day and on every cold boot. A manually
+              triggered "Check for updates" (below) always works regardless of this setting. Useful
+              to turn off for self-built/dev firmware, which otherwise always reports an "update
+              available".
+            </div>
+
+<!-- #endif -->
+<!-- #if FEATURE_WIFI_RESILIENCE -->
+            <v-switch
+              v-model="settingsStore.deviceSettings.wifiPerformanceModeEnabled"
+              label="Enable WiFi performance mode"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-4">
+              When on (default), the frame automatically switches to full WiFi receive power (~60-70
+              mA extra draw, but a much snappier web UI) whenever someone might be looking - an
+              interactive wake or USB power - and drops back to WiFi power-save otherwise. Turn off
+              to always stay in power-save, even during interactive use, trading web UI
+              responsiveness for lower battery draw.
+            </div>
+
+            <v-switch
+              v-model="settingsStore.deviceSettings.wifiTxPowerCapEnabled"
+              label="Cap WiFi TX power while a battery is present"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-4">
+              On (default). Associating with an AP draws a brief high-current TX burst that a
+              marginal battery/PMIC rail (e.g. the PhotoPainter's original AXP2101) may not sustain
+              cleanly - capping TX power lowers that peak, at some cost to WiFi range. Turn off if
+              you'd rather keep full range and haven't seen any instability.
+            </div>
+<!-- #endif -->
           </v-tabs-window-item>
 
+<!-- #if FEATURE_OVERLAYS -->
+          <v-tabs-window-item value="overlays">
+            <div class="text-subtitle-2 mb-2">Weather + Headline Overlays</div>
+            <div class="text-caption text-medium-emphasis mb-4">
+              On-device alternative to the companion image server's weather overlay - no separate
+              server required. Drawn as a text bar across the top of the image whenever a wake
+              rotates to a new photo, so data is only as fresh as your rotation schedule (a sparse
+              schedule means correspondingly stale weather/headlines). Only applies to Storage and
+              Telegram rotation modes - URL rotation streams pixels straight to the display and has
+              no image file to draw an overlay onto.
+            </div>
+
+            <v-row dense class="mb-2">
+              <v-col cols="6" sm="4">
+                <v-select
+                  v-model="settingsStore.deviceSettings.overlayLanguage"
+                  :items="[
+                    { title: 'English', value: 'en' },
+                    { title: 'Deutsch', value: 'de' },
+                  ]"
+                  label="Overlay language"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="6" sm="8" class="d-flex align-center">
+                <v-switch
+                  v-model="settingsStore.deviceSettings.overlayInvertColors"
+                  label="Invert overlay colors (white bar, black text)"
+                  color="primary"
+                  hide-details
+                />
+              </v-col>
+            </v-row>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Applies to both overlays below. Language selects the weather condition wording and
+              weekday abbreviations (English default: Mon..Sun; German: Mo..So).
+            </div>
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.captionInvertColorsEnabled"
+              label="Also apply color inversion to Telegram photo captions"
+              color="primary"
+              density="compact"
+              hide-details
+              class="mb-4"
+            />
+
+            <v-switch
+              v-model="settingsStore.deviceSettings.overlayEpdgzEnabled"
+              label="Also overlay pre-rendered EPDGZ images"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-4">
+              <strong
+                >Off by default - if the overlays below don't seem to appear at all, check this
+                first.</strong
+              >
+              Storage/Auto-Rotate albums are typically already-rendered EPDGZ files (not PNG); so
+              are Telegram-received photos whenever "On-device image format" (Telegram tab) is set
+              to EPDGZ, which it is by default. Either way, the overlay otherwise skips that file
+              entirely (no weather/headline fetch either) unless this is on. Enabling this
+              decodes/redraws/re-encodes that one file on every display - an extra step not needed
+              for anyone who doesn't use these overlays at all, or whose images are already PNG. BMP
+              images still aren't supported (no BMP decoder exists in the firmware).
+            </div>
+
+            <v-switch
+              v-model="settingsStore.deviceSettings.weatherOverlayEnabled"
+              label="Weather overlay"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              3-day forecast (today + next 2 days), e.g. "Wed sunny 16/24 | Thu partly cloudy 17/25
+              | Fri rain -5/3" (min/max °C). Free, no API key. Also togglable via the "/weather" bot
+              command.
+            </div>
+            <v-row dense class="mb-2">
+              <v-col cols="12" sm="6">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.weatherLocationName"
+                  label="Location name"
+                  variant="outlined"
+                  density="compact"
+                  placeholder="Berlin"
+                  hint="Geocoded once, then cached - or set lat/lon directly to skip that"
+                  persistent-hint
+                  :disabled="!settingsStore.deviceSettings.weatherOverlayEnabled"
+                />
+              </v-col>
+              <v-col cols="6" sm="3">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.weatherLat"
+                  label="Latitude (optional)"
+                  variant="outlined"
+                  density="compact"
+                  placeholder="52.5200"
+                  :disabled="!settingsStore.deviceSettings.weatherOverlayEnabled"
+                />
+              </v-col>
+              <v-col cols="6" sm="3">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.weatherLon"
+                  label="Longitude (optional)"
+                  variant="outlined"
+                  density="compact"
+                  placeholder="13.4050"
+                  :disabled="!settingsStore.deviceSettings.weatherOverlayEnabled"
+                />
+              </v-col>
+            </v-row>
+            <v-row dense class="mb-2">
+              <v-col cols="12" sm="6">
+                <v-select
+                  v-model="settingsStore.deviceSettings.weatherProvider"
+                  :items="[
+                    { title: 'Open-Meteo (default)', value: 'open-meteo' },
+                    { title: 'wttr.in', value: 'wttr.in' },
+                    { title: 'yr.no (MET Norway)', value: 'yr.no' },
+                  ]"
+                  label="Weather data source"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  :disabled="!settingsStore.deviceSettings.weatherOverlayEnabled"
+                />
+              </v-col>
+            </v-row>
+            <div class="text-caption text-medium-emphasis mb-2">
+              <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> is the
+              default. <a href="https://wttr.in/" target="_blank" rel="noopener">wttr.in</a> and
+              <a href="https://api.met.no/" target="_blank" rel="noopener">yr.no</a> are free
+              alternatives to switch to manually if Open-Meteo isn't reachable or reliable for your
+              network/region - there's no automatic fallback between them, so pick one at a time.
+            </div>
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.weatherMultilineEnabled"
+              label="Show as 3 lines (one per day) instead of one combined line"
+              color="primary"
+              density="compact"
+              hide-details
+              :disabled="
+                !settingsStore.deviceSettings.weatherOverlayEnabled ||
+                settingsStore.deviceSettings.headlinesOverlayEnabled
+              "
+            />
+            <div class="text-caption text-medium-emphasis mb-4">
+              Even abbreviated, a 3-day forecast can't reliably fit on one ~46-character line for
+              every combination (long condition words, 3-digit negative temperatures) - one line per
+              day always fits. Only available while the headlines overlay below is off (not enough
+              room for both).
+            </div>
+
+            <v-select
+              v-model="settingsStore.deviceSettings.weatherIconSet"
+              :items="[
+                { title: 'Text (default)', value: 'none' },
+                { title: 'Icons - Flaticon set', value: 'flaticon' },
+                { title: 'Icons - MET Norway/yr.no set', value: 'metno' },
+              ]"
+              label="Weather condition display"
+              variant="outlined"
+              density="compact"
+              hide-details
+              class="mb-2"
+              style="max-width: 320px"
+              :disabled="!settingsStore.deviceSettings.weatherOverlayEnabled"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Shows a small icon instead of the spelled-out condition word (e.g. a cloud instead of
+              "cloudy") to save space. Two icon sets to choose from - try both and see which reads
+              better on your panel. Also applies to the Agenda tab's Calendar day-divider weather
+              annotation, if that's enabled.
+            </div>
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.weatherIconColored"
+              label="Colored icons (traffic-light severity: green/yellow/red, blue for snow)"
+              color="primary"
+              density="compact"
+              hide-details
+              class="mb-4"
+              :disabled="
+                !settingsStore.deviceSettings.weatherOverlayEnabled ||
+                settingsStore.deviceSettings.weatherIconSet === 'none'
+              "
+            />
+            <div
+              v-if="settingsStore.deviceSettings.weatherIconColored"
+              class="text-caption text-medium-emphasis mb-4"
+            >
+              Color reflects severity, not the icon set's own artwork colors - e.g. heavy rain and
+              heavy snow both show red. Ignored on grayscale-only panels (falls back to plain
+              black/white, same as everything else there).
+            </div>
+
+            <v-switch
+              v-model="settingsStore.deviceSettings.headlinesOverlayEnabled"
+              label="Headlines overlay"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Any RSS/Atom feed URL - no API key, no rate limit. Also togglable via the "/headlines"
+              bot command.
+            </div>
+            <v-row dense>
+              <v-col cols="12" sm="8">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.headlinesRssUrl"
+                  label="RSS feed URL"
+                  variant="outlined"
+                  density="compact"
+                  placeholder="https://www.tagesschau.de/xml/rss2/"
+                  :disabled="!settingsStore.deviceSettings.headlinesOverlayEnabled"
+                />
+              </v-col>
+              <v-col cols="12" sm="4">
+                <v-select
+                  v-model="settingsStore.deviceSettings.headlinesCount"
+                  :items="[1, 2, 3]"
+                  label="Headlines shown"
+                  variant="outlined"
+                  density="compact"
+                  :disabled="!settingsStore.deviceSettings.headlinesOverlayEnabled"
+                />
+              </v-col>
+            </v-row>
+            <v-expand-transition>
+              <v-row
+                v-if="
+                  settingsStore.deviceSettings.headlinesOverlayEnabled &&
+                  settingsStore.deviceSettings.headlinesCount === 1
+                "
+                dense
+              >
+                <v-col cols="12" sm="6">
+                  <v-select
+                    v-model="settingsStore.deviceSettings.headlinesWrapLines"
+                    :items="[
+                      { title: 'Single line (truncated with …)', value: 1 },
+                      { title: 'Wrap across 2 lines', value: 2 },
+                      { title: 'Wrap across 3 lines', value: 3 },
+                    ]"
+                    label="Headline display"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                  />
+                </v-col>
+              </v-row>
+            </v-expand-transition>
+            <div
+              v-if="
+                settingsStore.deviceSettings.headlinesOverlayEnabled &&
+                settingsStore.deviceSettings.headlinesCount === 1
+              "
+              class="text-caption text-medium-emphasis mt-1"
+            >
+              Only offered with exactly 1 headline selected above - with more than one, each already
+              gets its own line.
+            </div>
+
+            <v-divider class="my-6" />
+
+            <div class="text-subtitle-2 mb-2">Low Battery Badge</div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.lowBatteryOverlayEnabled"
+              label="Low battery badge"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              A small corner badge (not a full-width bar, unlike the overlays above) shown on every
+              display update once the battery drops below the threshold below - independent of
+              Telegram/Web UI reachability, so low battery is noticeable just by looking at the
+              frame. Clears once the battery recovers 4 percentage points above the threshold.
+            </div>
+            <v-row dense>
+              <v-col cols="12" sm="6">
+                <v-text-field
+                  v-model.number="settingsStore.deviceSettings.lowBatteryOverlayThreshold"
+                  label="Show below (%)"
+                  type="number"
+                  :min="1"
+                  :max="50"
+                  variant="outlined"
+                  density="compact"
+                  :disabled="!settingsStore.deviceSettings.lowBatteryOverlayEnabled"
+                />
+              </v-col>
+            </v-row>
+
+            <v-divider class="my-6" />
+
+            <div class="text-subtitle-2 mb-2">Error Overlay</div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.errorOverlayEnabled"
+              label="Show error overlay on display for persistent failures"
+              color="primary"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              After 3 consecutive failed WiFi connection attempts on a scheduled wake, overlays a
+              short error message on the currently displayed image (without modifying the saved
+              file) so the problem is visible on the frame itself, not just in logs. Also togglable
+              via the "/error_overlay" Telegram bot command.
+            </div>
+            <v-btn
+              variant="outlined"
+              size="small"
+              :loading="testingErrorOverlay"
+              @click="testErrorOverlay"
+            >
+              <v-icon icon="mdi-alert-outline" start />
+              Test Error Overlay
+            </v-btn>
+            <div class="text-caption text-medium-emphasis mt-1">
+              Displays an example error message right now, regardless of the setting above - useful
+              to preview what it looks like. Overlays onto the current image if there is one,
+              otherwise shows it on a blank screen.
+            </div>
+          </v-tabs-window-item>
+
+<!-- #endif -->
+<!-- #if FEATURE_CHIMES -->
+          <!-- Chimes Tab -->
+          <v-tabs-window-item
+            v-if="settingsStore.deviceSettings.chimeSpeakerAvailable"
+            class="mt-2"
+            value="chimes"
+          >
+            <div class="text-subtitle-2 mb-2">Speaker</div>
+            <v-row dense align="center">
+              <v-col cols="12" sm="7">
+                <v-select
+                  v-model="settingsStore.deviceSettings.chimeSpeakerMode"
+                  :items="chimeSpeakerModeOptions"
+                  item-title="title"
+                  item-value="value"
+                  label="Chimes"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="12" sm="5">
+                <v-btn variant="outlined" size="small" :loading="testingChime" @click="testChime">
+                  <v-icon icon="mdi-volume-high" start />
+                  Play test tone
+                </v-btn>
+              </v-col>
+            </v-row>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Off (default): the board's speaker stays silent. Battery + mains: chimes play
+              regardless of power source. Mains/USB only (recommended for battery frames): the
+              amplifier draws noticeable current, so chimes only play while plugged in. "Play test
+              tone" always plays immediately, ignoring quiet hours and this setting - use it to
+              confirm the speaker works right after choosing a mode.
+            </div>
+            <v-slider
+              v-model="settingsStore.deviceSettings.chimeVolume"
+              label="Volume"
+              min="0"
+              max="100"
+              step="5"
+              thumb-label
+              hide-details
+              class="mt-2 mb-1"
+            >
+              <template #append>
+                <span class="text-body-2" style="min-width: 3em">
+                  {{ settingsStore.deviceSettings.chimeVolume }}%
+                </span>
+              </template>
+            </v-slider>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Applies equally to every chime - warning/error events aren't louder, they instead
+              repeat a few times while the underlying problem persists (see Events below).
+            </div>
+
+            <v-divider class="mb-4 mt-2" />
+
+            <div class="text-subtitle-2 mb-2">Quiet hours</div>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Applies to the chimes only - the Alarm Clock always rings.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.chimeQuietEnabled"
+              label="Enable quiet hours"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <v-row dense>
+              <v-col cols="6" sm="3">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.chimeQuietStart"
+                  type="time"
+                  label="From"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  :disabled="!settingsStore.deviceSettings.chimeQuietEnabled"
+                />
+              </v-col>
+              <v-col cols="6" sm="3">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.chimeQuietEnd"
+                  type="time"
+                  label="To"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  :disabled="!settingsStore.deviceSettings.chimeQuietEnabled"
+                />
+              </v-col>
+            </v-row>
+            <div class="text-caption text-medium-emphasis mb-2">
+              No chimes play during this daily window, regardless of the speaker mode or which
+              events below are enabled. Wraps past midnight if "To" is earlier than "From" (e.g.
+              22:00-07:00).
+            </div>
+
+            <v-divider class="mb-4 mt-2" />
+
+            <div class="text-subtitle-2 mb-2">Events</div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.chimeEventRotationEnabled"
+              label="Photo rotated / display refreshed"
+              color="primary"
+              class="mb-1"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Fires on every successful display update - the most frequent event here, off by
+              default for that reason.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.chimeEventTelegramPhotoEnabled"
+              label="New photo received via Telegram"
+              color="primary"
+              class="mb-1"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Confirms a photo arrived, even if you're not standing in front of the frame.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.chimeEventLowBatteryEnabled"
+              label="Low battery warning"
+              color="primary"
+              class="mb-1"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Fires when the battery is below the Low Battery Overlay threshold (Overlays tab),
+              repeating once per wake while still low, up to 5 times, then resets once the level
+              recovers.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.chimeEventWifiReprovisionEnabled"
+              label="WiFi reprovisioning needed"
+              color="primary"
+              class="mb-1"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Fires right before the frame clears its saved WiFi credentials and reboots into setup
+              mode.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.chimeEventAgendaDueEnabled"
+              label="Agenda: due/overdue reminder"
+              color="primary"
+              class="mb-1"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Fires while Agenda mode's ToDo list has an overdue or due-today item, repeating once
+              per render, up to 5 times, then resets once nothing is due.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.chimeEventOtaSuccessEnabled"
+              label="Firmware update installed"
+              color="primary"
+              class="mb-1"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Fires once, on first boot after a successful OTA update.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.chimeEventCriticalErrorEnabled"
+              label="Critical error (WiFi/internet lost)"
+              color="primary"
+              class="mb-1"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Fires once WiFi/internet has failed several wakes in a row (same threshold as the
+              Error Overlay, Overlays tab), repeating each further failed wake, up to 5 times, then
+              resets once connectivity recovers.
+            </div>
+          </v-tabs-window-item>
+
+<!-- #endif -->
+<!-- #if FEATURE_ALARMCLOCK -->
+          <!-- Alarm Clock Tab -->
+          <v-tabs-window-item
+            v-if="settingsStore.deviceSettings.alarmClockAvailable"
+            class="mt-2"
+            value="alarmClock"
+          >
+            <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+              Wakes the device with no WiFi, photo rotation, or Agenda render - just the speaker.
+              Ringing plays a repeating G4-C5-E5-C5 tone; a short press of the KEY/rotate button on
+              the device stops it early (without changing the picture).
+            </v-alert>
+
+            <v-switch
+              v-model="alarmArmedModel"
+              :label="alarmArmedModel ? 'Alarm armed' : 'Alarm disarmed'"
+              color="primary"
+              class="mb-2"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-4">
+              Turning this off clears the schedule below (same as removing every rule from it) -
+              there's no separate device-side flag, being armed just means having at least one
+              schedule rule. A schedule set from the device's own button UI (if available on this
+              board) shows up here too, as "Schedule 1".
+            </div>
+
+            <div class="text-subtitle-2 mb-2">Schedule</div>
+            <RotationSchedule v-model="settingsStore.deviceSettings.alarmCron" />
+
+            <v-divider class="mb-4 mt-2" />
+
+            <div class="text-subtitle-2 mb-2">Ring duration</div>
+            <v-row dense align="center">
+              <v-col cols="6" sm="3">
+                <v-text-field
+                  v-model.number="settingsStore.deviceSettings.alarmRingDurationSec"
+                  type="number"
+                  min="1"
+                  max="600"
+                  suffix="s"
+                  label="Duration"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+            </v-row>
+            <div class="text-caption text-medium-emphasis mb-2">
+              How long the alarm keeps ringing if never stopped early (default 60s, up to 600s).
+            </div>
+
+            <v-divider class="my-4" />
+
+            <div class="text-subtitle-2 mb-2">Sound</div>
+            <v-select
+              v-model="settingsStore.deviceSettings.alarmTune"
+              :items="alarmTuneOptions"
+              item-title="title"
+              item-value="value"
+              label="Alarm tone"
+              variant="outlined"
+              density="compact"
+              hide-details
+              class="mb-2"
+            />
+            <div class="text-caption text-medium-emphasis mb-3">
+              Four notes that repeat, followed by a pause. Save, then "Ring now" (below) plays the
+              selected tone.
+            </div>
+
+            <v-slider
+              v-model="settingsStore.deviceSettings.alarmVolume"
+              label="Volume"
+              min="10"
+              max="100"
+              step="5"
+              thumb-label
+              hide-details
+              class="mt-2 mb-1"
+            >
+              <template #append>
+                <span class="text-body-2" style="min-width: 3em">
+                  {{ settingsStore.deviceSettings.alarmVolume }}%
+                </span>
+              </template>
+            </v-slider>
+            <div class="text-caption text-medium-emphasis mb-3">
+              The alarm's own volume, independent of the Chimes volume. Chimes quiet hours never
+              apply to the alarm. (Speaker: quiet below about 40 %, distorts above about 90 %.)
+            </div>
+
+            <v-row dense align="center">
+              <v-col cols="6" sm="3">
+                <v-text-field
+                  v-model.number="settingsStore.deviceSettings.alarmRampSec"
+                  type="number"
+                  min="0"
+                  max="120"
+                  step="5"
+                  suffix="s"
+                  label="Volume ramp-up"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+            </v-row>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Gentle wake-up: the volume rises from quiet to the volume above within this time. 0 =
+              off (full volume at once), up to 120 s (20-60 s is usually enough). Keep the ring
+              duration longer than this, otherwise the full volume is never reached.
+            </div>
+
+            <v-divider class="my-4" />
+
+<!-- #if FEATURE_VOICE_STOP -->
+            <VoiceStopTools
+              :voice-available="settingsStore.deviceSettings.voiceAvailable"
+              :active="tab === 'alarmClock'"
+              @message="(m) => showSnackbar(m.text, m.color)"
+            />
+
+            <template v-if="settingsStore.deviceSettings.voiceAvailable">
+              <v-divider class="my-6" />
+
+              <MicrophoneTools
+                :speaker-available="settingsStore.deviceSettings.chimeSpeakerAvailable"
+                :active="tab === 'alarmClock'"
+                @message="(m) => showSnackbar(m.text, m.color)"
+              />
+            </template>
+<!-- #endif -->
+          </v-tabs-window-item>
+
+<!-- #endif -->
+<!-- #if FEATURE_CLIMATE -->
+          <!-- Climate Tab -->
+          <v-tabs-window-item
+            v-if="settingsStore.deviceSettings.climateSensorAvailable"
+            class="mt-2"
+            value="climate"
+          >
+            <div class="text-subtitle-2 mb-2">Room</div>
+            <v-row dense>
+              <v-col cols="12" sm="7">
+                <v-select
+                  v-model="settingsStore.deviceSettings.climateRoomType"
+                  :items="climateRoomTypeOptions"
+                  item-title="title"
+                  item-value="value"
+                  label="Room type"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="12" sm="5">
+                <v-select
+                  v-model="settingsStore.deviceSettings.climateTempUnit"
+                  :items="climateTempUnitOptions"
+                  item-title="title"
+                  item-value="value"
+                  label="Unit"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+            </v-row>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Temperature and humidity are classified separately, each into Bad (mold/dryness risk),
+              Good, or Super (optimal), based on the selected room type. For
+              {{
+                climateRoomTypeOptions.find(
+                  (o) => o.value === settingsStore.deviceSettings.climateRoomType
+                )?.title
+              }}: temperature is Bad {{ climateRoomLegend.tempBad }}, Super
+              {{ climateRoomLegend.tempSuper }}; humidity is Bad {{ climateRoomLegend.humBad }},
+              Super {{ climateRoomLegend.humSuper }} - anything else counts as Good.
+            </div>
+
+            <v-divider class="mb-4 mt-2" />
+
+            <div class="text-subtitle-2 mb-2">Calibration</div>
+            <v-row dense>
+              <v-col cols="6">
+                <v-text-field
+                  v-model.number="climateTempOffsetDisplay"
+                  :label="`Temperature offset (${settingsStore.deviceSettings.climateTempUnit === 'fahrenheit' ? '°F' : '°C'})`"
+                  type="number"
+                  step="0.1"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="6">
+                <v-text-field
+                  v-model.number="settingsStore.deviceSettings.climateHumOffset"
+                  label="Humidity offset (percentage points)"
+                  type="number"
+                  step="0.1"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+            </v-row>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Added to every raw sensor reading before it's displayed or logged - use this if the
+              sensor consistently reads too high/low. Default 0. Does not affect the raw reading
+              shown by the device's own diagnostic endpoint.
+            </div>
+
+            <v-divider class="mb-4 mt-2" />
+
+            <div class="text-subtitle-2 mb-2">Display</div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.climateLoggingEnabled"
+              label="Log readings for the history chart"
+              color="primary"
+              class="mb-1"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Logs a reading to the Climate History page (its own tab, not under Settings) on every
+              wake, and every few minutes while the device stays continuously awake - independent of
+              whether an image actually changed. On by default. Turning this off only stops the
+              history log growing; it does not affect the sensor readings shown below, which are
+              always read fresh at the moment each photo or Agenda page renders.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.climateOverlayEnabled"
+              label="Show on photos (top-right badge)"
+              color="primary"
+              class="mb-1"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Draws a fresh temperature/humidity reading (not the history log) as two small colored
+              badges in the top-right corner of every photo - color shows the category (red/orange/
+              green for Bad/Good/Super; a single black badge on grayscale-only displays). Works the
+              same whether or not history logging above is enabled.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.climateAgendaHeaderEnabled"
+              label="Show in Agenda header"
+              color="primary"
+              class="mb-1"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Adds the same fresh readout, right-aligned, to the ToDo and Calendar column headers in
+              Agenda mode - also independent of history logging above.
+            </div>
+          </v-tabs-window-item>
+<!-- #endif -->
           <!-- Home Assistant Tab -->
           <v-tabs-window-item class="mt-2" value="homeAssistant">
+<!-- #if FORK_FIXES -->
+            <v-switch
+              v-model="settingsStore.deviceSettings.haEnabled"
+              label="Enable Home Assistant integration"
+              color="primary"
+              class="mb-4"
+              hide-details
+            />
+<!-- #endif -->
             <v-text-field
               v-model="settingsStore.deviceSettings.haUrl"
               label="Home Assistant URL"
@@ -880,12 +3480,36 @@ async function performFactoryReset() {
               placeholder="http://homeassistant.local:8123"
               hint="Configure for dynamic image serving and battery level reporting"
               persistent-hint
+<!-- #if FORK_FIXES -->
+              :disabled="!settingsStore.deviceSettings.haEnabled"
+<!-- #endif -->
             />
           </v-tabs-window-item>
 
           <!-- Processing Tab -->
           <v-tabs-window-item value="processing">
             <div class="pa-4">
+<!-- #if FORK_ANY -->
+              <v-select
+                v-model="settingsStore.uploadImageFormat"
+                :items="[
+                  { title: 'EPDGZ (recommended - smaller, faster to display)', value: 'epdgz' },
+                  { title: 'PNG (larger, for compatibility/inspection)', value: 'png' },
+                ]"
+                label="Web UI upload format"
+                variant="outlined"
+                density="compact"
+                hide-details
+                class="mb-2"
+              />
+              <div class="text-caption text-medium-emphasis mb-4">
+                Format this browser encodes to before uploading a photo (Web UI uploads only - this
+                is a local browser preference, not saved to the device). EPDGZ stores the
+                already-resolved palette index, gzip-compressed - no per-pixel color re-matching
+                needed on every future display, unlike PNG.
+              </div>
+
+<!-- #endif -->
               <v-alert v-if="wideEdit" type="info" variant="tonal" density="compact">
                 Processing controls are shown next to the preview in wide-edit mode. Turn wide edit
                 off (the split icon on the Upload card) to edit them here.
@@ -955,6 +3579,22 @@ async function performFactoryReset() {
             <div class="text-subtitle-1 mt-2 mb-4">Config Backup</div>
             <v-row>
               <v-col cols="12">
+<!-- #if FORK_FIXES -->
+                <v-checkbox
+                  v-model="exportIncludeSecrets"
+                  density="compact"
+                  hide-details
+                  class="mb-2"
+                  label="Include credentials and URLs in export (Telegram bot token, AI API keys, access token, custom auth header, ToDo/Calendar URLs)"
+                />
+                <div class="text-caption text-grey mb-3">
+                  Off by default: an export is a plaintext JSON file. Enable this for a fully
+                  self-contained backup, e.g. before restoring to a fresh device - ToDo/Calendar
+                  URLs can carry an embedded credential (e.g. a Google Calendar "secret address"),
+                  same reasoning as the other fields here. WiFi password can never be included (the
+                  device never returns it at all) - re-enter that manually after importing.
+                </div>
+<!-- #endif -->
                 <v-btn variant="outlined" class="mr-2" @click="exportConfig">
                   <v-icon start>mdi-download</v-icon>
                   Export Config
@@ -1015,6 +3655,31 @@ async function performFactoryReset() {
 
             <v-divider class="my-6" />
 
+<!-- #if FEATURE_FACECROP -->
+            <div class="text-subtitle-1 mb-4">Cover/Fit Variant Folders</div>
+            <v-row>
+              <v-col cols="12">
+                <div class="text-caption text-medium-emphasis mb-2">
+                  For "Use pre-rendered Cover/Fit variants" (Auto Rotate tab): creates a "crop"
+                  subfolder in every album (if missing) and moves any loose
+                  "&lt;name&gt;.cover.&lt;ext&gt;" files there. Only relevant for albums produced by
+                  process-cli's <code>--crop-output both</code> - safe to run any time, a no-op for
+                  ordinary albums.
+                </div>
+                <v-btn
+                  variant="outlined"
+                  :loading="organizingCropVariants"
+                  @click="organizeCropVariants"
+                >
+                  <v-icon start>mdi-folder-move</v-icon>
+                  Organize Crop Folders
+                </v-btn>
+              </v-col>
+            </v-row>
+
+            <v-divider class="my-6" />
+
+<!-- #endif -->
             <div class="text-subtitle-1 mb-4">Factory Reset</div>
             <v-row>
               <v-col cols="12">
@@ -1058,6 +3723,34 @@ async function performFactoryReset() {
       </v-card-actions>
     </v-card>
 
+<!-- #if FEATURE_DISPLAY_HISTORY -->
+    <!-- Display History Reset Confirmation Dialog -->
+    <v-dialog v-model="confirmingHistoryReset" max-width="440">
+      <v-card>
+        <v-card-title class="text-error">
+          <v-icon icon="mdi-alert" class="mr-2" />
+          Reset Display History?
+        </v-card-title>
+        <v-card-text>
+          This clears the "already shown" tracking for random rotation and the Telegram-mode
+          fallback, starting a fresh no-repeat cycle immediately. This cannot be undone.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="confirmingHistoryReset = false">Cancel</v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            :loading="resettingHistory"
+            @click="resetDisplayHistory"
+          >
+            Reset
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+<!-- #endif -->
     <!-- Factory Reset Confirmation Dialog -->
     <v-dialog v-model="showFactoryResetDialog" max-width="500">
       <v-card>
@@ -1119,6 +3812,9 @@ async function performFactoryReset() {
               <li v-if="importData.config">Device settings</li>
               <li v-if="importData.processing">Processing settings</li>
               <li v-if="importData.palette">Palette calibration</li>
+<!-- #if FORK_FIXES -->
+              <li v-if="importData.albums?.length">Album enabled/disabled state</li>
+<!-- #endif -->
             </ul>
           </div>
         </v-card-text>
@@ -1129,6 +3825,12 @@ async function performFactoryReset() {
         </v-card-actions>
       </v-card>
     </v-dialog>
+<!-- #if FORK_ANY -->
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
+      {{ snackbarText }}
+    </v-snackbar>
+<!-- #endif -->
   </div>
 </template>
 

@@ -17,6 +17,24 @@ export const useSettingsStore = defineStore("settings", () => {
   // Processing parameters
   const params = ref(getDefaultParams());
 
+// #if FORK_ANY
+  // Web UI upload format - client-side only (this browser's own preference,
+  // never sent to /api/config or the device): which format ImageUpload.vue's
+  // client-side conversion produces before uploading. EPDGZ (default) is
+  // already the recommended format - already-resolved palette index,
+  // gzip-compressed, no per-pixel re-matching needed at display time. PNG
+  // remains selectable for compatibility/inspection.
+  const uploadImageFormat = ref(localStorage.getItem("uploadImageFormat") || "epdgz");
+  watch(uploadImageFormat, (value) => {
+    try {
+      localStorage.setItem("uploadImageFormat", value);
+    } catch (_error) {
+      // Storage unavailable (private browsing, quota) - preference just
+      // won't survive a reload, nothing else depends on it persisting
+    }
+  });
+
+// #endif
   // Device settings (UI representation)
   const deviceSettings = ref({
     // General
@@ -55,12 +73,294 @@ export const useSettingsStore = defineStore("settings", () => {
     httpHeaderKey: "",
     httpHeaderValue: "",
     saveDownloadedImages: true,
+// #if FEATURE_TELEGRAM
+    // Auto Rotate - Telegram
+    telegramBotToken: "",
+    telegramChatId: "",
+    telegramConfigured: false,
+    telegramPairingEnabled: true,
+    telegramWakeNotifyEnabled: false,
+// #endif
     // Home Assistant
     haUrl: "",
+// #if FORK_FIXES
+    haEnabled: false,
+// #endif
     // Power
     deepSleepEnabled: true,
+// #if FEATURE_OTA_CHANNEL
+    otaCheckEnabled: true,
+// #endif
+// #if FEATURE_WIFI_RESILIENCE
+    wifiPerformanceModeEnabled: true,
+    wifiTxPowerCapEnabled: true,
+    wifiExtendedRetryEnabled: false,
+    wifiReprovisionOnFailEnabled: true,
+// #endif
+// #if FEATURE_OFFLINE_HOTSPOT
+    // Read-only status (set during first-time setup / by the hotspot itself,
+    // not a settable field here - see the offline-hotspot section below).
+    offlineModeEnabled: false,
+    apHotspotActive: false,
+// #endif
+// #if FEATURE_HTTPS
+    httpsEnabled: false,
+    rotationPairingEnabled: false,
+    variantSelectionEnabled: false,
+// #endif
+// #if FEATURE_TELEGRAM
+    telegramRotationNotifyEnabled: false,
+    telegramFallbackRotationEnabled: true,
+    telegramFallbackOnErrorEnabled: true,
+    telegramPowerSaveEnabled: false,
+    telegramPowerSaveLatestOnly: false,
+    telegramKeepOriginalsEnabled: false,
+    telegramImageFormat: "epdgz",
+    telegramDedupEnabled: false,
+// #endif
+// #if FEATURE_OVERLAYS
+    // Weather + headline overlays (on-device, no companion server needed)
+    weatherOverlayEnabled: false,
+    weatherLocationName: "",
+    weatherLat: "",
+    weatherLon: "",
+    weatherProvider: "open-meteo",
+    headlinesOverlayEnabled: false,
+    headlinesRssUrl: "",
+    headlinesCount: 3,
+    headlinesWrapLines: 1,
+    overlayInvertColors: false,
+    overlayEpdgzEnabled: false,
+    overlayLanguage: "en",
+    captionInvertColorsEnabled: false,
+    weatherMultilineEnabled: false,
+    weatherIconSet: "none",
+    weatherIconColored: false,
+// #endif
+// #if FORK_EXIF
+    showExifDatetimeEnabled: false,
+// #endif
+// #if FEATURE_OVERLAYS
+    lowBatteryOverlayEnabled: false,
+    lowBatteryOverlayThreshold: 16,
+// #endif
+// #if FEATURE_CHIMES
+    // Chimes (speaker feedback, waveshare_photopainter_73 only) -
+    // chimeSpeakerAvailable is a read-only hardware capability flag, never
+    // sent in a PATCH. Off by default across the board, per-event flags
+    // mirror the firmware's own conservative defaults (see config.h).
+    chimeSpeakerAvailable: false,
+// #endif
+// #if FEATURE_ALARMCLOCK
+    // Read-only capability flag too (never sent in a PATCH): the Alarm tab's voice
+// #endif
+// #if FEATURE_VOICE_STOP
+    // tools (microphone level meter, stop word) exist in this firmware.
+    voiceAvailable: false,
+// #endif
+// #if FEATURE_CHIMES
+    chimeSpeakerMode: "off",
+    chimeVolume: 80,
+    chimeQuietEnabled: false,
+    chimeQuietStart: "22:00",
+    chimeQuietEnd: "07:00",
+    chimeEventRotationEnabled: false,
+// #endif
+// #if FEATURE_TELEGRAM
+    chimeEventTelegramPhotoEnabled: false,
+// #endif
+// #if FEATURE_OVERLAYS
+    chimeEventLowBatteryEnabled: true,
+// #endif
+// #if FEATURE_CHIMES
+    chimeEventWifiReprovisionEnabled: true,
+// #endif
+// #if FEATURE_AGENDA
+    chimeEventAgendaDueEnabled: false,
+// #endif
+// #if FEATURE_CHIMES
+    chimeEventOtaSuccessEnabled: true,
+    chimeEventCriticalErrorEnabled: true,
+// #endif
+// #if FEATURE_CLIMATE
+    // Climate (SHTC3 temperature/humidity) - generic feature (works on any
+    // board whose sensor actually answers, not just
+// #endif
+// #if FEATURE_CHIMES
+    // waveshare_photopainter_73, unlike Chimes above).
+// #endif
+// #if FEATURE_CLIMATE
+    // climateSensorAvailable is a read-only, live hardware probe (not a
+    // fixed capability flag - the same board can succeed or fail at
+    // runtime), never sent in a PATCH.
+    climateSensorAvailable: false,
+    climateRoomType: "living_room",
+    climateTempUnit: "celsius",
+    climateLoggingEnabled: true,
+// #endif
+// #if FEATURE_OVERLAYS
+    climateOverlayEnabled: false,
+// #endif
+// #if FEATURE_AGENDA
+    climateAgendaHeaderEnabled: false,
+    // Auto-backup to SD before each history log's 180-day-age reset -
+// #endif
+// #if FEATURE_CLIMATE
+    // climate defaults on (mirrors climateLoggingEnabled's default),
+    // battery defaults off (a full charge cycle resets far more often than
+    // 180 days, so backups would pile up unless opted into). Surfaced as a
+// #endif
+// #if FEATURE_BATTERY_HISTORY
+    // switch directly on each chart card (BatteryHistory.vue/
+// #endif
+// #if FEATURE_CLIMATE
+    // ClimateHistory.vue), not in this settings tab.
+// #endif
+// #if FEATURE_BATTERY_HISTORY
+    batteryHistoryBackupEnabled: false,
+// #endif
+// #if FEATURE_CLIMATE
+    climateHistoryBackupEnabled: true,
+    // Calibration offsets, always in Celsius/percentage-points regardless of
+    // climateTempUnit - SettingsPanel.vue converts to/from the display unit
+    // for its own input fields.
+    climateTempOffset: 0,
+    climateHumOffset: 0,
+// #endif
+// #if FEATURE_ALARMCLOCK
+    // Alarm Clock - only present in a firmware build compiled with
+    // FEATURE_ALARMCLOCK (build.py --alarmclock). alarmClockAvailable
+// #endif
+// #if FEATURE_CHIMES
+    // is a read-only capability flag (like chimeSpeakerAvailable above),
+    // never sent in a PATCH - the Settings page uses it to hide the whole
+    // tab on a build without the feature. No separate "enabled" toggle: the
+// #endif
+// #if FEATURE_ALARMCLOCK
+    // alarm is armed purely by having at least one alarmCron rule.
+    alarmClockAvailable: false,
+    alarmCron: [],
+    alarmRingDurationSec: 60,
+// #endif
+// #if FEATURE_CHIMES
+    // The alarm's own sound settings: volume in % (not the Chimes volume), seconds the volume
+    // takes to rise to that level (0 = no ramp) and the melody number.
+// #endif
+// #if FEATURE_ALARMCLOCK
+    alarmVolume: 80,
+    alarmRampSec: 0,
+    alarmTune: 0,
+// #endif
+// #if FEATURE_AGENDA
+    // Agenda (ToDo + Calendar) - a full-screen display mode, not a photo
+    // overlay. agendaTodoUrl/agendaCalUrl are write-only (never returned by
+    // GET /api/config, same treatment as wifiPassword above) - both start
+    // empty even when a URL is actually configured on the device, since
+    // either can carry a credential embedded as a query param (not just
+    // the Calendar URL - a security review found the original assumption
+    // that a ToDo feed is always a public, non-secret gist doesn't hold in
+    // general).
+    agendaTodoEnabled: false,
+    agendaCalEnabled: false,
+    agendaTodoUrl: "",
+    agendaCalUrl: "",
+    // Read-only, server-reported "is a URL actually saved?" flag - since the
+    // write-only field above always starts empty, this is the only way the
+    // UI can show a persistent "configured" confirmation across a reload.
+    agendaCalUrlConfigured: false,
+    // Optional second calendar (e.g. work vs. personal) - merged with the
+    // first at render time, colored per its own origin. Same write-only
+    // treatment as agendaCalUrl above.
+    agendaCalUrl2: "",
+    agendaCalUrl2Configured: false,
+    // Three extra ICS sources (e.g. holidays/school-holidays/other
+    // special-days feeds) shown in the same Calendar column as A/B, each
+    // independently enabled/named/colored. Unlike A/B above, these are
+    // NEVER refreshed automatically - only when the URL is set/changed, the
+    // user clicks "refresh now" (agendaCalCRefetch etc., a one-shot flag,
+    // not a persisted setting), or a file is uploaded directly via
+    // /api/agenda/extra-ics. Same write-only URL treatment as agendaCalUrl.
+    agendaCalCEnabled: false,
+    agendaCalDEnabled: false,
+    agendaCalEEnabled: false,
+    agendaCalCUrl: "",
+    agendaCalDUrl: "",
+    agendaCalEUrl: "",
+    // Read-only, server-reported "is a raw .ics file on disk right now?"
+    // flag - true whether it got there via URL fetch or direct upload; same
+    // "otherwise no persistent confirmation" reasoning as agendaCalUrlConfigured.
+    agendaCalCConfigured: false,
+    agendaCalDConfigured: false,
+    agendaCalEConfigured: false,
+    agendaCalCName: "",
+    agendaCalDName: "",
+    agendaCalEName: "",
+    // Optional display names shown in the Calendar header instead of the
+    // generic "Calendar A"/"Calendar B" fallback - not secrets, always
+    // returned/saved plainly (unlike the URL fields above).
+    agendaCalName: "",
+    agendaCalName2: "",
+    agendaCalDays: 2,
+// #endif
+// #if FEATURE_OVERLAYS
+    // Annotates each Calendar day divider with that day's forecast (reuses
+    // the same weather settings/provider as the photo weather overlay -
+    // see weatherLocationName/weatherProvider etc. below). Off by default.
+    agendaCalWeatherEnabled: false,
+    // Placement only - centered (default) or right-aligned; doesn't change
+    // how much forecast text can fit (see agenda_renderer.c).
+    agendaCalWeatherRightAligned: false,
+    // How a multi-day event is displayed - "repeat" (default, shown under
+    // every day it spans, no prefix), "compact" (shown once, on its first
+    // visible day, with an "N/M: " position prefix), or "repeat_numbered"
+    // (repeated under every day like "repeat", but each occurrence also
+    // gets its own "N/M: " prefix).
+// #endif
+// #if FEATURE_AGENDA
+    agendaCalMultidayMode: "repeat",
+    // "off" (default): timed events show just "HH:MM Summary". "duration":
+    // appends a compact "[Xm]"/"[Xh]" suffix. "range": shows the full
+    // "HH:MM-HH:MM" span instead. Never affects all-day events.
+    agendaCalTimeDisplayMode: "off",
+    // Calendar-only-fullscreen layout - "list" (default, today's 1-3 day
+    // list) or a 7-day grid template ("grid_a"/"grid_b"). Only takes
+    // effect when the ToDo column is off - see agenda_renderer.c.
+    agendaCalLayoutMode: "list",
+    // Optional 2-group rotation/"shift" coloring for the 7-day grid - see
+    // agenda_shift_model_t (config.h). "none" (default) = no coloring.
+    agendaShiftModel: "none",
+    // "YYYY-MM-DD", empty = unset (no coloring even if a model is chosen).
+    agendaShiftStart: "",
+    agendaCron: ["0 6-18 *"],
+    // true = ToDo above Calendar (default), false = side by side. Portrait
+    // boards always stack regardless of this setting - see agenda_renderer.c.
+    agendaStackLayout: true,
+    // Which imported Calendar-view color-profile slot is active (0 = none,
+    // built-in plain default; 1..3 = a stored slot) - see
+    // agenda_color_profile.h. The profiles themselves (name/slot list) are
+    // fetched separately via agendaColorProfileSlots, not saved as part of
+    // this settings blob.
+    agendaColorProfileActive: 0,
+    // Per-role color pickers for the ToDo column only (Spectra6/color
+    // boards only - grayscale has no spare hue to choose between). Each is
+    // one of "red"/"yellow"/"blue"/"green"; defaults match this feature's
+    // original hardcoded colors. The Calendar column's own colors come
+    // from the imported profile above instead.
+    agendaPriAColor: "red",
+    agendaPriBColor: "yellow",
+    agendaPriCColor: "green",
+    agendaPriDColor: "blue",
+    agendaDueOverdueColor: "red",
+    agendaDueTodayColor: "yellow",
+    agendaDueLaterColor: "blue",
+    agendaProjectColor: "blue",
+    agendaContextColor: "green",
+// #endif
     // Debugging
     debugLogEnabled: false,
+// #if FEATURE_ERROR_BANNER
+    errorOverlayEnabled: false,
+// #endif
     // AI API Keys (for client-side AI generation)
     aiCredentials: {
       openaiApiKey: "",
@@ -204,8 +504,188 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.caCertSet = data.ca_cert_set || false;
       deviceSettings.value.lastFetchError = data.last_fetch_error || "";
       deviceSettings.value.deepSleepEnabled = data.deep_sleep_enabled !== false;
+// #if FEATURE_OTA_CHANNEL
+      deviceSettings.value.otaCheckEnabled = data.ota_check_enabled !== false;
+// #endif
+// #if FEATURE_WIFI_RESILIENCE
+      deviceSettings.value.wifiPerformanceModeEnabled =
+        data.wifi_performance_mode_enabled !== false;
+      deviceSettings.value.wifiTxPowerCapEnabled = data.wifi_tx_power_cap_enabled !== false;
+      deviceSettings.value.wifiExtendedRetryEnabled = data.wifi_extended_retry_enabled === true;
+      deviceSettings.value.wifiReprovisionOnFailEnabled =
+        data.wifi_reprovision_on_fail_enabled !== false;
+// #endif
+// #if FEATURE_OFFLINE_HOTSPOT
+      deviceSettings.value.offlineModeEnabled = data.offline_mode_enabled === true;
+      deviceSettings.value.apHotspotActive = data.ap_hotspot_active === true;
+// #endif
+// #if FEATURE_HTTPS
+      deviceSettings.value.httpsEnabled = data.https_enabled === true;
+// #endif
+// #if FEATURE_TELEGRAM
+      deviceSettings.value.rotationPairingEnabled = data.rotation_pairing_enabled === true;
+      deviceSettings.value.variantSelectionEnabled = data.variant_selection_enabled === true;
+      deviceSettings.value.telegramRotationNotifyEnabled =
+        data.telegram_rotation_notify_enabled === true;
+      deviceSettings.value.telegramFallbackRotationEnabled =
+        data.telegram_fallback_rotation_enabled !== false;
+      deviceSettings.value.telegramFallbackOnErrorEnabled =
+        data.telegram_fallback_on_error_enabled !== false;
+      deviceSettings.value.telegramPowerSaveEnabled = data.telegram_power_save_enabled === true;
+      deviceSettings.value.telegramPowerSaveLatestOnly =
+        data.telegram_power_save_latest_only === true;
+      deviceSettings.value.telegramKeepOriginalsEnabled =
+        data.telegram_keep_originals_enabled === true;
+      deviceSettings.value.telegramImageFormat = data.telegram_image_format || "epdgz";
+      deviceSettings.value.telegramDedupEnabled = data.telegram_dedup_enabled === true;
+// #endif
+// #if FEATURE_OVERLAYS
+      deviceSettings.value.weatherOverlayEnabled = data.weather_overlay_enabled === true;
+      deviceSettings.value.weatherLocationName = data.weather_location_name || "";
+      deviceSettings.value.weatherLat = data.weather_lat || "";
+      deviceSettings.value.weatherLon = data.weather_lon || "";
+      deviceSettings.value.weatherProvider = data.weather_provider || "open-meteo";
+      deviceSettings.value.headlinesOverlayEnabled = data.headlines_overlay_enabled === true;
+      deviceSettings.value.headlinesRssUrl = data.headlines_rss_url || "";
+      deviceSettings.value.headlinesCount = data.headlines_count ?? 3;
+      deviceSettings.value.headlinesWrapLines = data.headlines_wrap_lines ?? 1;
+      deviceSettings.value.overlayInvertColors = data.overlay_invert_colors === true;
+      deviceSettings.value.overlayEpdgzEnabled = data.overlay_epdgz_enabled === true;
+      deviceSettings.value.overlayLanguage = data.overlay_language || "en";
+      deviceSettings.value.captionInvertColorsEnabled = data.caption_invert_colors_enabled === true;
+      deviceSettings.value.weatherMultilineEnabled = data.weather_multiline_enabled === true;
+      deviceSettings.value.weatherIconSet = data.weather_icon_set || "none";
+      deviceSettings.value.weatherIconColored = data.weather_icon_colored === true;
+// #endif
+// #if FORK_EXIF
+      deviceSettings.value.showExifDatetimeEnabled = data.show_exif_datetime_enabled === true;
+// #endif
+// #if FEATURE_OVERLAYS
+      deviceSettings.value.lowBatteryOverlayEnabled = data.low_battery_overlay_enabled === true;
+      deviceSettings.value.lowBatteryOverlayThreshold = data.low_battery_overlay_threshold ?? 16;
+// #endif
+// #if FEATURE_BATTERY_HISTORY
+      deviceSettings.value.batteryHistoryBackupEnabled =
+        data.battery_history_backup_enabled === true;
+// #endif
+// #if FEATURE_CHIMES
+      deviceSettings.value.chimeSpeakerAvailable = data.chime_speaker_available === true;
+// #endif
+// #if FEATURE_VOICE_STOP
+      deviceSettings.value.voiceAvailable = data.voice_available === true;
+// #endif
+// #if FEATURE_CHIMES
+      deviceSettings.value.chimeSpeakerMode = data.chime_speaker_mode || "off";
+      deviceSettings.value.chimeVolume = data.chime_volume ?? 80;
+      deviceSettings.value.chimeQuietEnabled = data.chime_quiet_enabled === true;
+      deviceSettings.value.chimeQuietStart = data.chime_quiet_start || "22:00";
+      deviceSettings.value.chimeQuietEnd = data.chime_quiet_end || "07:00";
+      deviceSettings.value.chimeEventRotationEnabled = data.chime_event_rotation_enabled === true;
+// #endif
+// #if FEATURE_TELEGRAM
+      deviceSettings.value.chimeEventTelegramPhotoEnabled =
+        data.chime_event_telegram_photo_enabled === true;
+// #endif
+// #if FEATURE_OVERLAYS
+      deviceSettings.value.chimeEventLowBatteryEnabled =
+        data.chime_event_low_battery_enabled === true;
+// #endif
+// #if FEATURE_CHIMES
+      deviceSettings.value.chimeEventWifiReprovisionEnabled =
+        data.chime_event_wifi_reprovision_enabled === true;
+// #endif
+// #if FEATURE_AGENDA
+      deviceSettings.value.chimeEventAgendaDueEnabled =
+        data.chime_event_agenda_due_enabled === true;
+// #endif
+// #if FEATURE_CHIMES
+      deviceSettings.value.chimeEventOtaSuccessEnabled =
+        data.chime_event_ota_success_enabled === true;
+      deviceSettings.value.chimeEventCriticalErrorEnabled =
+        data.chime_event_critical_error_enabled === true;
+// #endif
+// #if FEATURE_CLIMATE
+      deviceSettings.value.climateSensorAvailable = data.climate_sensor_available === true;
+      deviceSettings.value.climateRoomType = data.climate_room_type || "living_room";
+      deviceSettings.value.climateTempUnit = data.climate_temp_unit || "celsius";
+      deviceSettings.value.climateLoggingEnabled = data.climate_logging_enabled === true;
+      deviceSettings.value.climateHistoryBackupEnabled =
+        data.climate_history_backup_enabled === true;
+// #endif
+// #if FEATURE_OVERLAYS
+      deviceSettings.value.climateOverlayEnabled = data.climate_overlay_enabled === true;
+// #endif
+// #if FEATURE_AGENDA
+      deviceSettings.value.climateAgendaHeaderEnabled = data.climate_agenda_header_enabled === true;
+// #endif
+// #if FEATURE_CLIMATE
+      deviceSettings.value.climateTempOffset = data.climate_temp_offset ?? 0;
+      deviceSettings.value.climateHumOffset = data.climate_hum_offset ?? 0;
+// #endif
+// #if FEATURE_ALARMCLOCK
+      deviceSettings.value.alarmClockAvailable = data.alarm_clock_available === true;
+      deviceSettings.value.alarmCron = Array.isArray(data.alarm_cron) ? data.alarm_cron : [];
+      deviceSettings.value.alarmRingDurationSec = data.alarm_ring_duration_sec ?? 60;
+      deviceSettings.value.alarmVolume = data.alarm_volume ?? 80;
+      deviceSettings.value.alarmRampSec = data.alarm_ramp_sec ?? 0;
+      deviceSettings.value.alarmTune = data.alarm_tune ?? 0;
+// #endif
+// #if FEATURE_AGENDA
+      deviceSettings.value.agendaTodoEnabled = data.agenda_todo_enabled === true;
+      deviceSettings.value.agendaCalEnabled = data.agenda_cal_enabled === true;
+      // agenda_todo_url/agenda_cal_url are intentionally never present in
+      // this response (see http_server.c) - stay empty even when a URL is actually
+      // configured, same write-only treatment as wifiPassword above.
+      deviceSettings.value.agendaCalCEnabled = data.agenda_cal_c_enabled === true;
+      deviceSettings.value.agendaCalDEnabled = data.agenda_cal_d_enabled === true;
+      deviceSettings.value.agendaCalEEnabled = data.agenda_cal_e_enabled === true;
+      deviceSettings.value.agendaCalCName = data.agenda_cal_c_name || "";
+      deviceSettings.value.agendaCalDName = data.agenda_cal_d_name || "";
+      deviceSettings.value.agendaCalEName = data.agenda_cal_e_name || "";
+      deviceSettings.value.agendaCalName = data.agenda_cal_name || "";
+      deviceSettings.value.agendaCalName2 = data.agenda_cal_name2 || "";
+      deviceSettings.value.agendaCalDays = data.agenda_cal_days ?? 2;
+// #endif
+// #if FEATURE_OVERLAYS
+      deviceSettings.value.agendaCalWeatherEnabled = data.agenda_cal_weather_enabled === true;
+      deviceSettings.value.agendaCalWeatherRightAligned =
+        data.agenda_cal_weather_right_aligned === true;
+// #endif
+// #if FEATURE_AGENDA
+      deviceSettings.value.agendaCalMultidayMode = data.agenda_cal_multiday_mode || "repeat";
+      deviceSettings.value.agendaCalTimeDisplayMode = data.agenda_cal_time_display_mode || "off";
+      deviceSettings.value.agendaCalLayoutMode = data.agenda_cal_layout_mode || "list";
+      deviceSettings.value.agendaShiftModel = data.agenda_shift_model || "none";
+      deviceSettings.value.agendaShiftStart = data.agenda_shift_start || "";
+      deviceSettings.value.agendaCalUrlConfigured = data.agenda_cal_url_configured === true;
+      deviceSettings.value.agendaCalUrl2Configured = data.agenda_cal_url2_configured === true;
+      deviceSettings.value.agendaCalCConfigured = data.agenda_cal_c_configured === true;
+      deviceSettings.value.agendaCalDConfigured = data.agenda_cal_d_configured === true;
+      deviceSettings.value.agendaCalEConfigured = data.agenda_cal_e_configured === true;
+      deviceSettings.value.agendaCron =
+        Array.isArray(data.agenda_cron) && data.agenda_cron.length
+          ? data.agenda_cron
+          : ["0 6-18 *"];
+      deviceSettings.value.agendaStackLayout = data.agenda_stack_layout !== false;
+      deviceSettings.value.agendaColorProfileActive = data.agenda_color_profile_active ?? 0;
+      deviceSettings.value.agendaPriAColor = data.agenda_pri_a_color || "red";
+      deviceSettings.value.agendaPriBColor = data.agenda_pri_b_color || "yellow";
+      deviceSettings.value.agendaPriCColor = data.agenda_pri_c_color || "green";
+      deviceSettings.value.agendaPriDColor = data.agenda_pri_d_color || "blue";
+      deviceSettings.value.agendaDueOverdueColor = data.agenda_due_overdue_color || "red";
+      deviceSettings.value.agendaDueTodayColor = data.agenda_due_today_color || "yellow";
+      deviceSettings.value.agendaDueLaterColor = data.agenda_due_later_color || "blue";
+      deviceSettings.value.agendaProjectColor = data.agenda_project_color || "blue";
+      deviceSettings.value.agendaContextColor = data.agenda_context_color || "green";
+// #endif
       deviceSettings.value.debugLogEnabled = data.debug_log_enabled === true;
+// #if FEATURE_ERROR_BANNER
+      deviceSettings.value.errorOverlayEnabled = data.error_overlay_enabled === true;
+// #endif
       deviceSettings.value.haUrl = data.ha_url || "";
+// #if FORK_FIXES
+      deviceSettings.value.haEnabled = data.ha_enabled === true;
+// #endif
       deviceSettings.value.saveDownloadedImages = data.save_downloaded_images !== false;
       deviceSettings.value.accessToken = data.access_token || "";
       // The HTTP API password is never echoed back; keep the input blank and
@@ -219,6 +699,13 @@ export const useSettingsStore = defineStore("settings", () => {
       appliedOrientation.value = deviceSettings.value.displayOrientation;
       deviceSettings.value.rotationMode = data.rotation_mode || "storage";
       deviceSettings.value.sdRotationMode = data.sd_rotation_mode || "random";
+// #if FEATURE_TELEGRAM
+      deviceSettings.value.telegramBotToken = data.telegram_bot_token || "";
+      deviceSettings.value.telegramChatId = data.telegram_chat_id || "";
+      deviceSettings.value.telegramConfigured = data.telegram_configured === true;
+      deviceSettings.value.telegramWakeNotifyEnabled = data.telegram_wake_notify_enabled === true;
+      deviceSettings.value.telegramPairingEnabled = data.telegram_pairing_enabled !== false;
+// #endif
       deviceSettings.value.deviceName = data.device_name || "PhotoFrame";
       deviceSettings.value.ntpServer = data.ntp_server || "pool.ntp.org";
       deviceSettings.value.ipMode = data.ip_mode || "dhcp";
@@ -274,9 +761,156 @@ export const useSettingsStore = defineStore("settings", () => {
       rotation_mode: deviceSettings.value.rotationMode,
       sd_rotation_mode: deviceSettings.value.sdRotationMode,
       image_url: deviceSettings.value.imageUrl,
+// #if FEATURE_TELEGRAM
+      telegram_bot_token: deviceSettings.value.telegramBotToken,
+      telegram_chat_id: deviceSettings.value.telegramChatId,
+      telegram_pairing_enabled: deviceSettings.value.telegramPairingEnabled,
+      telegram_wake_notify_enabled: deviceSettings.value.telegramWakeNotifyEnabled,
+// #endif
       ha_url: deviceSettings.value.haUrl,
+// #if FORK_FIXES
+      ha_enabled: deviceSettings.value.haEnabled,
+// #endif
       deep_sleep_enabled: deviceSettings.value.deepSleepEnabled,
+// #if FEATURE_OTA_CHANNEL
+      ota_check_enabled: deviceSettings.value.otaCheckEnabled,
+// #endif
+// #if FEATURE_WIFI_RESILIENCE
+      wifi_performance_mode_enabled: deviceSettings.value.wifiPerformanceModeEnabled,
+      wifi_tx_power_cap_enabled: deviceSettings.value.wifiTxPowerCapEnabled,
+      wifi_extended_retry_enabled: deviceSettings.value.wifiExtendedRetryEnabled,
+      wifi_reprovision_on_fail_enabled: deviceSettings.value.wifiReprovisionOnFailEnabled,
+// #endif
+// #if FEATURE_HTTPS
+      https_enabled: deviceSettings.value.httpsEnabled,
+// #endif
+// #if FEATURE_TELEGRAM
+      rotation_pairing_enabled: deviceSettings.value.rotationPairingEnabled,
+      variant_selection_enabled: deviceSettings.value.variantSelectionEnabled,
+      telegram_rotation_notify_enabled: deviceSettings.value.telegramRotationNotifyEnabled,
+      telegram_fallback_rotation_enabled: deviceSettings.value.telegramFallbackRotationEnabled,
+      telegram_fallback_on_error_enabled: deviceSettings.value.telegramFallbackOnErrorEnabled,
+      telegram_power_save_enabled: deviceSettings.value.telegramPowerSaveEnabled,
+      telegram_power_save_latest_only: deviceSettings.value.telegramPowerSaveLatestOnly,
+      telegram_keep_originals_enabled: deviceSettings.value.telegramKeepOriginalsEnabled,
+      telegram_image_format: deviceSettings.value.telegramImageFormat,
+      telegram_dedup_enabled: deviceSettings.value.telegramDedupEnabled,
+// #endif
+// #if FEATURE_OVERLAYS
+      weather_overlay_enabled: deviceSettings.value.weatherOverlayEnabled,
+      weather_location_name: deviceSettings.value.weatherLocationName,
+      weather_lat: deviceSettings.value.weatherLat,
+      weather_lon: deviceSettings.value.weatherLon,
+      weather_provider: deviceSettings.value.weatherProvider,
+      headlines_overlay_enabled: deviceSettings.value.headlinesOverlayEnabled,
+      headlines_rss_url: deviceSettings.value.headlinesRssUrl,
+      headlines_count: deviceSettings.value.headlinesCount,
+      headlines_wrap_lines: deviceSettings.value.headlinesWrapLines,
+      overlay_invert_colors: deviceSettings.value.overlayInvertColors,
+      overlay_epdgz_enabled: deviceSettings.value.overlayEpdgzEnabled,
+      overlay_language: deviceSettings.value.overlayLanguage,
+      caption_invert_colors_enabled: deviceSettings.value.captionInvertColorsEnabled,
+      weather_multiline_enabled: deviceSettings.value.weatherMultilineEnabled,
+      weather_icon_set: deviceSettings.value.weatherIconSet,
+      weather_icon_colored: deviceSettings.value.weatherIconColored,
+// #endif
+// #if FORK_EXIF
+      show_exif_datetime_enabled: deviceSettings.value.showExifDatetimeEnabled,
+// #endif
+// #if FEATURE_OVERLAYS
+      low_battery_overlay_enabled: deviceSettings.value.lowBatteryOverlayEnabled,
+      low_battery_overlay_threshold: deviceSettings.value.lowBatteryOverlayThreshold,
+// #endif
+// #if FEATURE_BATTERY_HISTORY
+      battery_history_backup_enabled: deviceSettings.value.batteryHistoryBackupEnabled,
+// #endif
+// #if FEATURE_CHIMES
+      chime_speaker_mode: deviceSettings.value.chimeSpeakerMode,
+      chime_volume: deviceSettings.value.chimeVolume,
+      chime_quiet_enabled: deviceSettings.value.chimeQuietEnabled,
+      chime_quiet_start: deviceSettings.value.chimeQuietStart,
+      chime_quiet_end: deviceSettings.value.chimeQuietEnd,
+      chime_event_rotation_enabled: deviceSettings.value.chimeEventRotationEnabled,
+// #endif
+// #if FEATURE_TELEGRAM
+      chime_event_telegram_photo_enabled: deviceSettings.value.chimeEventTelegramPhotoEnabled,
+// #endif
+// #if FEATURE_OVERLAYS
+      chime_event_low_battery_enabled: deviceSettings.value.chimeEventLowBatteryEnabled,
+// #endif
+// #if FEATURE_CHIMES
+      chime_event_wifi_reprovision_enabled: deviceSettings.value.chimeEventWifiReprovisionEnabled,
+// #endif
+// #if FEATURE_AGENDA
+      chime_event_agenda_due_enabled: deviceSettings.value.chimeEventAgendaDueEnabled,
+// #endif
+// #if FEATURE_CHIMES
+      chime_event_ota_success_enabled: deviceSettings.value.chimeEventOtaSuccessEnabled,
+      chime_event_critical_error_enabled: deviceSettings.value.chimeEventCriticalErrorEnabled,
+// #endif
+// #if FEATURE_CLIMATE
+      climate_room_type: deviceSettings.value.climateRoomType,
+      climate_temp_unit: deviceSettings.value.climateTempUnit,
+      climate_logging_enabled: deviceSettings.value.climateLoggingEnabled,
+      climate_history_backup_enabled: deviceSettings.value.climateHistoryBackupEnabled,
+// #endif
+// #if FEATURE_OVERLAYS
+      climate_overlay_enabled: deviceSettings.value.climateOverlayEnabled,
+// #endif
+// #if FEATURE_AGENDA
+      climate_agenda_header_enabled: deviceSettings.value.climateAgendaHeaderEnabled,
+// #endif
+// #if FEATURE_CLIMATE
+      climate_temp_offset: deviceSettings.value.climateTempOffset,
+      climate_hum_offset: deviceSettings.value.climateHumOffset,
+// #endif
+// #if FEATURE_ALARMCLOCK
+      alarm_cron: deviceSettings.value.alarmCron,
+      alarm_ring_duration_sec: deviceSettings.value.alarmRingDurationSec,
+      alarm_volume: deviceSettings.value.alarmVolume,
+      alarm_ramp_sec: deviceSettings.value.alarmRampSec,
+      alarm_tune: deviceSettings.value.alarmTune,
+// #endif
+// #if FEATURE_AGENDA
+      agenda_todo_enabled: deviceSettings.value.agendaTodoEnabled,
+      agenda_cal_enabled: deviceSettings.value.agendaCalEnabled,
+      agenda_cal_c_enabled: deviceSettings.value.agendaCalCEnabled,
+      agenda_cal_d_enabled: deviceSettings.value.agendaCalDEnabled,
+      agenda_cal_e_enabled: deviceSettings.value.agendaCalEEnabled,
+      agenda_cal_c_name: deviceSettings.value.agendaCalCName,
+      agenda_cal_d_name: deviceSettings.value.agendaCalDName,
+      agenda_cal_e_name: deviceSettings.value.agendaCalEName,
+      agenda_cal_name: deviceSettings.value.agendaCalName,
+      agenda_cal_name2: deviceSettings.value.agendaCalName2,
+      agenda_cal_days: deviceSettings.value.agendaCalDays,
+// #endif
+// #if FEATURE_OVERLAYS
+      agenda_cal_weather_enabled: deviceSettings.value.agendaCalWeatherEnabled,
+      agenda_cal_weather_right_aligned: deviceSettings.value.agendaCalWeatherRightAligned,
+// #endif
+// #if FEATURE_AGENDA
+      agenda_cal_multiday_mode: deviceSettings.value.agendaCalMultidayMode,
+      agenda_cal_time_display_mode: deviceSettings.value.agendaCalTimeDisplayMode,
+      agenda_cal_layout_mode: deviceSettings.value.agendaCalLayoutMode,
+      agenda_shift_model: deviceSettings.value.agendaShiftModel,
+      agenda_shift_start: deviceSettings.value.agendaShiftStart,
+      agenda_cron: deviceSettings.value.agendaCron,
+      agenda_stack_layout: deviceSettings.value.agendaStackLayout,
+      agenda_color_profile_active: deviceSettings.value.agendaColorProfileActive,
+      agenda_pri_a_color: deviceSettings.value.agendaPriAColor,
+      agenda_pri_b_color: deviceSettings.value.agendaPriBColor,
+      agenda_pri_c_color: deviceSettings.value.agendaPriCColor,
+      agenda_pri_d_color: deviceSettings.value.agendaPriDColor,
+      agenda_due_overdue_color: deviceSettings.value.agendaDueOverdueColor,
+      agenda_due_today_color: deviceSettings.value.agendaDueTodayColor,
+      agenda_due_later_color: deviceSettings.value.agendaDueLaterColor,
+      agenda_project_color: deviceSettings.value.agendaProjectColor,
+      agenda_context_color: deviceSettings.value.agendaContextColor,
+// #endif
       debug_log_enabled: deviceSettings.value.debugLogEnabled,
+// #if FEATURE_ERROR_BANNER
+      error_overlay_enabled: deviceSettings.value.errorOverlayEnabled,
+// #endif
       save_downloaded_images: deviceSettings.value.saveDownloadedImages,
       display_orientation: deviceSettings.value.displayOrientation,
       device_name: deviceSettings.value.deviceName,
@@ -300,6 +934,32 @@ export const useSettingsStore = defineStore("settings", () => {
       currentConfig.wifi_password = deviceSettings.value.wifiPassword;
     }
 
+// #if FEATURE_AGENDA
+    // Same write-only treatment for the ToDo/Calendar feed URLs (any of
+    // them can carry a credential embedded as a query param, not just the
+    // Calendar URL's Google-documented "secret address" case) - never
+    // round-tripped from GET /api/config, so only send one when the user
+    // actually typed a new value.
+    if (deviceSettings.value.agendaTodoUrl && deviceSettings.value.agendaTodoUrl.length > 0) {
+      currentConfig.agenda_todo_url = deviceSettings.value.agendaTodoUrl;
+    }
+    if (deviceSettings.value.agendaCalUrl && deviceSettings.value.agendaCalUrl.length > 0) {
+      currentConfig.agenda_cal_url = deviceSettings.value.agendaCalUrl;
+    }
+    if (deviceSettings.value.agendaCalUrl2 && deviceSettings.value.agendaCalUrl2.length > 0) {
+      currentConfig.agenda_cal_url2 = deviceSettings.value.agendaCalUrl2;
+    }
+    if (deviceSettings.value.agendaCalCUrl && deviceSettings.value.agendaCalCUrl.length > 0) {
+      currentConfig.agenda_cal_c_url = deviceSettings.value.agendaCalCUrl;
+    }
+    if (deviceSettings.value.agendaCalDUrl && deviceSettings.value.agendaCalDUrl.length > 0) {
+      currentConfig.agenda_cal_d_url = deviceSettings.value.agendaCalDUrl;
+    }
+    if (deviceSettings.value.agendaCalEUrl && deviceSettings.value.agendaCalEUrl.length > 0) {
+      currentConfig.agenda_cal_e_url = deviceSettings.value.agendaCalEUrl;
+    }
+
+// #endif
     // Compare with original config and only send changed fields.
     // Arrays (rotate_cron) need a value comparison, not reference equality.
     const changedFields = {};
@@ -495,7 +1155,11 @@ export const useSettingsStore = defineStore("settings", () => {
         originalParams = JSON.parse(JSON.stringify(params.value));
       }
       return response.ok;
+// #if FORK_FIXES
+    } catch (error) {
+// #else
     } catch (_error) {
+// #endif
       console.error("Failed to save settings:", error);
       return false;
     }
@@ -509,7 +1173,11 @@ export const useSettingsStore = defineStore("settings", () => {
         body: JSON.stringify(palette.value),
       });
       return response.ok;
+// #if FORK_FIXES
+    } catch (error) {
+// #else
     } catch (_error) {
+// #endif
       console.error("Failed to save palette:", error);
       return false;
     }
@@ -530,21 +1198,63 @@ export const useSettingsStore = defineStore("settings", () => {
       } else {
         return { success: false, message: "Failed to perform factory reset" };
       }
+// #if FORK_FIXES
+    } catch (error) {
+// #else
     } catch (_error) {
+// #endif
       console.error("Error performing factory reset:", error);
       return { success: false, message: "Error performing factory reset" };
     }
   }
 
+// #if FEATURE_OFFLINE_HOTSPOT
+  // On-demand offline hotspot (github.com/aitjcize/esp32-photoframe#90) -
+  // mirrors the long-BOOT-hold trigger. Switching WiFi mode drops the very
+  // connection this request travels over, so the response may never arrive
+  // even on success - the server sends it before actually switching, but
+  // that race is best-effort by nature; the caller should tell the user to
+  // reconnect via the returned SSID regardless of whether this resolves.
+  async function startApHotspot() {
+    try {
+      const response = await fetch(`${API_BASE}/api/wifi/hotspot/start`, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      deviceSettings.value.apHotspotActive = true;
+      return { success: true, ssid: data.ssid || "", url: data.url || "http://192.168.4.1" };
+    } catch {
+      // Expected on success too (see comment above) - still report it as
+      // started so the UI shows the "reconnect to the hotspot" guidance.
+      deviceSettings.value.apHotspotActive = true;
+      return { success: true, ssid: "", url: "http://192.168.4.1" };
+    }
+  }
+
+  async function stopApHotspot() {
+    try {
+      await fetch(`${API_BASE}/api/wifi/hotspot/stop`, { method: "POST" });
+    } catch {
+      // Same best-effort caveat as startApHotspot() above.
+    }
+    deviceSettings.value.apHotspotActive = false;
+  }
+
+// #endif
   return {
     activeSettingsTab,
     params,
+// #if FORK_ANY
+    uploadImageFormat,
+// #endif
     deviceSettings,
     savedTimezone,
     appliedOrientation,
     palette,
     preset,
     presetNames,
+// #if FEATURE_OFFLINE_HOTSPOT
+    startApHotspot,
+    stopApHotspot,
+// #endif
     applyPreset,
     applyGrayscaleDefaultIfUntouched,
     loadSettings,

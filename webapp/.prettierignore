@@ -1,0 +1,8 @@
+# These files carry build-time feature directives (see feature-directives.js) with both
+# alternatives spelled out (`#if` / `#else`), and the directives cut through tags and
+# statements, so Prettier cannot parse them as written. They are formatted by hand.
+src/components/AlbumGallery.vue
+src/components/SettingsPanel.vue
+src/stores/settings.js
+src/views/ProvisionPage.vue
+src/views/MainApp.vue

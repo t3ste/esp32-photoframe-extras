@@ -3,7 +3,8 @@ import vue from "@vitejs/plugin-vue";
 import vuetify from "vite-plugin-vuetify";
 import { resolve } from "path";
 import { gzipSync } from "node:zlib";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { featureDirectives, flagsFor } from "./feature-directives.js";
 
 // The firmware embeds only the .gz files (main/CMakeLists.txt EMBED_FILES)
 // and serves the stored bytes verbatim with Content-Encoding: gzip
@@ -26,14 +27,37 @@ function gzipOutput(outDir) {
   };
 }
 
+// Files copied verbatim from public/ that belong to an optional feature (see
+// feature-directives.js): they are dropped from the output when it is off.
+function dropDisabledPublicFiles(outDir, featureList) {
+  const flags = flagsFor(featureList);
+  const files = { "profile-editor.html": "FEATURE_AGENDA" };
+  return {
+    name: "drop-disabled-public-files",
+    apply: "build",
+    closeBundle() {
+      for (const [name, flag] of Object.entries(files)) {
+        const path = resolve(outDir, name);
+        if (!flags.has(flag) && existsSync(path)) rmSync(path);
+      }
+    },
+  };
+}
+
+const features = process.env.VITE_FEATURES;
+// VITE_OUT_DIR lets a check build into a scratch directory instead of main/webapp.
+const outDir = resolve(__dirname, process.env.VITE_OUT_DIR || "../main/webapp");
+
 export default defineConfig({
   plugins: [
+    featureDirectives(features),
     vue(),
     vuetify({ autoImport: true }),
-    gzipOutput(resolve(__dirname, "../main/webapp")),
+    dropDisabledPublicFiles(outDir, features),
+    gzipOutput(outDir),
   ],
   build: {
-    outDir: resolve(__dirname, "../main/webapp"),
+    outDir,
     emptyOutDir: true,
     rollupOptions: {
       external: ["/measurement_sample.jpg"],

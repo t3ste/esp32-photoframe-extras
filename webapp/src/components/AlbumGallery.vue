@@ -1,9 +1,35 @@
 <script setup>
+// #if FORK_FIXES
+import { ref, computed, watch } from "vue";
+// #else
 import { ref } from "vue";
+// #endif
 import { useAppStore } from "../stores";
 
 const appStore = useAppStore();
 
+// #if FORK_FIXES
+// Rendering every image in a large album at once (each with its own
+// thumbnail fetch once "Show thumbnails" is on) can pile up enough
+// concurrent requests to overwhelm the device's own HTTP server - it only
+// allows a handful of concurrent connections, so a big burst leaves the
+// whole Web UI unresponsive for a while. Rendering a bounded batch first,
+// with a button to reveal more, keeps that burst small regardless of album
+// size.
+const GALLERY_BATCH_SIZE = 60;
+const visibleCount = ref(GALLERY_BATCH_SIZE);
+watch(
+  () => appStore.selectedAlbum,
+  () => {
+    visibleCount.value = GALLERY_BATCH_SIZE;
+  }
+);
+const visibleImages = computed(() => appStore.currentAlbumImages.slice(0, visibleCount.value));
+function showMoreImages() {
+  visibleCount.value += GALLERY_BATCH_SIZE;
+}
+
+// #endif
 const newAlbumDialog = ref(false);
 const newAlbumName = ref("");
 const deleteAlbumDialog = ref(false);
@@ -66,6 +92,17 @@ async function deleteImage() {
 function getThumbnailUrl(image) {
   return `/api/image?filepath=${encodeURIComponent(image.album + "/" + image.thumbnail)}`;
 }
+// #if FORK_FIXES
+
+// Loading many thumbnails at once noticeably slows down the device's own
+// HTTP server, so thumbnail rendering in the grid defaults to off; the
+// preference is remembered per-browser (not synced to the device).
+const showThumbnails = ref(localStorage.getItem("photoframe_show_thumbnails") === "true");
+function onShowThumbnailsChange(val) {
+  showThumbnails.value = val;
+  localStorage.setItem("photoframe_show_thumbnails", val ? "true" : "false");
+}
+// #endif
 </script>
 
 <template>
@@ -128,6 +165,17 @@ function getThumbnailUrl(image) {
         <v-spacer />
         <v-progress-circular v-if="displayLoading" indeterminate size="24" class="mr-2" />
         <span v-if="displayLoading" class="text-body-2 text-grey"> Updating display... </span>
+<!-- #if FORK_FIXES -->
+        <v-switch
+          :model-value="showThumbnails"
+          label="Show thumbnails"
+          color="primary"
+          density="compact"
+          hide-details
+          class="flex-grow-0 ml-2"
+          @update:model-value="onShowThumbnailsChange"
+        />
+<!-- #endif -->
       </div>
 
       <div v-if="appStore.loading.images" class="d-flex justify-center align-center py-12">
@@ -136,6 +184,9 @@ function getThumbnailUrl(image) {
 
       <template v-else>
         <v-row v-if="appStore.currentAlbumImages.length > 0">
+<!-- #if FORK_FIXES -->
+          <v-col v-for="image in visibleImages" :key="image.filename" cols="6" sm="4" md="3" lg="2">
+<!-- #else -->
           <v-col
             v-for="image in appStore.currentAlbumImages"
             :key="image.filename"
@@ -144,8 +195,12 @@ function getThumbnailUrl(image) {
             md="3"
             lg="2"
           >
+<!-- #endif -->
             <v-card variant="outlined" class="image-card">
               <v-img
+<!-- #if FORK_FIXES -->
+                v-if="showThumbnails && image.thumbnail"
+<!-- #endif -->
                 :src="getThumbnailUrl(image)"
                 :alt="image.filename"
                 aspect-ratio="1"
@@ -159,6 +214,19 @@ function getThumbnailUrl(image) {
                   </div>
                 </template>
               </v-img>
+<!-- #if FORK_FIXES -->
+              <div
+                v-else
+                class="d-flex flex-column align-center justify-center cursor-pointer bg-grey-lighten-3 pa-2 thumbnail-placeholder"
+                style="aspect-ratio: 1"
+                @click="confirmDisplayImage(image)"
+              >
+                <v-icon icon="mdi-image-outline" size="32" color="grey" />
+                <span class="text-caption text-grey text-truncate" style="max-width: 100%">{{
+                  image.filename
+                }}</span>
+              </div>
+<!-- #endif -->
               <div class="delete-hotspot">
                 <v-btn
                   icon="mdi-delete"
@@ -174,7 +242,25 @@ function getThumbnailUrl(image) {
           </v-col>
         </v-row>
 
+<!-- #if FORK_FIXES -->
+        <div
+          v-if="visibleCount < appStore.currentAlbumImages.length"
+          class="d-flex justify-center mt-2"
+        >
+          <v-btn variant="tonal" @click="showMoreImages">
+            Load more ({{ appStore.currentAlbumImages.length - visibleCount }} remaining)
+          </v-btn>
+        </div>
+
+        <v-alert
+          v-if="appStore.currentAlbumImages.length === 0"
+          type="info"
+          variant="tonal"
+          class="mt-4"
+        >
+<!-- #else -->
         <v-alert v-else type="info" variant="tonal" class="mt-4">
+<!-- #endif -->
           No images in this album. Upload images to get started.
         </v-alert>
       </template>
