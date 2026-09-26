@@ -16,6 +16,12 @@ BOARD_DIMENSIONS = {b["id"]: tuple(b["resolution"]) for b in BOARDS}
 # the default). Used to pick the dithering palette for splash generation, etc.
 BOARD_DISPLAY_TYPE = {b["id"]: b.get("display_type", "spectra6") for b in BOARDS}
 
+# Optional hardware per board ("speaker", "microphone", "climate_sensor"),
+# consumed by scripts/features.py to accept or reject build-time features.
+# scripts/check_capabilities.py keeps this in sync with the board headers
+# (BOARD_HAL_HAS_*) and the sensor selects in components/board_hal/Kconfig.
+BOARD_CAPABILITIES = {b["id"]: tuple(b.get("capabilities", [])) for b in BOARDS}
+
 # ESP-IDF target chip per board. All boards are ESP32-S3 except the M5Paper,
 # which is a plain ESP32 (ESP32-D0WDQ6-V3). Used to pass -DIDF_TARGET to
 # idf.py and to pick the esptool --chip / bootloader offset.

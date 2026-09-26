@@ -1,0 +1,3 @@
+# Enabled by `build.py --with display-history` (see docs/FEATURE_FLAGS_PLAN.md).
+# Feature-specific sdkconfig lines belong in this file.
+CONFIG_FEATURE_DISPLAY_HISTORY=y

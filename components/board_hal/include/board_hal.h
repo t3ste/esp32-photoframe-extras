@@ -55,6 +55,29 @@ typedef enum {
 #define BOARD_HAL_DISPLAY_TYPE "spectra6"
 #endif
 
+// Optional hardware. A board with an ES8311/PA speaker path defines
+// BOARD_HAL_HAS_SPEAKER 1 in its own header (see board_waveshare_photopainter_73.h)
+// before including this file; likewise BOARD_HAL_HAS_MICROPHONE for an onboard
+// microphone. main/feature_config.h rejects features whose hardware is missing.
+#ifndef BOARD_HAL_HAS_SPEAKER
+#define BOARD_HAL_HAS_SPEAKER 0
+#endif
+
+#ifndef BOARD_HAL_HAS_MICROPHONE
+#define BOARD_HAL_HAS_MICROPHONE 0
+#endif
+
+// True if the board's Kconfig entry selects a climate sensor driver at all
+// (components/board_hal/Kconfig). No per-board header needs to set it. Whether
+// the sensor answers on a given unit is a runtime question
+// (board_hal_get_temperature()/get_humidity()).
+#if defined(CONFIG_SENSOR_DRIVER_SHTC3) || defined(CONFIG_SENSOR_DRIVER_SHT40) || \
+    defined(CONFIG_SENSOR_DRIVER_SHT3X)
+#define BOARD_HAL_HAS_CLIMATE_SENSOR 1
+#else
+#define BOARD_HAL_HAS_CLIMATE_SENSOR 0
+#endif
+
 /**
  * @brief Initialize the Board HAL
  *

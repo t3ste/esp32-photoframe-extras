@@ -5,6 +5,7 @@
     "display": "7.3\" 6-color",
     "resolution": [800, 480],
     "storage": "SD card (SDIO)",
+    "capabilities": ["speaker", "microphone", "climate_sensor"],
     "url": "https://www.waveshare.com/wiki/ESP32-S3-PhotoPainter"
   },
   {
@@ -30,6 +31,7 @@
     "resolution": [1872, 1404],
     "display_type": "gc16",
     "storage": "Internal flash",
+    "capabilities": ["climate_sensor"],
     "url": "https://wiki.seeedstudio.com/getting_started_with_ee03/"
   },
   {
@@ -38,6 +40,7 @@
     "display": "7.3\" 6-color",
     "resolution": [800, 480],
     "storage": "SD (SPI) + Internal flash",
+    "capabilities": ["climate_sensor"],
     "url": "https://www.seeedstudio.com/reTerminal-E1002-p-6533.html"
   },
   {
@@ -47,6 +50,7 @@
     "resolution": [1872, 1404],
     "display_type": "gc16",
     "storage": "SD (SPI) + Internal flash",
+    "capabilities": ["climate_sensor"],
     "url": "https://www.seeedstudio.com/reTerminal-E1003-p-6731.html"
   },
   {
@@ -55,6 +59,7 @@
     "display": "13.3\" 6-color",
     "resolution": [1200, 1600],
     "storage": "SD (SPI) + Internal flash",
+    "capabilities": ["climate_sensor"],
     "url": "https://www.seeedstudio.com/reTerminal-E1004-p-6692.html"
   },
   {
@@ -65,6 +70,7 @@
     "display_type": "gc16",
     "target": "esp32",
     "storage": "SD card (SPI)",
+    "capabilities": ["climate_sensor"],
     "url": "https://docs.m5stack.com/en/core/m5paper_v1.1"
   }
 ]

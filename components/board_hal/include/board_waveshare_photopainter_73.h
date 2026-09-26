@@ -43,6 +43,10 @@
 #define BOARD_HAL_LED_RED_PIN GPIO_NUM_45
 #define BOARD_HAL_LED_GREEN_PIN GPIO_NUM_42
 
+// ES8311 DAC + NS4150B speaker amplifier, ES7210 microphone ADC
+#define BOARD_HAL_HAS_SPEAKER 1
+#define BOARD_HAL_HAS_MICROPHONE 1
+
 // Display Configuration
 #define BOARD_HAL_DISPLAY_ROTATION_DEG 180
 
