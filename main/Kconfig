@@ -1,0 +1,133 @@
+menu "Photoframe optional features"
+
+    comment "Every feature is opt-in. With all of them off the firmware matches upstream."
+    comment "Select them with build.py (--with <feature> / --all-features), not by hand."
+
+    # ---- Hardware capabilities, derived from the board selection ------------
+    # Kept in sync with boards/boards.json and the BOARD_HAL_HAS_* macros by
+    # scripts/check_capabilities.py.
+
+    config FORK_HW_SPEAKER
+        bool
+        default y if BOARD_DRIVER_WAVESHARE_PHOTOPAINTER_73
+
+    config FORK_HW_MICROPHONE
+        bool
+        default y if BOARD_DRIVER_WAVESHARE_PHOTOPAINTER_73
+
+    config FORK_HW_CLIMATE_SENSOR
+        bool
+        default y if SENSOR_DRIVER_SHTC3 || SENSOR_DRIVER_SHT40 || SENSOR_DRIVER_SHT3X
+
+    # ---- Shared building blocks, selected by the features that need them ----
+
+    config FORK_HTTP_FETCH
+        bool
+
+    config FORK_WEATHER
+        bool
+        select FORK_HTTP_FETCH
+
+    config FORK_EXIF
+        bool
+
+    config FORK_IMAGE_PIPELINE
+        bool
+
+    # ---- Features -----------------------------------------------------------
+
+    config FEATURE_TELEGRAM
+        bool "Telegram bot photo rotation"
+        default n
+        select FORK_EXIF
+        select FORK_IMAGE_PIPELINE
+        help
+            Receive photos through a Telegram bot, remote commands, orientation
+            pairing and on-device EPDGZ conversion.
+
+    config FEATURE_OVERLAYS
+        bool "Weather and headline overlays"
+        default n
+        select FORK_WEATHER
+        select FORK_HTTP_FETCH
+        select FORK_EXIF
+        select FORK_IMAGE_PIPELINE
+        help
+            Weather forecast and news headline bars, photo captions and a
+            low-battery badge drawn on the display.
+
+    config FEATURE_AGENDA
+        bool "Agenda mode (ToDo and calendars)"
+        default n
+        select FORK_HTTP_FETCH
+        help
+            Full-screen ToDo list and calendar views (ICS sources A-E with
+            recurrence rules), 7-day grid and colour profiles.
+
+    config FEATURE_CHIMES
+        bool "Chimes (speaker feedback)"
+        default n
+        depends on FORK_HW_SPEAKER
+        help
+            Short beeps for firmware events. Needs a board with a speaker.
+
+    config FEATURE_CLIMATE
+        bool "Climate sensor readout and history"
+        default n
+        depends on FORK_HW_CLIMATE_SENSOR
+        help
+            Temperature and humidity badges, Agenda chip and history chart.
+            Needs a board with a temperature/humidity sensor.
+
+    config FEATURE_ALARMCLOCK
+        bool "Bedside alarm clock"
+        default n
+        depends on FORK_HW_SPEAKER
+        help
+            Configurable alarm schedule that wakes the device and rings through
+            the speaker without bringing up WiFi. Needs a board with a speaker.
+
+    config FEATURE_VOICE_STOP
+        bool "Stop the alarm with a spoken word"
+        default n
+        depends on FEATURE_ALARMCLOCK && FORK_HW_SPEAKER && FORK_HW_MICROPHONE
+        help
+            Keyword spotting on the onboard microphone, plus the microphone
+            level meter and speaker self-test tools. Needs the alarm clock and
+            a board with speaker and microphone.
+
+    config FEATURE_BATTERY_HISTORY
+        bool "Battery history"
+        default n
+        help
+            Battery voltage log with a chart and a days-remaining estimate.
+
+    config FEATURE_DISPLAY_HISTORY
+        bool "Display history (no-repeat random rotation)"
+        default n
+        help
+            Random rotation shows every image once before repeating.
+
+    config FEATURE_HTTPS
+        bool "HTTPS web UI"
+        default n
+        help
+            Second, TLS-encrypted web server on port 443 with an on-device
+            self-signed certificate. Plain HTTP on port 80 keeps working.
+
+    config FEATURE_FACECROP
+        bool "Face-aware crop variants"
+        default n
+        select FORK_IMAGE_PIPELINE
+        help
+            Uses face-crop sidecar files and pre-rendered Cover/Fit variants
+            produced by process-cli.
+
+    config FORK_FIXES
+        bool "General fixes and robustness improvements"
+        default n
+        help
+            Bug fixes and hardening that go beyond upstream and are not tied
+            to a single feature.
+
+endmenu
