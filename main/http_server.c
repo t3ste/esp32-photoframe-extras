@@ -14,6 +14,8 @@
 
 #if FEATURE_AGENDA
 #include "agenda_color_profile.h"
+#endif
+#if FEATURE_ALARMCLOCK
 #include "alarm_manager.h"
 #endif
 #include "album_manager.h"
@@ -44,7 +46,7 @@
 #include "esp_vfs_fat.h"
 #include "freertos/task.h"
 #include "ha_integration.h"
-#if FEATURE_DISPLAY_HISTORY
+#if FORK_ANY
 #include "history_manager.h"
 #endif
 #include "http_auth.h"
@@ -3520,7 +3522,7 @@ static esp_err_t display_calibration_handler(httpd_req_t *req)
     }
 }
 
-#if FEATURE_OVERLAYS
+#if FEATURE_ERROR_BANNER
 static esp_err_t error_overlay_test_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "Testing error overlay display");
@@ -4104,7 +4106,9 @@ static void register_all_handlers(httpd_handle_t handle)
     register_uri(handle, "/api/config", HTTP_GET, config_handler);
     register_uri(handle, "/api/config", HTTP_POST, config_handler);
     register_uri(handle, "/api/config", HTTP_PATCH, config_handler);
+#if FEATURE_AGENDA
     register_uri(handle, "/api/config/urls", HTTP_GET, config_urls_handler);
+#endif
     register_uri(handle, "/api/debug/log", HTTP_GET, debug_log_download_handler);
     register_uri(handle, "/api/debug/log", HTTP_DELETE, debug_log_clear_handler);
     register_uri(handle, "/api/battery", HTTP_GET, battery_handler);
@@ -4229,6 +4233,53 @@ esp_err_t http_server_init(void)
     config.max_open_sockets = 10;    // Limit concurrent connections to prevent memory exhaustion
     config.lru_purge_enable = true;  // Enable LRU purging of connections
 
+#if FORK_ANY
+    if (httpd_start(&server, &config) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start HTTP server");
+        return ESP_FAIL;
+    }
+    register_all_handlers(server);
+    ESP_LOGI(TAG, "HTTP server started");
+
+#if FEATURE_HTTPS
+    // Optional second HTTPS instance (github.com/aitjcize/esp32-photoframe#130)
+    // on the same routes, port 443 - off by default (self-signed cert, so
+    // every client sees a browser warning to click through) via
+    // config_manager_get_https_enabled(). Purely additive: the plain HTTP
+    // instance above is never disabled by this, so existing bookmarks,
+    // Home Assistant, and any other scripted client keep working
+    // unchanged either way.
+    if (config_manager_get_https_enabled()) {
+        const uint8_t *cert_der, *key_der;
+        size_t cert_len, key_len;
+        if (https_cert_get(&cert_der, &cert_len, &key_der, &key_len) == ESP_OK) {
+            httpd_ssl_config_t https_config = HTTPD_SSL_CONFIG_DEFAULT();
+            https_config.httpd.max_uri_handlers = 88;
+            https_config.httpd.stack_size = 16384;
+            https_config.httpd.max_open_sockets =
+                4;  // TLS sockets cost real RAM - see esp_https_server.h
+            https_config.httpd.lru_purge_enable = true;
+            https_config.servercert = cert_der;
+            https_config.servercert_len = cert_len;
+            https_config.prvtkey_pem = key_der;
+            https_config.prvtkey_len = key_len;
+
+            if (httpd_ssl_start(&https_server, &https_config) == ESP_OK) {
+                register_all_handlers(https_server);
+                ESP_LOGI(TAG, "HTTPS server started on port %d (self-signed certificate)",
+                         https_config.port_secure);
+            } else {
+                ESP_LOGE(TAG, "Failed to start HTTPS server - continuing with HTTP only");
+            }
+        } else {
+            ESP_LOGE(TAG, "Failed to obtain HTTPS certificate - continuing with HTTP only");
+        }
+    }
+#endif
+
+    return ESP_OK;
+}
+#else
     if (httpd_start(&server, &config) == ESP_OK) {
         register_uri("/", HTTP_GET, index_handler);
 
@@ -4328,6 +4379,7 @@ esp_err_t http_server_init(void)
     ESP_LOGE(TAG, "Failed to start HTTP server");
     return ESP_FAIL;
 }
+#endif
 
 esp_err_t http_server_stop(void)
 {

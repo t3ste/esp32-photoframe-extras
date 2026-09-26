@@ -27,11 +27,25 @@ menu "Photoframe optional features"
     config FORK_EXIF
         bool
 
+    config FORK_WEATHER
+        bool
+        select FORK_HTTP_FETCH
+
+    config FORK_CLIMATE_CORE
+        bool
+
     config FORK_IMAGE_PIPELINE
         bool
 
     config FORK_AUDIO_HAL
         bool
+
+    config FORK_OTA_REPO
+        string "GitHub repository that OTA updates are fetched from (owner/name)"
+        default "aitjcize/esp32-photoframe"
+        help
+            The release feed the firmware checks for updates. The default is the
+            upstream project; a fork that publishes its own releases sets this.
 
     # ---- Features -----------------------------------------------------------
 
@@ -48,6 +62,8 @@ menu "Photoframe optional features"
         bool "Weather and headline overlays"
         default n
         select FORK_HTTP_FETCH
+        select FORK_WEATHER
+        select FORK_CLIMATE_CORE
         select FORK_EXIF
         select FORK_IMAGE_PIPELINE
         help
@@ -58,6 +74,8 @@ menu "Photoframe optional features"
         bool "Agenda mode (ToDo and calendars)"
         default n
         select FORK_HTTP_FETCH
+        select FORK_WEATHER
+        select FORK_CLIMATE_CORE
         select FORK_IMAGE_PIPELINE
         help
             Full-screen ToDo list and calendar views (ICS sources A-E with
@@ -75,6 +93,7 @@ menu "Photoframe optional features"
         bool "Climate sensor readout and history"
         default n
         depends on FORK_HW_CLIMATE_SENSOR
+        select FORK_CLIMATE_CORE
         select FORK_IMAGE_PIPELINE
         help
             Temperature and humidity badges, Agenda chip and history chart.

@@ -128,14 +128,16 @@ static int version_compare(const char *v1, const char *v2)
 }
 
 #if FEATURE_OTA_CHANNEL
+// A board without a speaker never offers the Alarm Clock firmware variant.
 static bool want_alarm_variant(void)
-#else
-static esp_err_t http_event_handler(esp_http_client_event_t *evt)
-#endif
 {
-#if FEATURE_OTA_CHANNEL
-    return s_alarm_variant && board_hal_has_speaker();
-#else
+    return s_alarm_variant && BOARD_HAL_HAS_SPEAKER;
+}
+#endif
+
+#if !FORK_FIXES
+static esp_err_t http_event_handler(esp_http_client_event_t *evt)
+{
     switch (evt->event_id) {
     case HTTP_EVENT_ERROR:
         ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
@@ -165,8 +167,8 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
         break;
     }
     return ESP_OK;
-#endif
 }
+#endif
 
 static esp_err_t fetch_github_release_info(char *latest_version, size_t version_len,
 #if FEATURE_OTA_CHANNEL
@@ -177,7 +179,7 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
 {
     esp_err_t err = ESP_FAIL;
     char *response_buffer = NULL;
-#if !(FEATURE_OTA_CHANNEL)
+#if !(FORK_FIXES)
     int response_len = 0;
 #endif
 
@@ -194,9 +196,14 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
     // JSON (GitHub's per-asset metadata, e.g. the uploader object, is
     // verbose) - 64 KB leaves real headroom for more assets later.
     size_t response_len = 0;
-    err =
-        http_fetch_get(s_channel == OTA_CHANNEL_PRERELEASE ? GITHUB_API_URL_NEWEST : GITHUB_API_URL,
-                       10000, 64 * 1024, &response_buffer, &response_len, NULL, "ESP32-PhotoFrame");
+#if FEATURE_OTA_CHANNEL
+    const char *api_url =
+        s_channel == OTA_CHANNEL_PRERELEASE ? GITHUB_API_URL_NEWEST : GITHUB_API_URL;
+#else
+    const char *api_url = GITHUB_API_URL;
+#endif
+    err = http_fetch_get(api_url, 10000, 64 * 1024, &response_buffer, &response_len, NULL,
+                         "ESP32-PhotoFrame");
     if (err != ESP_OK || !response_buffer) {
         ESP_LOGE(TAG, "Failed to fetch release info: %s", esp_err_to_name(err));
 #else
@@ -759,7 +766,7 @@ void ota_get_options(ota_options_t *out)
 {
     out->channel = s_channel;
     out->alarmclock = want_alarm_variant();
-    out->alarmclock_available = board_hal_has_speaker();
+    out->alarmclock_available = BOARD_HAL_HAS_SPEAKER;
     out->running_alarmclock = RUNNING_ALARMCLOCK;
 }
 
@@ -768,7 +775,7 @@ esp_err_t ota_set_options(ota_channel_t channel, bool alarmclock)
     if (channel != OTA_CHANNEL_STABLE && channel != OTA_CHANNEL_PRERELEASE) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (alarmclock && !board_hal_has_speaker()) {
+    if (alarmclock && !BOARD_HAL_HAS_SPEAKER) {
         return ESP_ERR_NOT_SUPPORTED;
     }
     if (ota_status.state == OTA_STATE_CHECKING || ota_status.state == OTA_STATE_DOWNLOADING ||

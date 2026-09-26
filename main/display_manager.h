@@ -38,6 +38,14 @@ void display_manager_initialize_paint(void);
  */
 bool display_manager_is_photo_anchor(const char *album_path, const char *d_name);
 
+#else
+// Without face-crop variants every image file of an album is its own photo.
+static inline bool display_manager_is_photo_anchor(const char *album_path, const char *d_name)
+{
+    (void) album_path;
+    (void) d_name;
+    return true;
+}
 #endif
 /**
  * @brief Display an RGB buffer directly on the e-paper display

@@ -1,3 +1,6 @@
 # Enabled by `build.py --with overlays` (see docs/FEATURE_FLAGS_PLAN.md).
 # Feature-specific sdkconfig lines belong in this file.
 CONFIG_FEATURE_OVERLAYS=y
+
+# TLS session buffers from malloc() (PSRAM), see sdkconfig.defaults.fixes.
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y

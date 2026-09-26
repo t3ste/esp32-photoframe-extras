@@ -8,7 +8,7 @@
 #include "config.h"
 #include "esp_log.h"
 #include "feature_config.h"
-#if FEATURE_AGENDA
+#if FORK_ANY
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #endif
@@ -60,7 +60,7 @@ static char image_etag[HTTP_ETAG_MAX_LEN] = {0};
 // Home Assistant
 static char ha_url[HA_URL_MAX_LEN] = {0};
 
-#if FEATURE_TELEGRAM
+#if FORK_ANY
 // Telegram Bot
 static char telegram_bot_token[TELEGRAM_BOT_TOKEN_MAX_LEN] = {0};
 static char telegram_chat_id[TELEGRAM_CHAT_ID_MAX_LEN] = {0};
@@ -80,39 +80,23 @@ static bool telegram_dedup_enabled = false;
 static char telegram_seen_unique_ids[TELEGRAM_DEDUP_MAX_ENTRIES][TELEGRAM_UNIQUE_ID_MAX_LEN];
 static int telegram_seen_id_count = 0;
 
-#endif
-#if FORK_FIXES
 // Home Assistant
 static bool ha_enabled = false;
 
-#endif
-#if FEATURE_ERROR_BANNER
 // Error overlay / WiFi failure tracking
 static bool error_overlay_enabled = false;
 static int wifi_fail_count = 0;
 
-#endif
-#if FEATURE_WIFI_RESILIENCE
 // WiFi
 static bool wifi_performance_mode_enabled = true;
 static bool wifi_tx_power_cap_enabled = true;
 static bool wifi_extended_retry_enabled = false;
 static int wifi_coldboot_fail_count = 0;
 static bool wifi_reprovision_on_fail_enabled = true;
-#endif
-#if FEATURE_OFFLINE_HOTSPOT
 static bool offline_mode_enabled = false;
-#endif
-#if FEATURE_HTTPS
 static bool https_enabled = false;
-#endif
-#if FEATURE_TELEGRAM
 static bool rotation_pairing_enabled = false;
-#endif
-#if FEATURE_FACECROP
 static bool variant_selection_enabled = false;
-#endif
-#if FEATURE_TELEGRAM
 static bool telegram_rotation_notify_enabled = false;
 static bool telegram_fallback_rotation_enabled = true;
 static bool telegram_fallback_on_error_enabled = true;
@@ -121,8 +105,6 @@ static char telegram_image_format[TELEGRAM_IMAGE_FORMAT_MAX_LEN] = TELEGRAM_IMAG
 static bool telegram_power_save_enabled = false;
 static bool telegram_power_save_latest_only = false;
 
-#endif
-#if FEATURE_OVERLAYS
 // Weather + headline overlays
 static bool weather_overlay_enabled = false;
 static char weather_location_name[WEATHER_LOCATION_NAME_MAX_LEN] = {0};
@@ -142,31 +124,17 @@ static bool caption_invert_colors_enabled = false;
 static bool weather_multiline_enabled = false;
 static char weather_icon_set[WEATHER_ICON_SET_MAX_LEN] = WEATHER_ICON_SET_DEFAULT;
 static bool weather_icon_colored = false;
-#endif
-#if FORK_EXIF
 static bool show_exif_datetime_enabled = false;
-#endif
-#if FEATURE_OVERLAYS
 static bool low_battery_overlay_enabled = false;
 static uint8_t low_battery_overlay_threshold = LOW_BATTERY_OVERLAY_THRESHOLD_DEFAULT;
 static bool low_battery_overlay_active = false;
-#endif
-#if FEATURE_BATTERY_HISTORY
 static bool battery_history_backup_enabled = false;
-#endif
-#if FEATURE_OVERLAYS
 
-#endif
-#if FEATURE_AGENDA
 // Agenda (ToDo + Calendar) - a full-screen display mode, not a photo overlay
 static bool agenda_todo_enabled = false;
 static bool agenda_cal_enabled = false;
-#endif
-#if FEATURE_AGENDA && FEATURE_OVERLAYS
 static bool agenda_cal_weather_enabled = false;
 static bool agenda_cal_weather_right_aligned = false;
-#endif
-#if FEATURE_AGENDA
 static agenda_multiday_mode_t agenda_cal_multiday_mode = AGENDA_MULTIDAY_REPEAT;
 static agenda_time_display_mode_t agenda_cal_time_display_mode = AGENDA_TIME_DISPLAY_OFF;
 static char agenda_cal_name[AGENDA_CAL_NAME_MAX_LEN] = {0};
@@ -194,15 +162,13 @@ static int agenda_cron_rule_count = 0;
 static cron_rule_t agenda_cron_compiled[MAX_CRON_RULES];
 static int agenda_cron_compiled_count = -1;
 
-#endif
-#if FEATURE_ALARMCLOCK
 // Alarm clock schedule - only present in a FEATURE_ALARMCLOCK build
 // (main/Kconfig, `build.py --alarmclock`). Every public
 // config_manager_*_alarm_* function below has a stub in the #else branch
 // (empty schedule / no-op setter / default duration) so callers in main.c,
 // power_manager.c, http_server.c, and utils.c never need their own #ifdef -
 // same convention as board_hal_has_speaker() on boards without a speaker.
-#if FEATURE_ALARMCLOCK
+#if FORK_ANY
 static char alarm_cron_rules_store[MAX_CRON_RULES][CRON_RULE_MAX_LEN] = {{0}};
 static int alarm_cron_rule_count = 0;
 static cron_rule_t alarm_cron_compiled[MAX_CRON_RULES];
@@ -213,8 +179,6 @@ static int alarm_ramp_sec = ALARM_RAMP_DEFAULT_SEC;
 static int alarm_tune = 0;
 #endif
 
-#endif
-#if FEATURE_AGENDA
 static bool agenda_stack_layout = AGENDA_STACK_DEFAULT;
 static char agenda_pri_a_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_PRI_A_DEFAULT;
 static char agenda_pri_b_color[AGENDA_ROLE_COLOR_MAX_LEN] = AGENDA_PRI_B_DEFAULT;
@@ -237,8 +201,6 @@ static char agenda_cal_c_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
 static char agenda_cal_d_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
 static char agenda_cal_e_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
 
-#endif
-#if FEATURE_OTA_CHANNEL
 // OTA
 static bool ota_check_enabled = true;
 
@@ -256,7 +218,7 @@ static bool debug_log_enabled = false;
 // Config sync
 static int64_t config_last_updated = 0;
 
-#if FEATURE_CHIMES
+#if FORK_ANY
 // Chimes (speaker feedback) - off by default across the board, see config.h.
 static chime_speaker_mode_t chime_speaker_mode = CHIME_SPEAKER_OFF;
 static bool chime_quiet_enabled = false;
@@ -271,8 +233,6 @@ static bool chime_event_enabled[CHIME_EVENT_COUNT] = {
 static int chime_volume = CHIME_DEFAULT_VOLUME_PERCENT;
 static int chime_repeat_count[CHIME_EVENT_COUNT] = {0};
 
-#endif
-#if FEATURE_CLIMATE
 // Climate (SHTC3) - logging on by default (no visual clutter), the overlay
 // badge and Agenda-header readout off by default, see config.h.
 static climate_room_type_t climate_room_type = CLIMATE_ROOM_LIVING_ROOM;
@@ -341,7 +301,7 @@ static void cron_persist(void)
     }
 }
 
-#if FEATURE_AGENDA
+#if FORK_ANY
 // ----------------------------------------------------------------------------
 // Shared agenda NVS write helpers - every agenda_*_set_* function (cron
 // schedule included) writes through these three instead of hand-rolling its
@@ -543,8 +503,6 @@ static void agenda_cron_persist(void)
     agenda_nvs_set_str_or_erase(NVS_AGENDA_CRON_KEY, joined);
 }
 
-#endif
-#if FEATURE_ALARMCLOCK
 // ----------------------------------------------------------------------------
 // Alarm clock cron schedule helpers - independent third schedule, identical
 // '\n'-joined NVS encoding to the rotate/agenda schedules above. No seeded
@@ -592,8 +550,6 @@ static void alarm_cron_persist(void)
     agenda_nvs_set_str_or_erase(NVS_ALARM_CRON_KEY, joined);
 }
 
-#endif
-#if FEATURE_TELEGRAM
 // ----------------------------------------------------------------------------
 // Telegram pending-image list helpers (queue of images waiting for an
 // orientation-pairing partner). Joined-string NVS encoding mirrors the cron
@@ -754,7 +710,7 @@ esp_err_t config_manager_init(void)
 {
     ESP_LOGI(TAG, "Initializing config manager");
 
-#if FEATURE_AGENDA
+#if FORK_ANY
     // See the comment above config_manager_begin_agenda_batch()'s
     // definition - serializes the two concurrent-task call sites of
     // apply_config_from_json()'s agenda batch window.
@@ -989,7 +945,7 @@ esp_err_t config_manager_init(void)
             ESP_LOGI(TAG, "No HA URL in NVS, using default (empty)");
         }
 
-#if FORK_FIXES
+#if FORK_ANY
         uint8_t stored_ha_enabled;
         if (nvs_get_u8(nvs_handle, NVS_HA_ENABLED_KEY, &stored_ha_enabled) == ESP_OK) {
             ha_enabled = (stored_ha_enabled != 0);
@@ -1001,8 +957,6 @@ esp_err_t config_manager_init(void)
         }
         ESP_LOGI(TAG, "Home Assistant integration: %s", ha_enabled ? "enabled" : "disabled");
 
-#endif
-#if FEATURE_TELEGRAM
         // Telegram Bot
         size_t tg_token_len = TELEGRAM_BOT_TOKEN_MAX_LEN;
         if (nvs_get_str(nvs_handle, NVS_TELEGRAM_BOT_TOKEN_KEY, telegram_bot_token,
@@ -1040,8 +994,6 @@ esp_err_t config_manager_init(void)
             telegram_wake_notify_enabled = (stored_wake_notify != 0);
         }
 
-#endif
-#if FEATURE_ERROR_BANNER
         uint8_t stored_error_overlay = 0;
         if (nvs_get_u8(nvs_handle, NVS_ERROR_OVERLAY_ENABLED_KEY, &stored_error_overlay) ==
             ESP_OK) {
@@ -1053,8 +1005,6 @@ esp_err_t config_manager_init(void)
             wifi_fail_count = (int) stored_wifi_fail_count;
         }
 
-#endif
-#if FEATURE_WIFI_RESILIENCE
         uint8_t stored_wifi_perf = 1;  // Default to enabled (existing tiered behavior)
         if (nvs_get_u8(nvs_handle, NVS_WIFI_PERF_MODE_ENABLED_KEY, &stored_wifi_perf) == ESP_OK) {
             wifi_performance_mode_enabled = (stored_wifi_perf != 0);
@@ -1083,38 +1033,28 @@ esp_err_t config_manager_init(void)
             wifi_reprovision_on_fail_enabled = (stored_wifi_reprov != 0);
         }
 
-#endif
-#if FEATURE_OFFLINE_HOTSPOT
         uint8_t stored_offline_mode = 0;
         if (nvs_get_u8(nvs_handle, NVS_OFFLINE_MODE_KEY, &stored_offline_mode) == ESP_OK) {
             offline_mode_enabled = (stored_offline_mode != 0);
         }
 
-#endif
-#if FEATURE_HTTPS
         uint8_t stored_https = 0;
         if (nvs_get_u8(nvs_handle, NVS_HTTPS_ENABLED_KEY, &stored_https) == ESP_OK) {
             https_enabled = (stored_https != 0);
         }
 
-#endif
-#if FEATURE_TELEGRAM
         uint8_t stored_rotation_pairing = 0;
         if (nvs_get_u8(nvs_handle, NVS_ROTATION_PAIRING_ENABLED_KEY, &stored_rotation_pairing) ==
             ESP_OK) {
             rotation_pairing_enabled = (stored_rotation_pairing != 0);
         }
 
-#endif
-#if FEATURE_FACECROP
         uint8_t stored_variant_selection = 0;
         if (nvs_get_u8(nvs_handle, NVS_VARIANT_SELECTION_ENABLED_KEY, &stored_variant_selection) ==
             ESP_OK) {
             variant_selection_enabled = (stored_variant_selection != 0);
         }
 
-#endif
-#if FEATURE_TELEGRAM
         uint8_t stored_rotation_notify = 0;
         if (nvs_get_u8(nvs_handle, NVS_TELEGRAM_ROTATION_NOTIFY_KEY, &stored_rotation_notify) ==
             ESP_OK) {
@@ -1165,8 +1105,6 @@ esp_err_t config_manager_init(void)
             strncpy(telegram_image_format, stored_image_format, sizeof(telegram_image_format) - 1);
         }
 
-#endif
-#if FEATURE_OVERLAYS
         uint8_t stored_weather_overlay = 0;
         if (nvs_get_u8(nvs_handle, NVS_WEATHER_OVERLAY_ENABLED_KEY, &stored_weather_overlay) ==
             ESP_OK) {
@@ -1252,15 +1190,11 @@ esp_err_t config_manager_init(void)
             ESP_OK) {
             weather_icon_colored = (stored_weather_icon_colored != 0);
         }
-#endif
-#if FORK_EXIF
         uint8_t stored_show_exif_datetime = 0;
         if (nvs_get_u8(nvs_handle, NVS_SHOW_EXIF_DATETIME_KEY, &stored_show_exif_datetime) ==
             ESP_OK) {
             show_exif_datetime_enabled = (stored_show_exif_datetime != 0);
         }
-#endif
-#if FEATURE_OVERLAYS
         uint8_t stored_low_batt_overlay = 0;
         if (nvs_get_u8(nvs_handle, NVS_LOW_BATTERY_OVERLAY_ENABLED_KEY, &stored_low_batt_overlay) ==
             ESP_OK) {
@@ -1273,23 +1207,17 @@ esp_err_t config_manager_init(void)
             stored_low_batt_threshold <= LOW_BATTERY_OVERLAY_THRESHOLD_MAX) {
             low_battery_overlay_threshold = stored_low_batt_threshold;
         }
-#endif
-#if FEATURE_BATTERY_HISTORY
         uint8_t stored_batt_hist_backup = 0;
         if (nvs_get_u8(nvs_handle, NVS_BATTERY_HISTORY_BACKUP_KEY, &stored_batt_hist_backup) ==
             ESP_OK) {
             battery_history_backup_enabled = (stored_batt_hist_backup != 0);
         }
-#endif
-#if FEATURE_OVERLAYS
         uint8_t stored_low_batt_overlay_active = 0;
         if (nvs_get_u8(nvs_handle, NVS_LOW_BATTERY_OVERLAY_ACTIVE_KEY,
                        &stored_low_batt_overlay_active) == ESP_OK) {
             low_battery_overlay_active = (stored_low_batt_overlay_active != 0);
         }
 
-#endif
-#if FEATURE_AGENDA
         uint8_t stored_agenda_todo_en = 0;
         if (nvs_get_u8(nvs_handle, NVS_AGENDA_TODO_ENABLED_KEY, &stored_agenda_todo_en) == ESP_OK) {
             agenda_todo_enabled = (stored_agenda_todo_en != 0);
@@ -1298,8 +1226,6 @@ esp_err_t config_manager_init(void)
         if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_ENABLED_KEY, &stored_agenda_cal_en) == ESP_OK) {
             agenda_cal_enabled = (stored_agenda_cal_en != 0);
         }
-#endif
-#if FEATURE_AGENDA && FEATURE_OVERLAYS
         uint8_t stored_agenda_cal_wthr = 0;
         if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_WEATHER_KEY, &stored_agenda_cal_wthr) == ESP_OK) {
             agenda_cal_weather_enabled = (stored_agenda_cal_wthr != 0);
@@ -1309,8 +1235,6 @@ esp_err_t config_manager_init(void)
             ESP_OK) {
             agenda_cal_weather_right_aligned = (stored_agenda_cal_wal != 0);
         }
-#endif
-#if FEATURE_AGENDA
         uint8_t stored_agenda_cal_cpt = 0;
         if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_COMPACT_KEY, &stored_agenda_cal_cpt) == ESP_OK) {
             agenda_cal_multiday_mode = (stored_agenda_cal_cpt <= AGENDA_MULTIDAY_REPEAT_NUMBERED)
@@ -1426,8 +1350,6 @@ esp_err_t config_manager_init(void)
                 ESP_LOGI(TAG, "No agenda schedule in NVS, using default: %s", DEFAULT_AGENDA_CRON);
             }
         }
-#endif
-#if FEATURE_ALARMCLOCK
         {
             static char alarm_cron_buf[MAX_CRON_RULES * CRON_RULE_MAX_LEN];
             alarm_cron_buf[0] = '\0';
@@ -1459,8 +1381,6 @@ esp_err_t config_manager_init(void)
             stored_alarm_tune <= ALARM_TUNE_MAX_INDEX) {
             alarm_tune = stored_alarm_tune;
         }
-#endif
-#if FEATURE_AGENDA
         uint8_t stored_agenda_stack = AGENDA_STACK_DEFAULT ? 1 : 0;
         if (nvs_get_u8(nvs_handle, NVS_AGENDA_STACK_KEY, &stored_agenda_stack) == ESP_OK) {
             agenda_stack_layout = (stored_agenda_stack != 0);
@@ -1484,8 +1404,6 @@ esp_err_t config_manager_init(void)
         agenda_role_color_load(nvs_handle, NVS_AGENDA_CTX_C_KEY, agenda_context_color,
                                sizeof(agenda_context_color), AGENDA_CTX_C_DEFAULT);
 
-#endif
-#if FEATURE_TELEGRAM
         {
             static char pending_buf[TELEGRAM_PENDING_JOINED_MAX];
             pending_buf[0] = '\0';
@@ -1510,8 +1428,6 @@ esp_err_t config_manager_init(void)
             }
         }
 
-#endif
-#if FEATURE_OTA_CHANNEL
         uint8_t stored_ota_check = 1;  // Default to enabled (unchanged prior behavior)
         if (nvs_get_u8(nvs_handle, NVS_OTA_CHECK_ENABLED_KEY, &stored_ota_check) == ESP_OK) {
             ota_check_enabled = (stored_ota_check != 0);
@@ -1553,7 +1469,7 @@ esp_err_t config_manager_init(void)
             ESP_LOGI(TAG, "Loaded config_last_updated: %lld", (long long) config_last_updated);
         }
 
-#if FEATURE_CHIMES
+#if FORK_ANY
         // Chimes
         uint8_t stored_chime_mode = 0;
         if (nvs_get_u8(nvs_handle, NVS_CHIME_SPEAKER_MODE_KEY, &stored_chime_mode) == ESP_OK) {
@@ -1600,8 +1516,6 @@ esp_err_t config_manager_init(void)
             chime_repeat_count[CHIME_EVENT_AGENDA_DUE] = (int) stored_chime_rc;
         }
 
-#endif
-#if FEATURE_CLIMATE
         // Climate
         uint8_t stored_climate_room = 0;
         if (nvs_get_u8(nvs_handle, NVS_CLIMATE_ROOM_TYPE_KEY, &stored_climate_room) == ESP_OK) {
@@ -2359,7 +2273,7 @@ const char *config_manager_get_ha_url(void)
     return ha_url;
 }
 
-#if FORK_FIXES
+#if FORK_ANY
 void config_manager_set_ha_enabled(bool enabled)
 {
     ha_enabled = enabled;
@@ -2379,8 +2293,6 @@ bool config_manager_get_ha_enabled(void)
     return ha_enabled;
 }
 
-#endif
-#if FEATURE_TELEGRAM
 // ============================================================================
 // Telegram Bot
 // ============================================================================
@@ -2577,14 +2489,10 @@ bool config_manager_get_telegram_wake_notify_enabled(void)
     return telegram_wake_notify_enabled;
 }
 
-#endif
-#if FEATURE_OVERLAYS
 // ============================================================================
 // Error overlay / WiFi failure tracking
 // ============================================================================
 
-#endif
-#if FEATURE_ERROR_BANNER
 void config_manager_set_error_overlay_enabled(bool enabled)
 {
     error_overlay_enabled = enabled;
@@ -2621,8 +2529,6 @@ int config_manager_get_wifi_fail_count(void)
     return wifi_fail_count;
 }
 
-#endif
-#if FEATURE_WIFI_RESILIENCE
 // ============================================================================
 // WiFi
 // ============================================================================
@@ -2721,8 +2627,6 @@ bool config_manager_get_wifi_reprovision_on_fail_enabled(void)
     return wifi_reprovision_on_fail_enabled;
 }
 
-#endif
-#if FEATURE_OFFLINE_HOTSPOT
 void config_manager_set_offline_mode_enabled(bool enabled)
 {
     offline_mode_enabled = enabled;
@@ -2742,8 +2646,6 @@ bool config_manager_get_offline_mode_enabled(void)
     return offline_mode_enabled;
 }
 
-#endif
-#if FEATURE_HTTPS
 void config_manager_set_https_enabled(bool enabled)
 {
     https_enabled = enabled;
@@ -2764,8 +2666,6 @@ bool config_manager_get_https_enabled(void)
     return https_enabled;
 }
 
-#endif
-#if FEATURE_TELEGRAM
 void config_manager_set_rotation_pairing_enabled(bool enabled)
 {
     rotation_pairing_enabled = enabled;
@@ -2785,8 +2685,6 @@ bool config_manager_get_rotation_pairing_enabled(void)
     return rotation_pairing_enabled;
 }
 
-#endif
-#if FEATURE_FACECROP
 void config_manager_set_variant_selection_enabled(bool enabled)
 {
     variant_selection_enabled = enabled;
@@ -2806,8 +2704,6 @@ bool config_manager_get_variant_selection_enabled(void)
     return variant_selection_enabled;
 }
 
-#endif
-#if FEATURE_TELEGRAM
 void config_manager_set_telegram_rotation_notify_enabled(bool enabled)
 {
     telegram_rotation_notify_enabled = enabled;
@@ -3006,8 +2902,6 @@ void config_manager_telegram_mark_seen_unique_id(const char *unique_id)
     telegram_seen_ids_persist();
 }
 
-#endif
-#if FEATURE_OVERLAYS
 void config_manager_set_weather_overlay_enabled(bool enabled)
 {
     weather_overlay_enabled = enabled;
@@ -3398,15 +3292,11 @@ void config_manager_set_show_exif_datetime_enabled(bool enabled)
              enabled ? "enabled" : "disabled");
 }
 
-#endif
-#if FORK_EXIF
 bool config_manager_get_show_exif_datetime_enabled(void)
 {
     return show_exif_datetime_enabled;
 }
 
-#endif
-#if FEATURE_OVERLAYS
 void config_manager_set_low_battery_overlay_enabled(bool enabled)
 {
     low_battery_overlay_enabled = enabled;
@@ -3449,8 +3339,6 @@ int config_manager_get_low_battery_overlay_threshold(void)
     return low_battery_overlay_threshold;
 }
 
-#endif
-#if FEATURE_BATTERY_HISTORY
 void config_manager_set_battery_history_backup_enabled(bool enabled)
 {
     battery_history_backup_enabled = enabled;
@@ -3462,8 +3350,6 @@ bool config_manager_get_battery_history_backup_enabled(void)
     return battery_history_backup_enabled;
 }
 
-#endif
-#if FEATURE_OVERLAYS
 // Internal hysteresis state - not a user setting, see NVS_LOW_BATTERY_OVERLAY_ACTIVE_KEY.
 void config_manager_set_low_battery_overlay_active(bool active)
 {
@@ -3482,8 +3368,6 @@ bool config_manager_get_low_battery_overlay_active(void)
     return low_battery_overlay_active;
 }
 
-#endif
-#if FEATURE_AGENDA
 // ============================================================================
 // Agenda (ToDo + Calendar)
 // ============================================================================
@@ -3512,8 +3396,6 @@ bool config_manager_get_agenda_cal_enabled(void)
     return agenda_cal_enabled;
 }
 
-#endif
-#if FEATURE_AGENDA && FEATURE_OVERLAYS
 void config_manager_set_agenda_cal_weather_enabled(bool enabled)
 {
     agenda_cal_weather_enabled = enabled;
@@ -3537,8 +3419,6 @@ bool config_manager_get_agenda_cal_weather_right_aligned(void)
     return agenda_cal_weather_right_aligned;
 }
 
-#endif
-#if FEATURE_AGENDA
 void config_manager_set_agenda_cal_multiday_mode(agenda_multiday_mode_t mode)
 {
     if (mode < AGENDA_MULTIDAY_REPEAT || mode > AGENDA_MULTIDAY_REPEAT_NUMBERED) {
@@ -3925,9 +3805,7 @@ int config_manager_get_compiled_agenda_cron_rules(cron_rule_t *out, int max)
     return n;
 }
 
-#endif
-#if FEATURE_ALARMCLOCK
-#if FEATURE_ALARMCLOCK
+#if FORK_ANY
 int config_manager_get_alarm_cron_rule_count(void)
 {
     return alarm_cron_rule_count;
@@ -4096,8 +3974,6 @@ int config_manager_get_alarm_tune(void)
 }
 #endif  // FEATURE_ALARMCLOCK
 
-#endif
-#if FEATURE_AGENDA
 void config_manager_set_agenda_stack_layout(bool stacked)
 {
     agenda_stack_layout = stacked;
@@ -4237,8 +4113,6 @@ int config_manager_get_agenda_color_profile_active(void)
     return agenda_color_profile_active;
 }
 
-#endif
-#if FEATURE_OTA_CHANNEL
 // ============================================================================
 // OTA
 // ============================================================================
@@ -4375,7 +4249,7 @@ void config_manager_touch_config(void)
     time(&now);
     config_manager_set_config_last_updated((int64_t) now);
 }
-#if FEATURE_CHIMES
+#if FORK_ANY
 
 // ============================================================================
 // Chimes (speaker feedback)
@@ -4517,8 +4391,6 @@ int config_manager_get_chime_repeat_count(chime_event_t event)
     return chime_repeat_count[event];
 }
 
-#endif
-#if FEATURE_CLIMATE
 // ============================================================================
 // Climate (SHTC3 temperature/humidity)
 // ============================================================================
@@ -4584,8 +4456,6 @@ bool config_manager_get_climate_overlay_enabled(void)
     return climate_overlay_enabled;
 }
 
-#endif
-#if FEATURE_CLIMATE && FEATURE_AGENDA
 void config_manager_set_climate_agenda_header_enabled(bool enabled)
 {
     climate_agenda_header_enabled = enabled;
@@ -4597,8 +4467,6 @@ bool config_manager_get_climate_agenda_header_enabled(void)
     return climate_agenda_header_enabled;
 }
 
-#endif
-#if FEATURE_CLIMATE
 void config_manager_set_climate_temp_offset(const char *offset_c_str)
 {
     strncpy(climate_temp_offset, offset_c_str ? offset_c_str : "0",

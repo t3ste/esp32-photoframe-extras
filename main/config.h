@@ -8,7 +8,7 @@
 // Uncomment to debug deep sleep wake
 // #define DEBUG_DEEP_SLEEP_WAKE
 
-#if FEATURE_TELEGRAM
+#if FORK_ANY
 typedef enum {
     ROTATION_MODE_STORAGE = 0,
     ROTATION_MODE_URL = 1,
@@ -29,7 +29,7 @@ typedef enum {
 // override is independent — it applies in both modes (empty = automatic).
 typedef enum { IP_MODE_DHCP = 0, IP_MODE_STATIC = 1 } ip_mode_t;
 
-#if FEATURE_AGENDA
+#if FORK_ANY
 // How the Calendar column of Agenda mode displays a multi-day event - see
 // NVS_AGENDA_CAL_COMPACT_KEY below and agenda_renderer.c's
 // event_total_days()/event_day_index(). Values are stored as-is in NVS, so
@@ -78,8 +78,6 @@ typedef enum {
     AGENDA_SHIFT_MODEL_3_4 = 3,        // 3/4-day segments
 } agenda_shift_model_t;
 
-#endif
-#if FEATURE_CHIMES
 // Master mode for the Chimes speaker feature (see board_hal_has_speaker() /
 // board_hal_play_beep_pattern() and main/chime.c). Values are stored as-is
 // in NVS, so the numbering must stay stable across firmware versions.
@@ -104,8 +102,6 @@ typedef enum {
     CHIME_EVENT_COUNT,  // not a real event - array size for chime.c's fire-count cap
 } chime_event_t;
 
-#endif
-#if FEATURE_CLIMATE
 // Preset room profile the SHTC3 climate sensor is classified against - see
 // climate_classify_temperature()/climate_classify_humidity() in climate.c.
 // Values are stored as-is in NVS, so the numbering must stay stable.
@@ -145,7 +141,7 @@ typedef enum {
 #define HTTP_HEADER_VALUE_MAX_LEN 512
 #define CA_CERT_MAX_LEN 4096
 #define HTTP_ETAG_MAX_LEN 128
-#if FEATURE_TELEGRAM
+#if FORK_ANY
 #define TELEGRAM_BOT_TOKEN_MAX_LEN 128
 #define TELEGRAM_CHAT_ID_MAX_LEN 32
 #endif
@@ -155,7 +151,7 @@ typedef enum {
 #define DEFAULT_WIFI_PASSWORD "photoframe123"
 #define DEFAULT_IMAGE_URL "https://loremflickr.com/800/480"
 #define DEFAULT_HA_URL ""
-#if FEATURE_TELEGRAM
+#if FORK_ANY
 #define DEFAULT_TELEGRAM_BOT_TOKEN ""
 #define DEFAULT_TELEGRAM_CHAT_ID ""
 #endif
@@ -173,7 +169,7 @@ typedef enum {
 
 #define IMAGE_DIRECTORY FS_MOUNT_POINT "/images"
 #define DOWNLOAD_DIRECTORY IMAGE_DIRECTORY "/Downloads"
-#if FEATURE_TELEGRAM
+#if FORK_ANY
 #define TELEGRAM_DOWNLOAD_DIRECTORY IMAGE_DIRECTORY "/Telegram"
 // Optional archive of Telegram photos exactly as received, before e-paper
 // processing (dithering/palette quantization) overwrites them. Not a
@@ -192,11 +188,11 @@ typedef enum {
 #define CURRENT_PNG_PATH FS_MOUNT_POINT "/.current.png"
 #define CURRENT_EPD_PATH FS_MOUNT_POINT "/.current.epdgz"
 #define CURRENT_IMAGE_LINK FS_MOUNT_POINT "/.current.lnk"
-#if FEATURE_TELEGRAM
+#if FORK_ANY
 #define TELEGRAM_THUMBNAIL_MAX_DIMENSION 300
 #endif
 #define CURRENT_CALIBRATION_PATH FS_MOUNT_POINT "/.calibration.png"
-#if FEATURE_OVERLAYS
+#if FORK_ANY
 // Scratch copy used to composite the weather/headline overlay bar onto the
 // image a rotation is about to show, without ever mutating the saved album
 // file (its content is only valid for the current wake). Deliberately not
@@ -209,8 +205,6 @@ typedef enum {
 // scratch file's extension always matches its actual content.
 #define CURRENT_OVERLAY_EPDGZ_PATH FS_MOUNT_POINT "/.overlay.epdgz"
 
-#endif
-#if FEATURE_AGENDA
 // Agenda (ToDo + Calendar) full-screen render scratch file - always PNG,
 // no EPDGZ variant needed (this is a from-scratch canvas, never decoded
 // back, so there's no "matches the source format" concern like the
@@ -251,8 +245,6 @@ typedef enum {
 // re-parsing roughly this often, not on every wake.
 #define AGENDA_EXTRA_ICS_EXPAND_DAYS 30
 
-#endif
-#if FEATURE_TELEGRAM
 // On-demand thumbnail scratch file for telegram_bot_notify_fallback_image() -
 // generated only when the image being reported has no pre-existing ".jpg"
 // sidecar (true for any plain Storage/Auto-Rotate album image, since that
@@ -265,15 +257,11 @@ typedef enum {
 // otherwise show up as a "new" photo to album_manager/gallery/rotation).
 #define TELEGRAM_NOTIFY_THUMB_PATH FS_MOUNT_POINT "/.tg_notify_thumb.jpg"
 
-#endif
-#if FEATURE_DISPLAY_HISTORY
 // Display-history file (one shown image's full path per line) - lets random
 // rotation and the Telegram fallback rotation cycle through every image once
 // before repeating. See history_manager.[ch].
 #define DISPLAY_HISTORY_PATH FS_MOUNT_POINT "/.display_history"
 
-#endif
-#if FEATURE_BATTERY_HISTORY
 // Battery history log (one "<unix_ts>,<percent>,<charging 0|1>" line per
 // recorded reading, appended once per successfully displayed image). See
 // battery_history.[ch]. Cleared automatically on a fresh full charge or
@@ -283,8 +271,6 @@ typedef enum {
 #define BATTERY_HISTORY_MAX_AGE_DAYS 180
 #define BATTERY_HISTORY_TARGET_PERCENT 20
 
-#endif
-#if FEATURE_CLIMATE
 // Climate (SHTC3 temperature/humidity) history log (one
 // "<unix_ts>,<temp_c>,<humidity>" line per recorded reading). See
 // climate_history.[ch]. No natural "reset" event like a battery recharge, so
@@ -406,7 +392,7 @@ typedef enum {
 // Home Assistant
 #define NVS_HA_URL_KEY "ha_url"
 
-#if FEATURE_TELEGRAM
+#if FORK_ANY
 // Telegram Bot
 #define NVS_TELEGRAM_BOT_TOKEN_KEY "tg_bot_token"
 #define NVS_TELEGRAM_CHAT_ID_KEY "tg_chat_id"
@@ -436,21 +422,15 @@ typedef enum {
 // Telegram every poll, even with no new updates - opt-in, off by default.
 #define NVS_TELEGRAM_WAKE_NOTIFY_KEY "tg_wake_notify"
 
-#endif
-#if FORK_FIXES
 // Home Assistant
 #define NVS_HA_ENABLED_KEY "ha_enabled"
 
-#endif
-#if FEATURE_ERROR_BANNER
 // On-display error overlay for persistent failures (e.g. repeated WiFi
 // connect failure on a scheduled wake) - opt-in, off by default.
 #define NVS_ERROR_OVERLAY_ENABLED_KEY "err_overlay_en"
 #define NVS_WIFI_FAIL_COUNT_KEY "wifi_fail_cnt"
 #define WIFI_FAIL_OVERLAY_THRESHOLD 3
 
-#endif
-#if FEATURE_WIFI_RESILIENCE
 // WiFi performance mode: when enabled (default), the existing tiered policy
 // (power_manager's sleep_timer_task) grants full-RX/low-latency WiFi during
 // interactive wakes or USB power. When disabled, WiFi power-save always stays
@@ -499,8 +479,6 @@ typedef enum {
 // every time despite the saved credentials being correct the whole time.
 #define NVS_WIFI_REPROV_ON_FAIL_KEY "wifi_reprov_en"
 
-#endif
-#if FEATURE_OFFLINE_HOTSPOT
 // Set during first-time setup (github.com/aitjcize/esp32-photoframe#90) when
 // the user picks "use offline, no WiFi network" instead of entering real
 // credentials. OR'd into wifi_provisioning_is_provisioned()'s gate so the
@@ -511,8 +489,6 @@ typedef enum {
 // device - offline or not - can enter any time via a long BOOT hold.
 #define NVS_OFFLINE_MODE_KEY "offline_mode"
 
-#endif
-#if FEATURE_HTTPS
 // Opt-in second HTTPS listener alongside the always-on plain HTTP one
 // (github.com/aitjcize/esp32-photoframe#130) - off by default since it uses
 // a per-device self-signed certificate (main/https_cert.c), which every
@@ -522,8 +498,6 @@ typedef enum {
 // effect on the next http_server_init() (boot/reconnect), not live.
 #define NVS_HTTPS_ENABLED_KEY "https_enabled"
 
-#endif
-#if FEATURE_TELEGRAM
 // Orientation-pairing during normal (non-Telegram) auto-rotation: when the
 // randomly-picked next image doesn't match the panel's orientation, look for
 // another mismatched image in the active album(s) and combine them instead
@@ -531,8 +505,6 @@ typedef enum {
 // only - sequential mode's deterministic index cursor is left untouched.
 #define NVS_ROTATION_PAIRING_ENABLED_KEY "rot_pairing_en"
 
-#endif
-#if FEATURE_FACECROP
 // Cover/Fit pre-rendered variant selection during Storage/SD rotation (see
 // docs/FACE_CROP.md): recognizes process-cli's --crop-output both output
 // ("<name>.fit.<ext>" next to the original, "<name>.cover.<ext>" in a
@@ -543,8 +515,6 @@ typedef enum {
 // Opt-in, off by default - purely additive over existing albums either way.
 #define NVS_VARIANT_SELECTION_ENABLED_KEY "variant_sel_en"
 
-#endif
-#if FEATURE_TELEGRAM
 // When a Telegram-mode wake falls back to normal album rotation (no new
 // Telegram image this cycle), send a thumbnail of whatever got displayed to
 // the chat, so it stays visible what the frame is showing even without a
@@ -613,8 +583,6 @@ typedef enum {
 #define TELEGRAM_IMAGE_FORMAT_EPDGZ "epdgz"
 #define TELEGRAM_IMAGE_FORMAT_DEFAULT TELEGRAM_IMAGE_FORMAT_EPDGZ
 
-#endif
-#if FEATURE_OVERLAYS
 // Weather + headline overlays: composited as a text bar across the TOP of
 // whatever image a rotation is about to show (see CURRENT_OVERLAY_PNG_PATH) -
 // on-device alternative to esp32-photoframe-server's weather overlay, no
@@ -700,8 +668,6 @@ typedef enum {
 // bar/white text, as before this setting existed).
 #define NVS_CAPTION_INVERT_COLORS_KEY "cap_invert_col"
 
-#endif
-#if FORK_EXIF
 // Falls back to the photo's own EXIF "DateTimeOriginal" (capture date) as a
 // caption, for a Telegram photo received with no caption text. Off by
 // default. Only meaningful for Telegram - the original JPEG (with EXIF
@@ -709,8 +675,6 @@ typedef enum {
 // processed client-side in the browser before upload (see exif_reader.h).
 #define NVS_SHOW_EXIF_DATETIME_KEY "exif_dt_en"
 
-#endif
-#if FEATURE_OVERLAYS
 // 46 characters/line is comfortably below what any single condition+temps
 // segment needs (see docs/OVERLAYS.md), but three of them on ONE line can
 // still overflow for longer condition words even after abbreviation - this
@@ -767,8 +731,6 @@ typedef enum {
 // just held in memory, since deep sleep reboots the device every wake.
 #define NVS_LOW_BATTERY_OVERLAY_ACTIVE_KEY "lowbatt_ov_act"
 
-#endif
-#if FEATURE_AGENDA
 // Agenda mode (ToDo + Calendar) - a full-screen display mode, NOT a photo
 // overlay: whenever a wake matches its own independent schedule below, the
 // device renders ToDo/Calendar content instead of a photo for that wake,
@@ -954,8 +916,6 @@ typedef enum {
 // user-supplied free text.
 #define AGENDA_COLOR_PROFILE_MAX_BYTES 8192
 
-#endif
-#if FEATURE_WIFI_RESILIENCE
 // WiFi association draws a brief high-current TX burst; whenever a battery
 // is in the loop (battery-only, or USB+battery together - see
 // wifi_manager.c), capping TX power lowers that peak (at some cost to
@@ -975,13 +935,17 @@ typedef enum {
 #define NVS_GOOGLE_API_KEY_KEY "google_key"
 
 // OTA Configuration
-#define GITHUB_API_URL "https://api.github.com/repos/aitjcize/esp32-photoframe/releases/latest"
+// The repository releases are fetched from is a build option (main/Kconfig), upstream by default.
+#define GITHUB_API_URL "https://api.github.com/repos/" CONFIG_FORK_OTA_REPO "/releases/latest"
+#if FORK_ANY
+// Newest release of any kind (pre-releases included); an array with one element.
+#define GITHUB_API_URL_NEWEST \
+    "https://api.github.com/repos/" CONFIG_FORK_OTA_REPO "/releases?per_page=1"
+#endif
 #define OTA_CHECK_INTERVAL_MS (24 * 60 * 60 * 1000)  // 24 hours
-#if FEATURE_OTA_CHANNEL
+#if FORK_ANY
 #define NVS_OTA_CHECK_ENABLED_KEY "ota_check_en"
 
-#endif
-#if FEATURE_TELEGRAM
 // Telegram Bot API
 // Note: the real Telegram Bot API base is "https://api.telegram.org/bot<TOKEN>/<METHOD>"
 // (not "https://telegram.org<TOKEN>/..."). TELEGRAM_API_HOST + TELEGRAM_API_BASE_FMT
@@ -997,8 +961,6 @@ typedef enum {
 #define TELEGRAM_CAPTION_MAX_LEN 128
 #define TELEGRAM_FILE_ID_MAX_LEN 128
 
-#endif
-#if FEATURE_CHIMES
 // Chimes (speaker feedback, waveshare_photopainter_73 only - see
 // board_hal_has_speaker()). Master mode - see chime_speaker_mode_t above.
 // Off by default: this is new, previously-silent hardware, so an update
@@ -1047,8 +1009,6 @@ typedef enum {
 #define NVS_CHIME_REPEAT_CRIT_KEY "chime_rc_crit"
 #define NVS_CHIME_REPEAT_AGENDA_KEY "chime_rc_agenda"
 
-#endif
-#if FEATURE_CLIMATE
 // Climate (SHTC3) settings - see climate_room_type_t/climate_temp_unit_t
 // above and main/climate.[ch]. Generic feature: available on any board
 // whose board_hal_get_temperature()/get_humidity() actually succeed, not
@@ -1085,8 +1045,6 @@ typedef enum {
 #define NVS_CLIMATE_HUM_OFFSET_KEY "climate_hoff"
 #define CLIMATE_OFFSET_MAX_LEN 16
 
-#endif
-#if FEATURE_ALARMCLOCK
 // ----------------------------------------------------------------------------
 // Alarm Clock (only present in a build compiled with FEATURE_ALARMCLOCK
 // - see main/Kconfig, `build.py --alarmclock`, docs/ALARMCLOCK_FEASIBILITY.md).

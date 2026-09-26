@@ -27,7 +27,7 @@
 #include "alarm_manager.h"
 #endif
 #include "board_hal.h"
-#if FORK_ANY
+#if FEATURE_CLIMATE
 #include "climate_history.h"
 #endif
 #include "config.h"
@@ -112,9 +112,13 @@ static uint32_t auto_sleep_timeout_sec = AUTO_SLEEP_TIMEOUT_SEC;
 static wakeup_source_t wakeup_source = WAKEUP_SOURCE_NONE;
 static int64_t next_rotation_time = 0;  // Use absolute time for rotation
 #if FORK_ANY
-static int64_t next_agenda_time = 0;   // Same convention, for the Agenda schedule below
+static int64_t next_agenda_time = 0;  // Same convention, for the Agenda schedule below
+#endif
+#if FEATURE_CLIMATE
 static int64_t next_climate_time = 0;  // Same convention, for the climate log below
-static int64_t next_alarm_time = 0;    // Same convention, for the Alarm Clock schedule below
+#endif
+#if FORK_ANY
+static int64_t next_alarm_time = 0;  // Same convention, for the Alarm Clock schedule below
 #endif
 static uint64_t ext1_wakeup_pin_mask = 0;
 
@@ -137,6 +141,8 @@ static void rotation_timer_task(void *arg)
 #if FORK_ANY
         int64_t now = esp_timer_get_time();  // Get absolute time in microseconds
 
+#endif
+#if FEATURE_CLIMATE
         // Climate: same "device stays awake continuously" gating as
         // rotation/agenda above, but this one genuinely doesn't need
         // 1-second precision - only actually evaluated once every ~30 ticks
@@ -154,6 +160,8 @@ static void rotation_timer_task(void *arg)
             }
         }
 
+#endif
+#if FORK_ANY
         // Alarm Clock: an independent schedule, same "device stays awake"
         // gating as rotation/agenda - mirrors deep_sleep_wake_main()'s
         // alarm_wake decision for the case a deep-sleep board never actually
@@ -364,7 +372,7 @@ static void power_manager_enable_auto_light_sleep(void)
     // and scale CPU frequency down to save power while maintaining WiFi connectivity
     esp_pm_config_t pm_config = {
         .max_freq_mhz = 160,  // Maximum CPU frequency (160MHz for ESP32-S3)
-#if !(FEATURE_WIFI_RESILIENCE)
+#if !(FORK_FIXES)
         .min_freq_mhz = 40,  // Minimum CPU frequency (40MHz when idle)
 #endif
 #ifdef BOARD_HAL_DISABLE_AUTO_LIGHT_SLEEP

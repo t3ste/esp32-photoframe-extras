@@ -131,7 +131,7 @@ const char *config_manager_get_image_etag(void);
 void config_manager_set_ha_url(const char *url);
 const char *config_manager_get_ha_url(void);
 
-#if FORK_FIXES
+#if FORK_ANY
 // Master switch for all Home Assistant integration (online/offline/update
 // notifications and the rotation-veto piggyback). Defaults to false on a
 // fresh device; a device upgrading from a firmware version that predates
@@ -140,8 +140,6 @@ const char *config_manager_get_ha_url(void);
 void config_manager_set_ha_enabled(bool enabled);
 bool config_manager_get_ha_enabled(void);
 
-#endif
-#if FEATURE_TELEGRAM
 // ============================================================================
 // Telegram Bot
 // ============================================================================
@@ -202,7 +200,7 @@ const char *config_manager_get_openai_api_key(void);
 void config_manager_set_google_api_key(const char *key);
 const char *config_manager_get_google_api_key(void);
 
-#if FEATURE_ERROR_BANNER
+#if FORK_ANY
 // ============================================================================
 // Error overlay / WiFi failure tracking
 // ============================================================================
@@ -217,8 +215,6 @@ bool config_manager_get_error_overlay_enabled(void);
 void config_manager_set_wifi_fail_count(int count);
 int config_manager_get_wifi_fail_count(void);
 
-#endif
-#if FEATURE_WIFI_RESILIENCE
 // ============================================================================
 // WiFi
 // ============================================================================
@@ -254,37 +250,27 @@ int config_manager_get_wifi_coldboot_fail_count(void);
 void config_manager_set_wifi_reprovision_on_fail_enabled(bool enabled);
 bool config_manager_get_wifi_reprovision_on_fail_enabled(void);
 
-#endif
-#if FEATURE_OFFLINE_HOTSPOT
 // Set during first-time setup when the user picks offline/no-WiFi use - see
 // NVS_OFFLINE_MODE_KEY in config.h. Defaults to false.
 void config_manager_set_offline_mode_enabled(bool enabled);
 bool config_manager_get_offline_mode_enabled(void);
 
-#endif
-#if FEATURE_HTTPS
 // Opt-in second HTTPS listener - see NVS_HTTPS_ENABLED_KEY in config.h.
 // Defaults to false. Takes effect on the next http_server_init().
 void config_manager_set_https_enabled(bool enabled);
 bool config_manager_get_https_enabled(void);
 
-#endif
-#if FEATURE_TELEGRAM
 // Orientation pairing during normal (non-Telegram) auto-rotation - random
 // mode only. Defaults to false. See NVS_ROTATION_PAIRING_ENABLED_KEY in
 // config.h.
 void config_manager_set_rotation_pairing_enabled(bool enabled);
 bool config_manager_get_rotation_pairing_enabled(void);
 
-#endif
-#if FEATURE_FACECROP
 // Cover/Fit pre-rendered variant selection during Storage/SD rotation.
 // Defaults to false. See NVS_VARIANT_SELECTION_ENABLED_KEY in config.h.
 void config_manager_set_variant_selection_enabled(bool enabled);
 bool config_manager_get_variant_selection_enabled(void);
 
-#endif
-#if FEATURE_TELEGRAM
 // Send a thumbnail to Telegram whenever a Telegram-mode wake falls back to
 // album rotation (no new Telegram image). Defaults to false. See
 // NVS_TELEGRAM_ROTATION_NOTIFY_KEY in config.h.
@@ -340,8 +326,6 @@ bool config_manager_telegram_has_seen_unique_id(const char *unique_id);
 // full, and persists the updated list to NVS. No-op if already recorded.
 void config_manager_telegram_mark_seen_unique_id(const char *unique_id);
 
-#endif
-#if FEATURE_OVERLAYS
 // Weather + headline overlays: composited on-device, no companion server
 // needed. Both default to false. See NVS_WEATHER_*/NVS_HEADLINES_* in
 // config.h.
@@ -433,8 +417,6 @@ const char *config_manager_get_weather_icon_set(void);
 void config_manager_set_weather_icon_colored(bool enabled);
 bool config_manager_get_weather_icon_colored(void);
 
-#endif
-#if FEATURE_AGENDA
 // ============================================================================
 // Agenda (ToDo + Calendar) - a full-screen display mode, not a photo
 // overlay. See NVS_AGENDA_*_KEY in config.h and agenda_manager.h.
@@ -524,8 +506,6 @@ const char *config_manager_get_agenda_shift_start(void);
 // The rotation's marker color now comes from the active color profile's
 // "mark" field (agenda_color_profile.h) rather than a device setting.
 
-#endif
-#if FEATURE_AGENDA && FEATURE_OVERLAYS
 // Opt-in per-day weather annotation on the Calendar column - see
 // NVS_AGENDA_CAL_WEATHER_KEY in config.h.
 void config_manager_set_agenda_cal_weather_enabled(bool enabled);
@@ -536,8 +516,6 @@ bool config_manager_get_agenda_cal_weather_enabled(void);
 void config_manager_set_agenda_cal_weather_right_aligned(bool enabled);
 bool config_manager_get_agenda_cal_weather_right_aligned(void);
 
-#endif
-#if FEATURE_AGENDA
 // Multi-day event display mode - see agenda_multiday_mode_t/
 // NVS_AGENDA_CAL_COMPACT_KEY in config.h.
 void config_manager_set_agenda_cal_multiday_mode(agenda_multiday_mode_t mode);
@@ -600,8 +578,6 @@ const char *config_manager_get_agenda_context_color(void);
 void config_manager_set_agenda_color_profile_active(int slot);
 int config_manager_get_agenda_color_profile_active(void);
 
-#endif
-#if FEATURE_OTA_CHANNEL
 // ============================================================================
 // OTA
 // ============================================================================
@@ -634,7 +610,7 @@ void config_manager_set_config_last_updated(int64_t timestamp);
 int64_t config_manager_get_config_last_updated(void);
 void config_manager_touch_config(void);
 
-#if FEATURE_CHIMES
+#if FORK_ANY
 // ============================================================================
 // Chimes (speaker feedback) - see chime_speaker_mode_t/chime_event_t in
 // config.h and main/chime.c for the policy layer that consumes these.
@@ -669,8 +645,6 @@ bool config_manager_get_chime_event_enabled(chime_event_t event);
 void config_manager_set_chime_repeat_count(chime_event_t event, int count);
 int config_manager_get_chime_repeat_count(chime_event_t event);
 
-#endif
-#if FEATURE_CLIMATE
 // ============================================================================
 // Climate (SHTC3 temperature/humidity) - see climate_room_type_t/
 // climate_temp_unit_t in config.h and main/climate.[ch] for the
@@ -693,13 +667,9 @@ bool config_manager_get_climate_history_backup_enabled(void);
 void config_manager_set_climate_overlay_enabled(bool enabled);
 bool config_manager_get_climate_overlay_enabled(void);
 
-#endif
-#if FEATURE_CLIMATE && FEATURE_AGENDA
 void config_manager_set_climate_agenda_header_enabled(bool enabled);
 bool config_manager_get_climate_agenda_header_enabled(void);
 
-#endif
-#if FEATURE_CLIMATE
 // Calibration offsets applied to every displayed/logged reading (never to
 // GET /api/sensor's raw value) - see climate_read_temperature()/
 // climate_read_humidity() in main/climate.c. Always Celsius/percentage-point
@@ -716,8 +686,6 @@ const char *config_manager_get_climate_hum_offset(void);
 void config_manager_set_climate_last_log_time(int64_t timestamp);
 int64_t config_manager_get_climate_last_log_time(void);
 
-#endif
-#if FEATURE_ALARMCLOCK
 // Alarm clock schedule - independent third cron rule set (see the rotate and
 // agenda schedules above), same shape as
 // config_manager_get_agenda_cron_rule_count()/_get_agenda_cron_rule()/

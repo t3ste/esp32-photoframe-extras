@@ -81,6 +81,12 @@ void utils_finalize_internet_health(void);
 esp_err_t utils_test_error_overlay(void);
 
 #endif
+#if FORK_ANY && !FEATURE_ERROR_BANNER
+// Hooks that shared code calls: no-ops when the error banner is not built in.
+#define utils_handle_wifi_connect_result(connected) ((void) 0)
+#define utils_record_internet_attempt(succeeded) ((void) 0)
+#define utils_finalize_internet_health() ((void) 0)
+#endif
 // Trigger image rotation based on configured rotation mode
 // Handles both URL and SD card rotation modes
 // Returns ESP_OK on success, error code on failure

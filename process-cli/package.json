@@ -14,9 +14,13 @@
   },
   "dependencies": {
     "@aitjcize/epaper-image-convert": "^0.1.20",
-    "canvas": "^3.2.1",
+    "@napi-rs/canvas": "^1.0.8",
+    "@tensorflow-models/blazeface": "^0.1.0",
+    "@tensorflow/tfjs-backend-cpu": "^4.22.0",
+    "@tensorflow/tfjs-converter": "^4.22.0",
+    "@tensorflow/tfjs-core": "^4.22.0",
     "commander": "^11.1.0",
-    "exif-parser": "^0.1.12",
+    "exifreader": "^4.41.0",
     "form-data": "^4.0.0",
     "heic-convert": "^2.1.0",
     "node-fetch": "^3.3.2"
@@ -53,6 +57,7 @@
     "cli.js",
     "utils.js",
     "server.js",
+    "face-crop",
     "README.md"
   ]
 }

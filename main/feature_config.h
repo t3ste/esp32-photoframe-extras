@@ -113,6 +113,18 @@
 #define FORK_HTTP_FETCH 0
 #endif
 
+#ifdef CONFIG_FORK_WEATHER
+#define FORK_WEATHER 1
+#else
+#define FORK_WEATHER 0
+#endif
+
+#ifdef CONFIG_FORK_CLIMATE_CORE
+#define FORK_CLIMATE_CORE 1
+#else
+#define FORK_CLIMATE_CORE 0
+#endif
+
 #ifdef CONFIG_FORK_EXIF
 #define FORK_EXIF 1
 #else

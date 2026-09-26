@@ -36,7 +36,7 @@
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_system.h"
-#if FORK_ANY
+#if FEATURE_FACECROP
 #include "facecrop_metadata.h"
 #endif
 #include "freertos/FreeRTOS.h"
@@ -811,6 +811,17 @@ static bool resolve_display_variant(const char *anchor_path, char *resolved_path
 }
 
 #endif
+#if !FEATURE_FACECROP
+// Without face-crop variants nothing is resolved to a Cover/Fit file.
+static inline bool resolve_display_variant(const char *anchor_path, char *resolved_path,
+                                           size_t resolved_path_size)
+{
+    (void) anchor_path;
+    (void) resolved_path;
+    (void) resolved_path_size;
+    return false;
+}
+#endif
 static void rotate_sequential(char **enabled_albums, int album_count)
 {
     ESP_LOGI(TAG, "Sequential rotation mode");
@@ -1165,6 +1176,27 @@ static void rotate_random(char **enabled_albums, int album_count)
         ESP_LOGE(TAG, "Failed to allocate unseen-index list");
         for (int i = 0; i < total_image_count; i++) {
             free(image_list[i]);
+        }
+        free(image_list);
+        return;
+    }
+    int unseen_count = 0;
+    for (int i = 0; i < total_image_count; i++) {
+        if (!history_manager_has_shown(image_list[i])) {
+            unseen[unseen_count++] = i;
+        }
+    }
+    if (unseen_count == 0) {
+        ESP_LOGI(TAG, "Display history cycle complete (%d images shown) - starting a new cycle",
+                 total_image_count);
+        history_manager_clear();
+        for (int i = 0; i < total_image_count; i++) {
+            unseen[unseen_count++] = i;
+        }
+    }
+
+    int random_index = unseen[esp_random() % unseen_count];
+    free(unseen);
 #else
     // Load last displayed image if not already loaded
     if (last_displayed_image[0] == '\0') {
@@ -1181,44 +1213,23 @@ static void rotate_random(char **enabled_albums, int album_count)
         while (attempts < 10 && strcmp(image_list[random_index], last_displayed_image) == 0) {
             random_index = esp_random() % total_image_count;
             attempts++;
-#endif
         }
-#if FEATURE_DISPLAY_HISTORY
-        free(image_list);
-        return;
-    }
-    int unseen_count = 0;
-    for (int i = 0; i < total_image_count; i++) {
-        if (!history_manager_has_shown(image_list[i])) {
-            unseen[unseen_count++] = i;
-#else
 
         if (strcmp(image_list[random_index], last_displayed_image) == 0) {
             ESP_LOGW(TAG, "Could not avoid repeating last image after 10 attempts");
         } else {
             ESP_LOGI(TAG, "Successfully avoided repeating last image");
+        }
+    }
 #endif
-        }
-    }
-#if FEATURE_DISPLAY_HISTORY
-    if (unseen_count == 0) {
-        ESP_LOGI(TAG, "Display history cycle complete (%d images shown) - starting a new cycle",
-                 total_image_count);
-        history_manager_clear();
-        for (int i = 0; i < total_image_count; i++) {
-            unseen[unseen_count++] = i;
-        }
-    }
-
-    int random_index = unseen[esp_random() % unseen_count];
-    free(unseen);
+#if FORK_ANY
 
     const char *display_path = image_list[random_index];
     char composed_path[512];
     bool use_composed = false;
-
 #endif
 #if FEATURE_TELEGRAM
+
     // Orientation pairing (opt-in, random mode only - see
     // config_manager_get_rotation_pairing_enabled()): if the picked image
     // doesn't match the panel's orientation, look for another mismatched
@@ -1268,14 +1279,20 @@ static void rotate_random(char **enabled_albums, int album_count)
             }
         }
     }
-
+#endif
+#if FORK_ANY
     const char *final_path = use_composed ? composed_path : display_path;
 #endif
 
     // Display random image
+#if FORK_ANY
 #if FEATURE_DISPLAY_HISTORY
     ESP_LOGI(TAG, "Auto-rotate: Displaying random image %d/%d (unseen this cycle: %d): %s",
              random_index + 1, total_image_count, unseen_count, final_path);
+#else
+    ESP_LOGI(TAG, "Auto-rotate: Displaying random image %d/%d: %s", random_index + 1,
+             total_image_count, final_path);
+#endif
     char variant_path[700];
     const char *display_source =
         resolve_display_variant(final_path, variant_path, sizeof(variant_path)) ? variant_path
@@ -1285,16 +1302,15 @@ static void rotate_random(char **enabled_albums, int album_count)
     if (strcmp(shown, final_path) != 0) {
         history_manager_mark_shown(final_path);
     }
+
+    // Store the displayed image filename in NVS
+    save_last_displayed_image(final_path);
 #else
     ESP_LOGI(TAG, "Auto-rotate: Displaying random image %d/%d: %s", random_index + 1,
              total_image_count, image_list[random_index]);
     display_manager_show_image(image_list[random_index]);
-#endif
 
     // Store the displayed image filename in NVS
-#if FEATURE_TELEGRAM
-    save_last_displayed_image(final_path);
-#else
     save_last_displayed_image(image_list[random_index]);
 #endif
 
