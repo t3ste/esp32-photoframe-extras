@@ -299,10 +299,10 @@ def main():
     for name, reason in selection.skipped.items():
         print(f"  ! skipped {name}: {reason}")
     if enabled:
+        feed = args.ota_repo or "the upstream release feed (--ota-repo changes it)"
         print(
-            "  note: OTA updates come from the upstream release feed unless "
-            "CONFIG_FORK_OTA_REPO is changed; they would replace this build with "
-            "the plain upstream firmware."
+            f"  note: OTA updates come from {feed}; installing one would replace "
+            "this build with the plain firmware."
         )
 
     build_state = {"board": args.board, "features": enabled, "debug": args.debug}
