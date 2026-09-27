@@ -86,6 +86,6 @@ Done and verified (2026-09-27):
 
 Not decided, so not done (nothing is pushed, no remote exists):
 
-- Release / OTA identity: `FORK_OTA_REPO` defaults to upstream. A firmware with features that updates itself from upstream's releases would be replaced by the plain firmware; the OTA asset names (`-alarmclock` variant) and the web flasher / manifests (`scripts/generate_manifests.py`, demo landing page) follow that decision.
+- Release / OTA identity: decided - the project lives in its own repository (`esp32-photoframe-rebuild`, not a GitHub fork, so that the earlier fork stays), `build.py --ota-repo` and the CI point the released firmware at that repository's releases (local builds keep the upstream default, which the equality with upstream needs). Still open: OTA asset names for feature builds (only the plain `esp32-photoframe-<board>.bin` is published; `full` builds are workflow artifacts) and the web flasher / manifests (`scripts/generate_manifests.py`, demo landing page), which need GitHub Pages of a public repository.
 - `CHANGELOG.md` and `docs/DIFF.md` of the old fork are not taken over (they describe its releases and its diff to upstream, replaced by `FEATURES.md` and this file); neither are the README screenshots in `.img/`.
 - On-device test of the hand-integrated boot paths of `main.c` (offline hotspot, alarm wake and long-press wake, cold-boot retry policy).

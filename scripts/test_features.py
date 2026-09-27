@@ -11,6 +11,18 @@ SENSOR_ONLY_BOARD = "seeedstudio_xiao_ee03"  # climate sensor, no audio
 ALL_NAMES = [f.name for f in features.FEATURES]
 
 
+class RepoTest(unittest.TestCase):
+    def test_owner_and_name_are_accepted(self):
+        self.assertEqual(
+            features.check_repo("some-owner/my_repo.v2"), "some-owner/my_repo.v2"
+        )
+
+    def test_anything_else_is_an_error(self):
+        for value in ("", "name-only", "a/b/c", "a b/c", 'a/b"', "a/", "/b"):
+            with self.assertRaises(features.FeatureError, msg=value):
+                features.check_repo(value)
+
+
 class ResolveTest(unittest.TestCase):
     def test_nothing_selected_means_nothing_enabled(self):
         for board in BOARD_CAPABILITIES:
