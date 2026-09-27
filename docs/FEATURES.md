@@ -50,4 +50,12 @@ Which optional hardware each board has:
 - Changing the board or the feature set makes `build.py` do a full clean of `build/`
   automatically; a stale `sdkconfig` cannot survive it.
 
+## OTA updates
+
+The firmware checks the release feed in `CONFIG_FORK_OTA_REPO` (default: the upstream
+project). A build with optional features that updates itself from that feed is replaced
+by the plain upstream firmware. Point the option at a feed that publishes matching
+binaries, or switch the automatic update check off in the settings; `build.py` prints a
+note whenever features are enabled.
+
 Design and status: [FEATURE_FLAGS_PLAN.md](FEATURE_FLAGS_PLAN.md).
