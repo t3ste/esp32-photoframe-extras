@@ -811,7 +811,7 @@ static bool resolve_display_variant(const char *anchor_path, char *resolved_path
 }
 
 #endif
-#if !FEATURE_FACECROP
+#if FORK_ANY && !FEATURE_FACECROP
 // Without face-crop variants nothing is resolved to a Cover/Fit file.
 static inline bool resolve_display_variant(const char *anchor_path, char *resolved_path,
                                            size_t resolved_path_size)

@@ -75,6 +75,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          # the upstream baseline is the root commit of the history
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -89,3 +92,6 @@ jobs:
 
       - name: Static cross-reference check of the feature guards
         run: python scripts/migrate/xref.py
+
+      - name: With every feature off the sources are the upstream sources
+        run: python scripts/migrate/alloff_source.py
