@@ -1,0 +1,16 @@
+# Sources are LF on every platform: a Windows checkout with core.autocrlf would otherwise
+# change what the web build, the Makefile and the shell scripts see (and the bytes of the
+# web bundle that has to equal upstream's).
+* text=auto eol=lf
+
+# Binary data is never converted.
+*.gz binary
+*.epdgz binary
+*.png binary
+*.jpg binary
+*.bmp binary
+*.wav binary
+*.bin binary
+*.ico binary
+*.woff binary
+*.woff2 binary
