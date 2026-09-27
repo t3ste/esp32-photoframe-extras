@@ -11,7 +11,7 @@
 
 static const char *TAG = "alarm_setting_ui";
 
-// Tuning constants - see docs/ALARMCLOCK_FEASIBILITY.md's Phase 3 section.
+// Tuning constants - see docs/ALARMCLOCK_USER_GUIDE.md.
 // (A "several fast presses batched into one silent count" mode was tried
 // and removed after live testing on 2026-09-24 - it didn't work reliably
 // in practice, so every press now confirms immediately, matching the
@@ -230,7 +230,7 @@ void alarm_setting_ui_handle_boot_long_press(void)
         return;
     }
     // Reserved for the future offline voice-enrollment entry gesture
-    // (docs/ALARMCLOCK_FEASIBILITY.md) - not implemented yet.
+    // (docs/ALARMCLOCK_USER_GUIDE.md) - not implemented yet.
     ESP_LOGI(TAG, "Long BOOT press in alarm-setting mode - voice enrollment not implemented yet");
     s_last_activity_us = esp_timer_get_time();
 }

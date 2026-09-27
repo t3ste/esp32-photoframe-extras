@@ -26,7 +26,7 @@ bool alarm_manager_is_compiled_in(void);
  * every wake before touching WiFi. There is no separate on/off toggle: an
  * alarm is "armed" purely by having at least one cron rule, and "permanently
  * disabled" purely by having none - matching how the physical button UI
- * (docs/ALARMCLOCK_FEASIBILITY.md) discards down to an empty schedule
+ * (docs/ALARMCLOCK_USER_GUIDE.md) discards down to an empty schedule
  * instead of flipping a separate flag.
  */
 bool alarm_manager_is_enabled(void);
@@ -71,7 +71,7 @@ bool alarm_manager_key_swallowed(int key_level);
 
 /**
  * @brief Rings the alarm: plays the repeating G4-C5-E5-C5 tone sequence
- * (docs/ALARMCLOCK_FEASIBILITY.md) for the configured ring duration, or
+ * (docs/ALARMCLOCK_USER_GUIDE.md) for the configured ring duration, or
  * until a press of the KEY/rotate button is detected, whichever
  * comes first. Blocks for the whole duration. Deliberately touches nothing
  * network/rotation/agenda-related - the caller (main.c's deep-sleep wake

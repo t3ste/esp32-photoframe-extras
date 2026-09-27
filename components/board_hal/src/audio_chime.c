@@ -716,7 +716,7 @@ esp_err_t board_hal_play_beep_pattern(board_hal_chime_kind_t kind, uint8_t volum
     return err;
 }
 
-// Alarm-clock tone sequence (docs/ALARMCLOCK_FEASIBILITY.md): G4-C5-E5-C5,
+// Alarm-clock tone sequence (docs/ALARMCLOCK_USER_GUIDE.md): G4-C5-E5-C5,
 // 300ms each, then a 5s pause, repeating until total_duration_ms elapses or
 // should_stop() reports true. The pause is written in small chunks (not one
 // 5s i2s_write_silence() call) purely so should_stop() gets checked several

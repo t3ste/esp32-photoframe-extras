@@ -264,7 +264,7 @@ esp_err_t board_hal_play_beep_pattern(board_hal_chime_kind_t kind, uint8_t volum
  * @brief Play the repeating bedside-alarm tone until stopped or time runs out
  *
  * Fixed note sequence G4-C5-E5-C5 (392/523/659/523 Hz), 300ms each, followed
- * by a 5s silent pause, repeating - see docs/ALARMCLOCK_FEASIBILITY.md. Unlike
+ * by a 5s silent pause, repeating - see docs/ALARMCLOCK_USER_GUIDE.md. Unlike
  * board_hal_play_beep_pattern() this can run for minutes, so it needs a way
  * to stop early: @p should_stop is polled once per note and several times
  * during each silent pause (not just once every 5s), so a stop request is
@@ -327,7 +327,7 @@ typedef struct {
  * General-purpose primitive behind the alarm-setting button UI's feedback
  * sounds (hour/minute counted beeps at different pitches, the midnight/
  * on-the-hour long tones, the armed/disarmed confirmation sequences - see
- * docs/ALARMCLOCK_FEASIBILITY.md) - unlike calling board_hal_play_beep_pattern()
+ * docs/ALARMCLOCK_USER_GUIDE.md) - unlike calling board_hal_play_beep_pattern()
  * once per note, the whole sequence plays inside a single opened session, so
  * the ~250ms PA settle delay (see audio_chime.c's own comment on this) is
  * paid once for the whole sequence, not once per note - several short beeps

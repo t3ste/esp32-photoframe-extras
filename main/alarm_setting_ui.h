@@ -7,7 +7,7 @@
 #include "feature_config.h"
 #if FEATURE_ALARMCLOCK
 
-// Button-driven alarm time-setting UI (docs/ALARMCLOCK_FEASIBILITY.md's
+// Button-driven alarm time-setting UI (docs/ALARMCLOCK_USER_GUIDE.md's
 // Phase 3 - only meaningful on a build compiled with
 // FEATURE_ALARMCLOCK, harmless no-ops everywhere else so main.c's
 // button_task never needs its own #ifdef). Long-press KEY (>=3s) enters this
