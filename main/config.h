@@ -1047,7 +1047,7 @@ typedef enum {
 
 // ----------------------------------------------------------------------------
 // Alarm Clock (only present in a build compiled with FEATURE_ALARMCLOCK
-// - see main/Kconfig, `build.py --alarmclock`, docs/ALARMCLOCK_FEASIBILITY.md).
+// - see main/Kconfig, `build.py --alarmclock`, docs/ALARMCLOCK_USER_GUIDE.md).
 // Same simplified 3-field cron grammar/limits as the rotate/agenda schedules
 // above (MAX_CRON_RULES/CRON_RULE_MAX_LEN, reused as-is) - an alarm is
 // "armed" purely by having at least one rule, "permanently disabled" purely

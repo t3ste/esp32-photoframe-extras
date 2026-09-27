@@ -1,6 +1,8 @@
 """Unit tests for the comparison logic of scripts/verify_baseline.py."""
 
+import tempfile
 import unittest
+from pathlib import Path
 
 import verify_baseline as vb
 
@@ -57,6 +59,18 @@ class NmTest(unittest.TestCase):
         gone, new = vb.diff_symbols({("T", "a"), ("T", "b")}, {("T", "b"), ("T", "c")})
         self.assertEqual(gone, [("T", "a")])
         self.assertEqual(new, [("T", "c")])
+
+
+class AssetsSignatureTest(unittest.TestCase):
+    def test_signature_follows_the_content_of_the_embedded_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            asset = Path(tmp) / "webapp"
+            (asset / "assets").mkdir(parents=True)
+            (asset / "assets" / "index.js.gz").write_bytes(b"one")
+            before = vb.assets_signature([asset])
+            self.assertEqual(before, vb.assets_signature([asset]))
+            (asset / "assets" / "index.js.gz").write_bytes(b"two")
+            self.assertNotEqual(before, vb.assets_signature([asset]))
 
 
 if __name__ == "__main__":

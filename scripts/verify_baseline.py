@@ -242,9 +242,21 @@ def remove_reference(tree):
     git("worktree", "prune")
 
 
+def assets_signature(assets):
+    """Hash of the generated inputs (web app, splash) both trees embed. The
+    reference must be rebuilt when they change, or it keeps the old bytes and the
+    size comparison is off by whatever the assets differ by."""
+    digest = hashlib.sha256()
+    for asset in assets:
+        for path in sorted(p for p in asset.rglob("*") if p.is_file()):
+            digest.update(path.relative_to(asset).as_posix().encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
+
+
 def ensure_reference(tree, work, board, ref, baseline_args, assets):
-    """Build the reference once per (ref, args); later runs reuse it."""
-    key = f"{git('rev-parse', ref)} {baseline_args}"
+    """Build the reference once per (ref, args, assets); later runs reuse it."""
+    key = f"{git('rev-parse', ref)} {baseline_args} {assets_signature(assets)}"
     key_file = work / "reference.key"
     built = (tree / "build" / "esp32-photoframe.elf").is_file()
     if built and key_file.is_file() and key_file.read_text() == key:
