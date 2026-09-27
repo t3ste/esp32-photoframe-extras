@@ -426,11 +426,11 @@ static esp_err_t fetch_yrno(const char *lat, const char *lon, weather_forecast_t
     char *body = NULL;
     size_t body_len = 0;
     // MET Norway's usage terms require a real, identifying User-Agent -
-    // requests without one are throttled/rejected. Includes this project's
-    // repo URL as the required contact info.
-    esp_err_t err = http_fetch_get(url, WEATHER_HTTP_TIMEOUT_MS, WEATHER_MAX_RESPONSE_BYTES_YRNO,
-                                   &body, &body_len, NULL,
-                                   "esp32-photoframe/1.0 github.com/aitjcize/esp32-photoframe");
+    // requests without one are throttled/rejected. Includes the repo the firmware
+    // is built for (CONFIG_FORK_OTA_REPO) as the required contact info.
+    esp_err_t err =
+        http_fetch_get(url, WEATHER_HTTP_TIMEOUT_MS, WEATHER_MAX_RESPONSE_BYTES_YRNO, &body,
+                       &body_len, NULL, "esp32-photoframe/1.0 github.com/" CONFIG_FORK_OTA_REPO);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "yr.no request failed: %s", esp_err_to_name(err));
         return err;
