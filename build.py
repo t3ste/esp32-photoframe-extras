@@ -80,9 +80,18 @@ def generate_splash(board):
     script = os.path.join(os.path.dirname(__file__), "scripts", "generate_splash.py")
     process_cli_dir = os.path.join(os.path.dirname(__file__), "process-cli")
 
-    # Ensure process-cli dependencies are installed
+    # Ensure process-cli dependencies are installed - and current: npm records what it
+    # installed in node_modules/.package-lock.json, so a newer package-lock.json (a
+    # checkout that changed the dependencies) means the installed set is stale.
     node_modules = os.path.join(process_cli_dir, "node_modules")
-    if not os.path.isdir(node_modules):
+    installed = os.path.join(node_modules, ".package-lock.json")
+    lock = os.path.join(process_cli_dir, "package-lock.json")
+    stale = (
+        os.path.isfile(installed)
+        and os.path.isfile(lock)
+        and os.path.getmtime(lock) > os.path.getmtime(installed)
+    )
+    if not os.path.isdir(node_modules) or stale:
         print("  Installing process-cli dependencies...")
         try:
             subprocess.run("npm ci", shell=True, check=True, cwd=process_cli_dir)
