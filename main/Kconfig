@@ -46,6 +46,9 @@ menu "Photoframe optional features"
         help
             The release feed the firmware checks for updates. The default is the
             upstream project; a fork that publishes its own releases sets this.
+            A build with optional features that updates itself from the upstream
+            feed is replaced by the plain upstream firmware: point this at a feed
+            with matching binaries, or switch the automatic update check off.
 
     # ---- Features -----------------------------------------------------------
 

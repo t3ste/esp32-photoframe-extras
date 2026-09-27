@@ -95,6 +95,18 @@ test:
 	@echo "Running display flow tests..."
 	@cd host_tests/build && ./display_flow_test
 	@echo ""
+	@echo "Running wake schedule tests..."
+	@./host_tests/build/wake_schedule_test
+	@echo ""
+	@echo "Running image pipeline and display flow tests with every feature on..."
+	@./host_tests/build/image_pipeline_fork_test
+	@cd host_tests/build && ./display_flow_fork_test
+	@echo ""
+	@echo "Running feature module tests (agenda, overlays, alarm clock, voice stop)..."
+	@for t in headlines_test todo_test calendar_ics_test alarm_pattern_test mic_level_test kws_test; do \
+		./host_tests/build/$$t || exit 1; \
+	done
+	@echo ""
 	@echo "Running image orientation tests..."
 	@cd process-cli && npm install --silent && npm run test:orientation
 	@echo ""
