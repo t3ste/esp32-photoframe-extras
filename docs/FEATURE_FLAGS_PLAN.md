@@ -75,4 +75,17 @@ Actual course: the shared-file gating (steps 1-8, C code and web UI) was done in
 - **C.** Every flag alone (+ deps) on waveshare and xiao_ee02; CI matrix 8 boards x {plain, full} plus single-flag compile jobs.
 - **D.** Host tests (`host_tests/`): the upstream tests run on the upstream code (`stubs/sdkconfig.h` is empty, so every `CONFIG_*` is undefined); the feature module tests (headlines, todo, calendar, alarm pattern, mic level, keyword spotting) and a second build of the two image tests ("fork" variants: `CONFIG_FORK_IMAGE_PIPELINE` and all features defined) cover the fork code. `scripts/verify_baseline.py` automates A-C.
 
-Open: release/OTA identity of this fork (repo, asset names) - nothing is pushed until decided.
+## 8. Status
+
+Done and verified (2026-09-27):
+
+- **A** all off == upstream: Kconfig symbols, ELF symbols and `.bin` size identical on `waveshare_photopainter_73` and `seeedstudio_xiao_ee02`; the web bundle is byte-identical (16 files incl. `.gz`).
+- **B** all on vs the old fork tip (`v218.7.0`, built from a `fork-import` worktree with `--alarmclock`) on `waveshare_photopainter_73`: the image is 608 B larger (+0.03 %). Nothing exists only in the old fork's ELF. The differences are the upstream code the old fork had lost (`GUI_ReadBmp_RGB_Gray16`, `GUI_ReadPng_Gray16`, `Paint_DrawGrayscaleCalibrationPattern`, the bounded WiFi wake: `wifi_manager_keep_reconnecting`, `late_wifi_task`, `startup_online_work`, `forget_wifi_and_reprovision`) and `cold_boot_wifi_retry`, the old fork's cold-boot retry re-implemented on that flow; the Kconfig symbol `ALARM_CLOCK_ENABLED` is now `FEATURE_ALARMCLOCK`.
+- **C** every flag alone, none and all: compile + link on `waveshare_photopainter_73` (18 sets); compile on `seeedstudio_xiao_ee02` (14 sets, the board without speaker, microphone and sensor); none/all compile on all other boards; all-features links on `seeedstudio_xiao_ee02` and the ESP32 board `m5stack_m5paper_v11`. Web app builds for every set.
+- **D** 292 host tests pass; formatters (clang-format 18, black, isort, prettier) clean.
+
+Not decided, so not done (nothing is pushed, no remote exists):
+
+- Release / OTA identity: `FORK_OTA_REPO` defaults to upstream. A firmware with features that updates itself from upstream's releases would be replaced by the plain firmware; the OTA asset names (`-alarmclock` variant) and the web flasher / manifests (`scripts/generate_manifests.py`, demo landing page) follow that decision.
+- `CHANGELOG.md` and `docs/DIFF.md` of the old fork are not taken over (they describe its releases and its diff to upstream, replaced by `FEATURES.md` and this file); neither are the README screenshots in `.img/`.
+- On-device test of the hand-integrated boot paths of `main.c` (offline hotspot, alarm wake and long-press wake, cold-boot retry policy).
