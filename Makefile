@@ -107,7 +107,7 @@ test:
 		./host_tests/build/$$t || exit 1; \
 	done
 	@echo ""
-	@echo "Running image orientation tests..."
-	@cd process-cli && npm install --silent && npm run test:orientation
+	@echo "Running process-cli tests (image orientation, face crop)..."
+	@cd process-cli && npm install --silent && npm test
 	@echo ""
 	@echo "✓ All tests passed!"
