@@ -45,7 +45,9 @@ menu "Photoframe optional features"
         default "aitjcize/esp32-photoframe"
         help
             The release feed the firmware checks for updates. The default is the
-            upstream project; a fork that publishes its own releases sets this.
+            upstream project; a fork that publishes its own releases sets this
+            (build.py --ota-repo owner/name; the CI of a repository does it for
+            the firmware it builds).
             A build with optional features that updates itself from the upstream
             feed is replaced by the plain upstream firmware: point this at a feed
             with matching binaries, or switch the automatic update check off.

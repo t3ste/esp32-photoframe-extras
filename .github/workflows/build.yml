@@ -114,6 +114,7 @@ jobs:
         target: ${{ matrix.target }}
         command: |
           python3 build.py --board ${{ matrix.board }} ${{ matrix.feature_args }} --step firmware \
+            --ota-repo ${{ github.repository }} \
             -DFIRMWARE_VERSION='${{ steps.version.outputs.version }}'
 
     - name: Install esptool
@@ -236,7 +237,7 @@ jobs:
           ### Web Flasher (Easiest)
 
           Flash directly from your browser (Chrome/Edge/Opera required):
-          **[https://aitjcize.github.io/esp32-photoframe/#flash](https://aitjcize.github.io/esp32-photoframe/)**
+          **[https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/#flash](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)**
 
           ### Manually
           Choose the appropriate merged binary for your board:

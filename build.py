@@ -131,15 +131,23 @@ def build_firmware(
     overlays=(),
     build_dir=DEFAULT_BUILD_DIR,
     command="build",
+    ota_repo=None,
 ):
     """Build firmware with idf.py.
 
-    overlays are the sdkconfig.defaults files of the enabled features.
+    overlays are the sdkconfig.defaults files of the enabled features; ota_repo
+    ("owner/name") replaces the default release feed of OTA updates.
     """
     print(f"\n=== Building firmware for {board}{' [debug]' if debug else ''} ===")
     sdkconfig_defaults = f"sdkconfig.defaults;boards/sdkconfig.defaults.{board}"
     for overlay in overlays:
         sdkconfig_defaults += f";{overlay}"
+    if ota_repo:
+        # Next to the build directory, which a clean build removes.
+        defaults = f"{build_dir}.ota-repo.defaults"
+        with open(defaults, "w", newline="\n") as out:
+            out.write(f'CONFIG_FORK_OTA_REPO="{ota_repo}"\n')
+        sdkconfig_defaults += f";{defaults}"
     if debug:
         # Debug-only overlay: core-dump-to-flash capture (+ the coredump partition
         # from generate_partitions.py). Changes the partition table — never used
@@ -241,6 +249,12 @@ def main():
         "so several feature sets can be built side by side.",
     )
     parser.add_argument(
+        "--ota-repo",
+        metavar="OWNER/NAME",
+        help="GitHub repository whose releases OTA updates are fetched from "
+        "(default: upstream). A build that publishes its own releases sets it.",
+    )
+    parser.add_argument(
         "--list-features",
         action="store_true",
         help="List the features and whether the selected board supports them.",
@@ -272,6 +286,8 @@ def main():
             args.all_features,
         )
         overlays = features.overlay_files(selection.enabled)
+        if args.ota_repo:
+            features.check_repo(args.ota_repo)
     except features.FeatureError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(2)
@@ -290,6 +306,8 @@ def main():
         )
 
     build_state = {"board": args.board, "features": enabled, "debug": args.debug}
+    if args.ota_repo:
+        build_state["ota_repo"] = args.ota_repo
 
     build_dir = args.build_dir
     if args.fullclean:
@@ -314,6 +332,7 @@ def main():
             overlays=overlays,
             build_dir=build_dir,
             command="reconfigure",
+            ota_repo=args.ota_repo,
         )
 
     if "firmware" in steps:
@@ -324,6 +343,7 @@ def main():
             debug=args.debug,
             overlays=overlays,
             build_dir=build_dir,
+            ota_repo=args.ota_repo,
         )
 
 

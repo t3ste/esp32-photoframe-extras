@@ -13,6 +13,7 @@ Compatibility rules (see docs/FEATURE_FLAGS_PLAN.md, section 3):
   * dependencies between features are added automatically and reported.
 """
 
+import re
 from collections import namedtuple
 from pathlib import Path
 
@@ -156,6 +157,15 @@ class FeatureError(Exception):
 
 def normalize(name):
     return name.strip().lower().replace("_", "-")
+
+
+def check_repo(value):
+    """Validate an `owner/name` GitHub repository (the OTA release feed)."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value or ""):
+        raise FeatureError(
+            f"'{value}' is not a GitHub repository in the form owner/name"
+        )
+    return value
 
 
 def parse_list(values):
