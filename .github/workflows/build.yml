@@ -336,7 +336,7 @@ jobs:
         for board in $BOARDS; do
           mkdir -p "demo/$board"
 
-          # Dev firmware from this build
+          # Dev firmware from this build (plain variant)
           cp "firmware-artifacts/photoframe-firmware-$board-merged.bin" "demo/$board/photoframe-firmware-$board-dev.bin"
 
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
@@ -359,9 +359,19 @@ jobs:
             rm -f "demo/$board/photoframe-firmware-$board-merged.bin"
           fi
 
-          # Generate manifests for this board (pass stable version to match the firmware)
+          # Plain variant manifests (pass stable version to match the firmware)
           python3 scripts/generate_manifests.py --no-copy --dev --demo-dir "demo/$board" --board "$board" \
             ${STABLE_TAG:+--stable-version "$STABLE_TAG"}
+
+          # Full variant (--all-features): only released as a workflow artifact, never
+          # as a GitHub release (installing an update would replace it with the plain
+          # firmware, see docs/FEATURES.md) - so only its dev manifest is ever generated.
+          if [ -f "firmware-artifacts/photoframe-firmware-full-$board-merged.bin" ]; then
+            cp "firmware-artifacts/photoframe-firmware-full-$board-merged.bin" \
+              "demo/$board/photoframe-firmware-full-$board-dev.bin"
+            python3 scripts/generate_manifests.py --no-copy --dev --demo-dir "demo/$board" --board "$board" \
+              --variant full
+          fi
         done
 
         # Link a default manifest at the root of demo for backward compatibility or default view
