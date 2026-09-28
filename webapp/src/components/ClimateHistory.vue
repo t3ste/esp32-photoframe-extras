@@ -12,6 +12,8 @@ const resetting = ref(false);
 const confirmingReset = ref(false);
 const savingBackupSetting = ref(false);
 const entries = ref([]); // [{ t, temp_c, hum, tcat: 0/1/2, hcat: 0/1/2 }]
+// Readings stored on the device; more than entries.length when a long log was thinned out.
+const totalReadings = ref(0);
 
 async function onBackupToggle() {
   savingBackupSetting.value = true;
@@ -31,6 +33,7 @@ async function loadHistory() {
     }
     const data = await response.json();
     entries.value = data.entries || [];
+    totalReadings.value = Number.isFinite(data.total) ? data.total : entries.value.length;
   } catch (_error) {
     console.log("Climate history not available (standalone mode)");
   } finally {
@@ -206,9 +209,15 @@ function pointTitle(e, kind) {
 
       <template v-else>
         <div class="text-caption text-medium-emphasis mb-2">
-          {{ entries.length }} reading{{ entries.length === 1 ? "" : "s" }} - point color shows the
-          category for the currently selected room type (Climate settings tab): red = Bad, orange =
-          Good, green = Super.
+          <template v-if="totalReadings > entries.length">
+            {{ entries.length }} of {{ totalReadings }} readings (evenly spaced, the newest
+            included)
+          </template>
+          <template v-else>
+            {{ entries.length }} reading{{ entries.length === 1 ? "" : "s" }}
+          </template>
+          - point color shows the category for the currently selected room type (Climate settings
+          tab): red = Bad, orange = Good, green = Super.
         </div>
 
         <div class="text-body-2 mb-1">Temperature</div>

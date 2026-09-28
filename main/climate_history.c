@@ -32,7 +32,11 @@ void climate_history_reset(void) {}
 #include "config.h"
 #include "config_manager.h"
 #include "esp_log.h"
+#include "history_decimate.h"
 #include "storage.h"
+
+// Most readings a history response carries (see climate_history_build_json()).
+#define CLIMATE_HISTORY_MAX_POINTS 1000
 
 static const char *TAG = "climate_history";
 
@@ -184,12 +188,29 @@ cJSON *climate_history_build_json(void)
     }
 
     climate_room_type_t room = config_manager_get_climate_room_type();
+    size_t total = 0;
+    size_t stride = 1;
 
     if (storage_has_persistent_storage()) {
         FILE *f = fopen(CLIMATE_HISTORY_PATH, "r");
         if (f) {
             char line[64];
+            // A log that ran for the full CLIMATE_HISTORY_MAX_AGE_DAYS holds tens of
+            // thousands of readings: turning all of them into a JSON tree took the
+            // device longer than the Web UI waits and more memory than it has, and
+            // no chart needs that many points. Count first, then keep only a
+            // CLIMATE_HISTORY_MAX_POINTS-sized, evenly spaced selection (and the
+            // newest reading); "total" / "stride" tell the UI what it is looking at.
             while (fgets(line, sizeof(line), f)) {
+                total++;
+            }
+            stride = history_stride(total, CLIMATE_HISTORY_MAX_POINTS);
+            rewind(f);
+            size_t index = 0;
+            while (fgets(line, sizeof(line), f)) {
+                if (!history_keep(index++, total, stride)) {
+                    continue;
+                }
                 long long ts = 0;
                 float temp_c = 0, humidity = 0;
                 if (sscanf(line, "%lld,%f,%f", &ts, &temp_c, &humidity) == 3) {
@@ -209,6 +230,8 @@ cJSON *climate_history_build_json(void)
             fclose(f);
         }
     }
+    cJSON_AddNumberToObject(root, "total", (double) total);
+    cJSON_AddNumberToObject(root, "stride", (double) stride);
 
     return root;
 }

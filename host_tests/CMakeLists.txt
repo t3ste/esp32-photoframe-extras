@@ -186,6 +186,23 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../components/board_hal/include
 )
 
+# Thinning a long history log out to a chartable number of points (climate feature)
+add_executable(
+  history_decimate_test
+  test_history_decimate.cpp
+)
+
+target_link_libraries(
+  history_decimate_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  history_decimate_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Stop-word (keyword) recognition: MFCC + DTW template matching, tested on
 # text-to-speech samples (host_tests/data/kws) (voice-stop feature)
 add_executable(
@@ -314,6 +331,7 @@ gtest_discover_tests(http_auth_test)
 gtest_discover_tests(network_backoff_test)
 gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)
+gtest_discover_tests(history_decimate_test)
 gtest_discover_tests(kws_test)
 gtest_discover_tests(headlines_test)
 gtest_discover_tests(todo_test)

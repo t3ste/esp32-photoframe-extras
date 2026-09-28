@@ -1749,12 +1749,18 @@ static esp_err_t climate_history_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    char *json_str = cJSON_Print(response);
+    // Compact: the formatted output is more than twice the size for no reader.
+    char *json_str = cJSON_PrintUnformatted(response);
+    cJSON_Delete(response);
+    if (json_str == NULL) {
+        httpd_resp_set_status(req, HTTPD_500);
+        httpd_resp_sendstr(req, "Out of memory");
+        return ESP_FAIL;
+    }
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json_str);
 
     free(json_str);
-    cJSON_Delete(response);
 
     return ESP_OK;
 }
