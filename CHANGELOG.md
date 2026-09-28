@@ -16,6 +16,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+## [v218.0.1] - 2026-09-28
+
+First release with the full firmware; replaces v218.0.0, whose assets are the plain (upstream-equivalent) build.
+
 ### Changed
 
 - **Releases carry the full firmware** (every optional feature the board's hardware supports) instead of the
@@ -42,7 +46,7 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [v218.0.0] - 2026-09-28
 
-First release. Based on upstream `v2.18.0-27`.
+First release, superseded by v218.0.1 (its assets are the plain build, see above). Based on upstream `v2.18.0-27`.
 
 ### Added
 
