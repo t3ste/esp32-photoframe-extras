@@ -95,5 +95,34 @@ Not decided, so not done (nothing beyond what's described above is pushed):
 - OTA asset names for feature builds: only the plain `esp32-photoframe-<board>.bin` is ever published as a release asset (installing an update replaces a `full` build with the plain one, see `docs/FEATURES.md`); `full` stays a workflow artifact and only ever gets a *dev* manifest on the demo page, never a stable one.
 - Cutting an actual first release (tag, version number, `gh release`) - the CI workflows have still never been run.
 - The pre-release channel's CI wiring: the landing page and `generate_manifests.py` already support a `manifest-prerelease(-full)?.json`, but `deploy-pages` does not yet detect/deploy an actual GitHub pre-release; needs a tag-naming convention decided together with the first release.
-- `CHANGELOG.md` and `docs/DIFF.md` of the old fork are not taken over (they describe its releases and its diff to upstream, replaced by `FEATURES.md` and this file); neither are the README screenshots in `.img/`.
+- The old fork's `docs/DIFF.md` and README screenshots are not taken over (`CHANGELOG.md` *was* - written fresh for this repository's own history, not imported).
 - On-device test of the hand-integrated boot paths of `main.c`: done (2026-09-27, both physical test devices) - see the runbook.
+
+## 9. Pulling in a later upstream change
+
+Upstream keeps moving; this repository is a real fork of it (section 8), so a later upstream commit is a normal merge,
+not a from-scratch diff. Do this whenever the user asks for it - never on its own initiative (a merge changes a lot of
+files at once and needs review before it's committed, let alone pushed):
+
+1. `git fetch upstream` (remote already configured, points at `aitjcize/esp32-photoframe`).
+2. See what's new: `git log main..upstream/main --oneline` (and `git diff main...upstream/main -- <file>` for any file
+   worth a closer look before merging).
+3. `git switch -c feature/upstream-<date>` and `git merge upstream/main` there - never merge upstream directly into
+   `main`. Most files merge cleanly (this repository's own tree at the graft point is byte-identical to upstream's, so
+   git has a real common ancestor to diff against). Two kinds of conflict are expected:
+   - A file gate.py generated (`#if FEATURE_X ... #else <upstream> #endif`, most of `main/`): the conflict is inside
+     the `#else`/ungated branch, since that's literally upstream's own code. Resolve it the ordinary way (take
+     upstream's new code for that branch); the `#if FEATURE_X` branch is unaffected unless the same lines changed.
+   - A file with **manual edits** (`main/main.c`, `main/display_manager.c`'s random-pick block, `main/http_server.c`'s
+     init tail/includes, `main/ota_manager.c`'s `api_url` block, the stubified headers - see 7c/7d and the runbook's
+     "manually integrated" list): resolve by hand, keeping the flag-gating structure; re-reading the corresponding
+     hunk of this file's own history (`git log -p` on it) shows how the original hand-integration reasoned about it.
+4. After resolving conflicts, re-verify from scratch - a merge can silently break "no flags == upstream" even with no
+   conflicts (e.g. upstream renaming something a gate references): `scripts/migrate/xref.py`,
+   `scripts/migrate/alloff_source.py`, `scripts/verify_baseline.py --board <b>` for at least one board with the
+   hardware and one without, the full feature compile matrix (`scripts/feature_matrix.py --board <b> single`), and
+   the host tests.
+5. Update `docs/FEATURE_FLAGS_PLAN.md`'s baseline mentions only if upstream's own versioning changed (the graft point
+   itself, `1347744...`, never moves - new upstream commits just land on top of it); add a `CHANGELOG.md` entry.
+6. Merge `feature/upstream-<date>` into `main` locally, same as any other feature branch; push needs the user's OK
+   like any push.
