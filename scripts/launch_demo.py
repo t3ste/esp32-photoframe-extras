@@ -61,6 +61,28 @@ def find_available_port(start_port=8000, max_attempts=10):
     return None
 
 
+def get_repo_path(project_root):
+    """owner/repo of the local git remote 'origin', or None if it isn't a GitHub URL.
+
+    Used instead of a hardcoded repository so this script downloads a release from
+    (and builds the GitHub Pages base path of) whichever repository the checkout
+    actually belongs to.
+    """
+    result = subprocess.run(
+        ["git", "config", "--get", "remote.origin.url"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    remote_url = result.stdout.strip()
+    if result.returncode != 0 or "github.com" not in remote_url:
+        return None
+    if remote_url.startswith("git@"):
+        return remote_url.split("github.com:")[1].replace(".git", "")
+    return remote_url.split("github.com/")[1].replace(".git", "")
+
+
 def build_firmware(project_root, board="waveshare_photopainter_73"):
     """Build firmware using idf.py build."""
 
@@ -118,8 +140,14 @@ def download_stable_firmware(demo_dir, project_root):
         latest_tag = result.stdout.strip()
         print(f"  Latest release: {latest_tag}")
 
-        # Get repository info (always aitjcize/esp32-photoframe)
-        repo_path = "aitjcize/esp32-photoframe"
+        # Get repository info from the local git remote, so this downloads
+        # from whichever repo (upstream or a fork) actually holds the tag.
+        repo_path = get_repo_path(project_root)
+        if not repo_path:
+            print(
+                "  ⚠ Warning: Could not determine GitHub repo from git remote, skipping"
+            )
+            return False
 
         for board in BOARDS:
             board_dir = demo_dir / board
@@ -347,19 +375,25 @@ def generate_manifests(project_root, boards=None):
 def serve_demo(demo_dir, port=8000):
     """Start local web server to serve the demo page.
 
-    The demo is built with base="/esp32-photoframe/" for GitHub Pages.
-    To serve locally, we serve from the parent directory and create
-    a symlink so /esp32-photoframe/ maps to the demo folder.
+    The demo is built with a fixed base path for GitHub Pages (webapp/vite.config.demo.js
+    - a project page is served at /<repo-name>/, and Vite bakes that into every asset
+    URL at build time, so it can't be derived at serve time here). To serve locally, we
+    serve from the parent directory and create a symlink so /<repo-name>/ maps to the
+    demo folder. Falls back to the git remote's own repo name if it differs from the
+    default (e.g. this script running against a fork with its own Pages path) - keep
+    that base path and this fallback in sync by hand.
     """
 
     project_root = demo_dir.parent
-    symlink_path = project_root / "esp32-photoframe"
+    repo_path = get_repo_path(project_root)
+    repo_name = repo_path.split("/")[-1] if repo_path else "esp32-photoframe-rebuild"
+    symlink_path = project_root / repo_name
 
-    # Create symlink: project_root/esp32-photoframe -> demo/
-    # This allows /esp32-photoframe/assets/* to resolve correctly
+    # Create symlink: project_root/<repo-name> -> demo/
+    # This allows /<repo-name>/assets/* to resolve correctly
     if not symlink_path.exists():
         symlink_path.symlink_to(demo_dir.name)
-        print(f"  Created symlink: esp32-photoframe -> {demo_dir.name}")
+        print(f"  Created symlink: {repo_name} -> {demo_dir.name}")
     elif symlink_path.is_symlink():
         # Symlink exists, verify it points to demo
         pass
@@ -379,9 +413,9 @@ def serve_demo(demo_dir, port=8000):
     print("ESP32 PhotoFrame Demo Page")
     print("=" * 60)
     print(f"\nDemo page available at:")
-    print(f"  http://localhost:{actual_port}/esp32-photoframe/#demo")
+    print(f"  http://localhost:{actual_port}/{repo_name}/#demo")
     print(f"\nWeb flasher available at:")
-    print(f"  http://localhost:{actual_port}/esp32-photoframe/#flash")
+    print(f"  http://localhost:{actual_port}/{repo_name}/#flash")
     print(f"\nPress Ctrl+C to stop the server")
     print("=" * 60 + "\n")
 

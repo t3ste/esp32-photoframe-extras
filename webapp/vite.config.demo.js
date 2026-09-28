@@ -3,6 +3,7 @@ import vue from "@vitejs/plugin-vue";
 import vuetify from "vite-plugin-vuetify";
 import { resolve } from "path";
 import { rename } from "fs/promises";
+import { featureDirectives } from "./feature-directives.js";
 
 // Plugin to rename index-demo.html to index.html after build
 function renameHtmlPlugin() {
@@ -19,10 +20,14 @@ function renameHtmlPlugin() {
   };
 }
 
-// Demo build config - outputs to demo folder for GitHub Pages
+// Demo build config - outputs to demo folder for GitHub Pages. The demo page
+// only shows the image-processing preview, not a real device's settings UI, so
+// the shared store modules it pulls in (../stores) are stripped to the plain
+// (no-feature) code path, same as VITE_FEATURES="" would for the main app - see
+// feature-directives.js.
 export default defineConfig({
-  plugins: [vue(), vuetify({ autoImport: true }), renameHtmlPlugin()],
-  base: "/esp32-photoframe/",
+  plugins: [featureDirectives(""), vue(), vuetify({ autoImport: true }), renameHtmlPlugin()],
+  base: "/esp32-photoframe-rebuild/",
   publicDir: resolve(__dirname, "../demo"), // Serve demo folder as public (for sample.jpg, manifests)
   build: {
     outDir: resolve(__dirname, "../demo"),

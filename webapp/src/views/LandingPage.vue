@@ -30,11 +30,29 @@ const selectedBoardMeta = computed(
   () => supportedBoards.find((b) => b.value === selectedBoard.value) || supportedBoards[0]
 );
 
+// The newest published pre-release, when it is newer than the stable release (its
+// manifest is only deployed then). Selectable as a third release channel.
+const prereleaseAvailable = ref(false);
+const prereleaseVersion = ref("");
+// The "full" build (--all-features): every optional feature the board supports
+// (Telegram, agenda, overlays, alarm clock, HTTPS, ...) - see docs/FEATURES.md.
+// The plain build (default) is the upstream firmware.
+const withFullFeatures = ref(false);
+// Manifest filename suffix for the selected firmware variant ("" = plain build).
+const variantSuffix = computed(() => (withFullFeatures.value ? "-full" : ""));
+const manifestFile = computed(() => {
+  const base =
+    { stable: "manifest", dev: "manifest-dev", prerelease: "manifest-prerelease" }[
+      selectedVersion.value
+    ] || "manifest";
+  return base + variantSuffix.value + ".json";
+});
+
 const ecosystem = [
   {
     title: "Firmware",
     blurb: "ESP-IDF firmware for the photoframe. Image pipeline, REST API, Home Assistant.",
-    href: "https://github.com/aitjcize/esp32-photoframe",
+    href: "https://github.com/t3ste/esp32-photoframe-rebuild",
     tag: "C / ESP-IDF",
   },
   {
@@ -164,7 +182,7 @@ onMounted(async () => {
   }
 });
 
-watch(selectedBoard, () => loadVersionInfo());
+watch([selectedBoard, withFullFeatures], () => loadVersionInfo());
 
 async function loadVersionInfo() {
   // The stable version label MUST come from the deployed manifest — that is
@@ -175,7 +193,9 @@ async function loadVersionInfo() {
   // deployed for this board.
   let manifestVersion = null;
   try {
-    const stableManifest = await fetch(baseUrl + selectedBoard.value + "/manifest.json");
+    const stableManifest = await fetch(
+      baseUrl + selectedBoard.value + "/manifest" + variantSuffix.value + ".json"
+    );
     stableAvailable.value = stableManifest.ok;
     if (stableManifest.ok) {
       manifestVersion = (await stableManifest.json()).version || null;
@@ -192,7 +212,7 @@ async function loadVersionInfo() {
   } else {
     try {
       const stableResponse = await fetch(
-        "https://api.github.com/repos/aitjcize/esp32-photoframe/releases/latest"
+        "https://api.github.com/repos/t3ste/esp32-photoframe-rebuild/releases/latest"
       );
       stableVersion.value = (await stableResponse.json()).tag_name;
     } catch (error) {
@@ -201,9 +221,27 @@ async function loadVersionInfo() {
     }
   }
 
+  // The pre-release channel (FEATURE_OTA_CHANNEL): only offered when a newer
+  // pre-release than the stable release has actually been deployed here.
   try {
-    let devResponse = await fetch(baseUrl + selectedBoard.value + "/manifest-dev.json");
-    if (!devResponse.ok) {
+    const preManifest = await fetch(
+      baseUrl + selectedBoard.value + "/manifest-prerelease" + variantSuffix.value + ".json"
+    );
+    prereleaseAvailable.value = preManifest.ok;
+    prereleaseVersion.value = preManifest.ok ? (await preManifest.json()).version || "" : "";
+  } catch {
+    prereleaseAvailable.value = false;
+    prereleaseVersion.value = "";
+  }
+  if (!prereleaseAvailable.value && selectedVersion.value === "prerelease") {
+    selectedVersion.value = stableAvailable.value ? "stable" : "dev";
+  }
+
+  try {
+    let devResponse = await fetch(
+      baseUrl + selectedBoard.value + "/manifest-dev" + variantSuffix.value + ".json"
+    );
+    if (!devResponse.ok && !variantSuffix.value) {
       devResponse = await fetch(baseUrl + "manifest-dev.json");
     }
     if (devResponse.ok) {
@@ -284,7 +322,7 @@ function scrollTo(id) {
           <span class="version-chip">{{ stableVersion }}</span>
           <a
             class="nav-github"
-            href="https://github.com/aitjcize/esp32-photoframe"
+            href="https://github.com/t3ste/esp32-photoframe-rebuild"
             target="_blank"
             rel="noopener"
             aria-label="View on GitHub"
@@ -541,7 +579,11 @@ function scrollTo(id) {
                   <span class="radio-text">
                     <strong>Stable</strong>
                     <em class="radio-tag">{{
-                      stableAvailable ? stableVersion : "none for this board yet"
+                      stableAvailable
+                        ? stableVersion
+                        : variantSuffix
+                          ? "none for this build yet"
+                          : "none for this board yet"
                     }}</em>
                   </span>
                 </label>
@@ -551,6 +593,14 @@ function scrollTo(id) {
                   <span class="radio-text">
                     <strong>Dev</strong>
                     <em class="radio-tag">{{ devVersion }}</em>
+                  </span>
+                </label>
+                <label v-if="prereleaseAvailable" class="radio">
+                  <input v-model="selectedVersion" type="radio" value="prerelease" />
+                  <span class="radio-dot"></span>
+                  <span class="radio-text">
+                    <strong>Pre-release</strong>
+                    <em class="radio-tag">{{ prereleaseVersion }}</em>
                   </span>
                 </label>
               </div>
@@ -565,14 +615,28 @@ function scrollTo(id) {
               </select>
             </div>
 
+            <div class="flash-row">
+              <label class="flash-label">Build</label>
+              <div class="radio-row">
+                <label class="radio">
+                  <input v-model="withFullFeatures" type="checkbox" />
+                  <span class="radio-dot"></span>
+                  <span class="radio-text">
+                    <strong>All features</strong>
+                    <em class="radio-tag">Telegram, agenda, overlays, alarm clock, HTTPS, ...</em>
+                  </span>
+                </label>
+              </div>
+            </div>
+
             <div class="flash-row flash-action">
               <esp-web-install-button
-                :key="selectedBoard + selectedVersion"
+                :key="selectedBoard + selectedVersion + variantSuffix"
                 :manifest="
                   (baseUrl.endsWith('/') ? baseUrl : baseUrl + '/') +
                   selectedBoard +
                   '/' +
-                  (selectedVersion === 'stable' ? 'manifest.json' : 'manifest-dev.json')
+                  manifestFile
                 "
               >
                 <!-- native web-component slot (not a Vue slot): the attribute must stay -->
@@ -701,7 +765,10 @@ function scrollTo(id) {
             </div>
           </div>
           <div class="footer-links">
-            <a href="https://github.com/aitjcize/esp32-photoframe" target="_blank" rel="noopener"
+            <a
+              href="https://github.com/t3ste/esp32-photoframe-rebuild"
+              target="_blank"
+              rel="noopener"
               >Firmware</a
             >
             <a
@@ -720,7 +787,7 @@ function scrollTo(id) {
               >App</a
             >
             <a
-              href="https://github.com/aitjcize/esp32-photoframe/blob/main/LICENSE"
+              href="https://github.com/t3ste/esp32-photoframe-rebuild/blob/main/LICENSE"
               target="_blank"
               rel="noopener"
               >License</a
