@@ -150,7 +150,14 @@ in (section 9), then `v219.0.1` ... The firmware's OTA compares `major.minor.pat
 1. Move the `CHANGELOG.md` entries from `[Unreleased]` into a new `## [vX.Y.Z] - <date>` section, commit on `main`.
    The commit that gets tagged must NOT contain `[skip ci]` in its message (GitHub skips tag-push workflows whose head
    commit says so, and then no release is built).
-2. `git tag -a vX.Y.Z -m "..."` on that commit, `git push origin main vX.Y.Z`.
+2. `git tag -a vX.Y.Z -m "..."` on that commit and push `main` and the tag to the fork (`t3stier`, canonical) and to
+   the mirror (`origin`): `git push t3stier main vX.Y.Z`, `git push origin main vX.Y.Z` (see the runbook for the two
+   accounts; workflow-file changes need a token with the `workflow` scope, i.e. push as `t3stier`). The mirror's
+   Actions are switched off since v218.0.2, it only receives the code; a mirror release is needed only in a
+   transition like v218.0.2. **In the fork a push starts no workflow run** (observed for `main` and for tags, also
+   after re-pushing a tag; only manual runs and the release event run there, unexplained), so start the build by
+   hand on the tag: `gh workflow run build.yml -R t3stier/esp32-photoframe-rebuild --ref vX.Y.Z` (the `release` job
+   runs for a manual run on a tag as well). If pushes ever start runs there, do not start the run twice.
 3. The `Build Firmware` workflow builds all 8 boards, and its `release` job creates a **draft** release with the
    `esp32-photoframe-<board>.bin` (what the OTA installs) and `photoframe-firmware-<board>-merged.bin` (what the web
    flasher and `esptool` write at offset 0) of every board - the full builds, see section 8. Keep the GitHub API
