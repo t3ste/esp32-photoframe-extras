@@ -54,7 +54,10 @@ def normalise(text):
 
 
 def main():
-    baseline = "1347744414364110f96d9c121b4cc6e13b2364f2"  # grafted parent of this repo's own history, see the runbook
+    # The newest upstream commit merged into this repository (151e716, after v2.18.0-27
+    # which the history is grafted onto): move it with every upstream merge, see
+    # docs/FEATURE_FLAGS_PLAN.md section 9.
+    baseline = "151e71674a655ce1162853bd2ede988a39d58e4d"
     unexpected, unused = [], set(EXPECTED)
     checked = 0
     for name in git("ls-tree", "-r", "--name-only", baseline).splitlines():

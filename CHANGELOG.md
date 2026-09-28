@@ -37,6 +37,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   "N of M readings".
 - The frame's update check could not read GitHub's chunked API answers ("Invalid content length") in builds without
   the `fixes` option; releases are built with it now.
+- From upstream (`151e716`): the active rotation is scheduled from the current time after a slow refresh instead of
+  from the time the tick started.
 
 ## [v218.0.0] - 2026-09-28
 

@@ -127,8 +127,11 @@ files at once and needs review before it's committed, let alone pushed):
    `scripts/migrate/alloff_source.py`, `scripts/verify_baseline.py --board <b>` for at least one board with the
    hardware and one without, the full feature compile matrix (`scripts/feature_matrix.py --board <b> single`), and
    the host tests.
-5. Update `docs/FEATURE_FLAGS_PLAN.md`'s baseline mentions only if upstream's own versioning changed (the graft point
-   itself, `1347744...`, never moves - new upstream commits just land on top of it); add a `CHANGELOG.md` entry.
+5. Move the baseline of the equality proofs to the newest merged upstream commit: `upstream_sha` in
+   `scripts/verify_baseline.py` and `baseline` in `scripts/migrate/alloff_source.py` (both currently `151e716`, the
+   first merge after the graft point `1347744`, which itself never moves; `gate.py` keeps the graft point, it analyses
+   the old fork against the original upstream). Without that "no flags == upstream" reports the merged upstream change
+   as a difference. Add a `CHANGELOG.md` entry.
 6. Merge `feature/upstream-<date>` into `main` locally, same as any other feature branch; push needs the user's OK
    like any push.
 

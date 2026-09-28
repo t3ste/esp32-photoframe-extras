@@ -313,9 +313,10 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
 
     assets = prepare_shared_assets(args.board)
-    # 1347744 = aitjcize/esp32-photoframe @ v2.18.0-27, the commit this
-    # repository's own history is grafted onto (see docs/FEATURE_FLAGS_PLAN.md).
-    upstream_sha = "1347744414364110f96d9c121b4cc6e13b2364f2"
+    # The newest aitjcize/esp32-photoframe commit merged into this repository:
+    # 151e716 (after v2.18.0-27, the commit the history is grafted onto). Move it
+    # with every upstream merge (docs/FEATURE_FLAGS_PLAN.md, section 9).
+    upstream_sha = "151e71674a655ce1162853bd2ede988a39d58e4d"
     ref = args.baseline or upstream_sha
     ensure_reference(reference_tree, work, args.board, ref, args.baseline_args, assets)
 
