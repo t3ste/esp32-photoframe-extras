@@ -17,9 +17,12 @@ jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
-  # plain: no optional feature, i.e. the upstream firmware - this is what a release ships.
-  # full:  every optional feature the board supports (build.py --all-features); uploaded
-  #        as a workflow artifact only.
+  # full:  every optional feature the board's hardware supports (build.py --all-features).
+  #        This is the firmware of this project: it carries the plain file names and is what
+  #        a release ships, what the web flasher installs and what the frame's OTA update
+  #        fetches (esp32-photoframe-<board>.bin).
+  # plain: no optional feature, i.e. the upstream firmware - built to prove that it still
+  #        compiles and links, uploaded as a workflow artifact only (-plain file names).
   build:
     runs-on: ubuntu-latest
     needs: ci
@@ -32,12 +35,12 @@ jobs:
         include:
           - variant: plain
             feature_args: ''
-            suffix: ''
-            artifact_prefix: photoframe-firmware-
+            suffix: '-plain'
+            artifact_prefix: plain-photoframe-firmware-
           - variant: full
             feature_args: '--all-features'
-            suffix: '-full'
-            artifact_prefix: photoframe-firmware-full-
+            suffix: ''
+            artifact_prefix: photoframe-firmware-
           # bootloader_offset differs by chip family: 0x1000 on the ESP32,
           # 0x0 on the ESP32-S3.
           - board: waveshare_photopainter_73
@@ -229,6 +232,9 @@ jobs:
           firmware-artifacts/photoframe-firmware-m5stack_m5paper_v11-merged.bin
           firmware-artifacts/esp32-photoframe-m5stack_m5paper_v11.bin
         body: |
+          The firmware in this release is the full build: every optional feature the board's
+          hardware supports (see docs/FEATURES.md). It updates itself from these releases.
+
           ## What's New
 
           ## Improvements
@@ -240,6 +246,9 @@ jobs:
           **[https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/#flash](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)**
 
           ### Manually
+          The merged binary covers the whole flash from offset 0, so writing it also erases the
+          device's WiFi credentials and settings (the web flasher above keeps them). To keep them,
+          use the frame's own update function instead (it installs `esp32-photoframe-[board].bin`).
           Choose the appropriate merged binary for your board:
           - `photoframe-firmware-waveshare_photopainter_73-merged.bin`: For Waveshare 7.3" 7-color e-paper
           - `photoframe-firmware-seeedstudio_xiao_ee02-merged.bin`: For Seeed XIAO EE02
@@ -336,7 +345,7 @@ jobs:
         for board in $BOARDS; do
           mkdir -p "demo/$board"
 
-          # Dev firmware from this build (plain variant)
+          # Dev firmware from this build (the full build, see the matrix above)
           cp "firmware-artifacts/photoframe-firmware-$board-merged.bin" "demo/$board/photoframe-firmware-$board-dev.bin"
 
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
@@ -359,22 +368,11 @@ jobs:
             rm -f "demo/$board/photoframe-firmware-$board-merged.bin"
           fi
 
-          # Plain variant manifests (pass stable version to match the firmware)
+          # Manifests for this board (pass stable version to match the firmware). The merged
+          # images are cut into their parts (bootloader, partition table, OTA data, app), so
+          # that flashing them leaves the device's WiFi credentials and settings alone.
           python3 scripts/generate_manifests.py --no-copy --dev --demo-dir "demo/$board" --board "$board" \
             ${STABLE_TAG:+--stable-version "$STABLE_TAG"}
-
-          # Full variant (--all-features): only released as a workflow artifact, never
-          # as a GitHub release (installing an update would replace it with the plain
-          # firmware, see docs/FEATURES.md) - so only its dev manifest is ever generated.
-          # (the variant suffix goes after the board name, see the matrix's `suffix` above)
-          if [ -f "firmware-artifacts/photoframe-firmware-$board-full-merged.bin" ]; then
-            cp "firmware-artifacts/photoframe-firmware-$board-full-merged.bin" \
-              "demo/$board/photoframe-firmware-$board-full-dev.bin"
-            python3 scripts/generate_manifests.py --no-copy --dev --demo-dir "demo/$board" --board "$board" \
-              --variant full
-          else
-            echo "::warning::No full-variant firmware artifact for $board; omitting its dev manifest."
-          fi
         done
 
         # Link a default manifest at the root of demo for backward compatibility or default view

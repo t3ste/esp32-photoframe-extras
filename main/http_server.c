@@ -3275,7 +3275,6 @@ static esp_err_t ota_status_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(response, "progress_percent", status.progress_percent);
 #if FEATURE_OTA_CHANNEL
     cJSON_AddBoolToObject(response, "latest_prerelease", status.latest_prerelease);
-    cJSON_AddBoolToObject(response, "variant_switch", status.variant_switch);
 #endif
 
     if (status.error_message[0] != '\0') {
@@ -3292,7 +3291,7 @@ static esp_err_t ota_status_handler(httpd_req_t *req)
 }
 
 #if FEATURE_OTA_CHANNEL
-// Which release channel / firmware variant the OTA check and update use.
+// Which release channel the OTA check and update use.
 static esp_err_t ota_options_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_PUT) {
@@ -3312,7 +3311,6 @@ static esp_err_t ota_options_handler(httpd_req_t *req)
         ota_options_t current;
         ota_get_options(&current);
         ota_channel_t channel = current.channel;
-        bool alarmclock = current.alarmclock;
         bool valid = true;
 
         cJSON *item = cJSON_GetObjectItem(body, "channel");
@@ -3325,25 +3323,13 @@ static esp_err_t ota_options_handler(httpd_req_t *req)
                 valid = false;
             }
         }
-        item = cJSON_GetObjectItem(body, "alarmclock");
-        if (item) {
-            if (cJSON_IsBool(item)) {
-                alarmclock = cJSON_IsTrue(item);
-            } else {
-                valid = false;
-            }
-        }
         cJSON_Delete(body);
 
         if (!valid) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid channel or alarmclock value");
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid channel value");
             return ESP_FAIL;
         }
-        esp_err_t err = ota_set_options(channel, alarmclock);
-        if (err == ESP_ERR_NOT_SUPPORTED) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Alarm Clock needs a board speaker");
-            return ESP_FAIL;
-        }
+        esp_err_t err = ota_set_options(channel);
         if (err == ESP_ERR_INVALID_STATE) {
             httpd_resp_set_status(req, "409 Conflict");
             httpd_resp_set_type(req, "application/json");
@@ -3361,9 +3347,6 @@ static esp_err_t ota_options_handler(httpd_req_t *req)
     cJSON *response = cJSON_CreateObject();
     cJSON_AddStringToObject(response, "channel",
                             options.channel == OTA_CHANNEL_PRERELEASE ? "prerelease" : "stable");
-    cJSON_AddBoolToObject(response, "alarmclock", options.alarmclock);
-    cJSON_AddBoolToObject(response, "alarmclock_available", options.alarmclock_available);
-    cJSON_AddBoolToObject(response, "running_alarmclock", options.running_alarmclock);
     char *json_str = cJSON_Print(response);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json_str);

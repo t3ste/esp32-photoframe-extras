@@ -16,6 +16,28 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Changed
+
+- **Releases carry the full firmware** (every optional feature the board's hardware supports) instead of the
+  plain upstream build, and so do the web flasher and the frame's own update: whoever wants the plain firmware gets
+  it from upstream. A frame running a release now updates itself to the next release without losing features
+  (`esp32-photoframe-<board>.bin`). The plain build is still built by the CI (`-plain` file names) to prove that
+  upstream's code compiles.
+- The web flasher installs the firmware part by part instead of as one merged image, so **WiFi credentials and
+  settings survive a flash** unless "Erase device" is ticked. (The merged image covers the settings partition, flashing
+  it through the web flasher wiped every setting.) Writing the merged image with `esptool` at offset 0 still erases them.
+- The `ota-channel` feature is only the stable / pre-release choice now; the "Alarm Clock firmware" option of the
+  Updates tab (an old-fork variant that never existed as a release asset here) is gone.
+
+### Fixed
+
+- **Climate History did not load** on a device with a long log (up to 180 days, about 50,000 readings): building the
+  whole log as formatted JSON took longer than the Web UI waits and more memory than the device has. The device now
+  answers with at most 1000 evenly spaced readings (the newest included, in compact JSON), the chart says
+  "N of M readings".
+- The frame's update check could not read GitHub's chunked API answers ("Invalid content length") in builds without
+  the `fixes` option; releases are built with it now.
+
 ## [v218.0.0] - 2026-09-28
 
 First release. Based on upstream `v2.18.0-27`.

@@ -25,7 +25,7 @@ python build.py --board seeedstudio_xiao_ee02 --list-features
 | `https` | HTTPS web UI on port 443 | - | |
 | `offline-hotspot` | Offline mode and on-demand hotspot (hold BOOT for 3 s) | - | |
 | `error-banner` | On-display error banner for WiFi and internet failures | - | |
-| `ota-channel` | OTA release channel (stable/pre-release) and firmware variant choice | - | |
+| `ota-channel` | OTA release channel (stable/pre-release) | - | |
 | `wifi-resilience` | WiFi options: cold-boot retries instead of an early credential wipe, option to keep the credentials, battery TX cap, performance mode | - | |
 | `facecrop` | Face-aware crop sidecars and Cover/Fit image variants | - | [FACE_CROP.md](FACE_CROP.md), [SCALE_MODE.md](SCALE_MODE.md) |
 | `fixes` | General bug fixes and robustness improvements | - | |
@@ -56,10 +56,22 @@ The firmware checks the release feed in `CONFIG_FORK_OTA_REPO`, which defaults t
 project's own repository - `python build.py --ota-repo owner/name` picks another feed (e.g.
 the upstream project, for comparing against it). The CI builds every released firmware with
 its own repository (`--ota-repo ${{ github.repository }}`) explicitly, so this holds even if
-the default ever changes. The releases carry the plain firmware
-(`esp32-photoframe-<board>.bin`, built without features). A build with features that
-installs such an update becomes the plain firmware again: keep the automatic update check
-off in the settings for feature builds. `build.py` prints a note whenever features are
-enabled. The `full` builds of the CI stay workflow artifacts and are not offered via OTA.
+the default ever changes.
+
+**The releases carry the full firmware**: every optional feature the board's hardware
+supports (what `--all-features` builds for that board), as `esp32-photoframe-<board>.bin`
+(the file the update installs) and `photoframe-firmware-<board>-merged.bin` (the whole flash
+image for `esptool` at offset 0). Whoever wants the plain upstream firmware gets it from
+upstream; the CI still builds it (`-plain` file names, workflow artifacts only) to prove
+that it compiles. A frame running a release therefore updates from the next release
+without losing any feature. A build with only some features that installs an update
+becomes the full firmware; keep the automatic update check off in the settings for such a
+build. `build.py` prints a note whenever features are enabled.
+
+The web flasher installs the same firmware. Its manifests list the individual parts of the
+image (bootloader, partition table, OTA data, app) instead of the merged file, so the
+settings partition (WiFi credentials, all settings) is left alone unless "Erase device" is
+ticked. Writing the merged image itself at offset 0 (`esptool write-flash 0x0 ...-merged.bin`)
+does erase the settings.
 
 Design and status: [FEATURE_FLAGS_PLAN.md](FEATURE_FLAGS_PLAN.md).

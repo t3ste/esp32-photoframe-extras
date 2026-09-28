@@ -39,7 +39,6 @@ static const char *TAG = "ota_manager";
 #define OTA_NVS_STATE_KEY "state"
 #if FEATURE_OTA_CHANNEL
 #define OTA_NVS_CHANNEL_KEY "channel"
-#define OTA_NVS_ALARM_KEY "alarm"
 #endif
 #define OTA_CHECK_INTERVAL_SECONDS (24 * 60 * 60)  // 24 hours
 
@@ -50,17 +49,10 @@ static ota_status_t ota_status = {.state = OTA_STATE_IDLE,
                                   .progress_percent = 0};
 
 #if FEATURE_OTA_CHANNEL
-#if FEATURE_ALARMCLOCK
-#define RUNNING_ALARMCLOCK true
-#else
-#define RUNNING_ALARMCLOCK false
-#endif
-
-// Which release / firmware variant the next check uses (persisted, see
-// ota_set_options()). The variant defaults to whatever this build already is,
-// so an Alarm Clock build keeps updating to the Alarm Clock firmware.
+// Which release the next check uses (persisted, see ota_set_options()). The
+// firmware asset is always esp32-photoframe-<board>.bin: this project's
+// releases are the full-feature builds, there is no second variant to pick.
 static ota_channel_t s_channel = OTA_CHANNEL_STABLE;
-static bool s_alarm_variant = RUNNING_ALARMCLOCK;
 
 #endif
 static SemaphoreHandle_t ota_status_mutex = NULL;
@@ -126,14 +118,6 @@ static int version_compare(const char *v1, const char *v2)
         return v1_minor - v2_minor;
     return v1_patch - v2_patch;
 }
-
-#if FEATURE_OTA_CHANNEL
-// A board without a speaker never offers the Alarm Clock firmware variant.
-static bool want_alarm_variant(void)
-{
-    return s_alarm_variant && BOARD_HAL_HAS_SPEAKER;
-}
-#endif
 
 #if !FORK_FIXES
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
@@ -330,18 +314,8 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
 
     const char *board_name = BOARD_HAL_NAME;
 
-#if FEATURE_OTA_CHANNEL
-    // The Alarm Clock firmware is a separate "-alarmclock" release asset. By
-    // default a build updates to its own variant (an Alarm Clock build must not
-    // silently lose the feature); the Web UI can pick the other one.
-    const char *variant_suffix = want_alarm_variant() ? "-alarmclock" : "";
-    char target_binary[80];
-    snprintf(target_binary, sizeof(target_binary), "esp32-photoframe-%s%s.bin", board_name,
-             variant_suffix);
-#else
     char target_binary[64];
     snprintf(target_binary, sizeof(target_binary), "esp32-photoframe-%s.bin", board_name);
-#endif
     ESP_LOGI(TAG, "Searching for board-specific OTA binary: %s", target_binary);
 
     cJSON_ArrayForEach(asset, assets)
@@ -418,9 +392,7 @@ static void ota_check_task(void *pvParameter)
         ESP_LOGE(TAG, "Failed to fetch release info");
 #if FEATURE_OTA_CHANNEL
         if (err == ESP_ERR_NOT_FOUND) {
-            set_ota_state(OTA_STATE_ERROR, want_alarm_variant()
-                                               ? "This release has no Alarm Clock firmware yet"
-                                               : "This release has no firmware for this board");
+            set_ota_state(OTA_STATE_ERROR, "This release has no firmware for this board");
         } else {
             set_ota_state(OTA_STATE_ERROR, "Failed to check for updates");
         }
@@ -431,35 +403,24 @@ static void ota_check_task(void *pvParameter)
         return;
     }
 
-#if FEATURE_OTA_CHANNEL
-    // Installing the found release also changes the firmware variant?
-    bool variant_switch = (want_alarm_variant() != RUNNING_ALARMCLOCK);
-
-#endif
     // Store latest version and URL
     if (ota_status_mutex && xSemaphoreTake(ota_status_mutex, portMAX_DELAY) == pdTRUE) {
         snprintf(ota_status.latest_version, sizeof(ota_status.latest_version), "%s",
                  latest_version);
 #if FEATURE_OTA_CHANNEL
         ota_status.latest_prerelease = prerelease;
-        ota_status.variant_switch = variant_switch;
 #endif
         xSemaphoreGive(ota_status_mutex);
     }
     snprintf(firmware_url, sizeof(firmware_url), "%s", download_url);
 
-#if FEATURE_OTA_CHANNEL
-    // Compare versions. Same version but the other variant (Alarm Clock <->
-    // regular) is offered too; an older release is never offered as a "switch".
-#else
     // Compare versions
-#endif
     int cmp = version_compare(ota_status.current_version, latest_version);
 
 #if FEATURE_OTA_CHANNEL
-    if (cmp < 0 || (cmp == 0 && variant_switch)) {
-        ESP_LOGI(TAG, "Update available: %s -> %s%s%s", ota_status.current_version, latest_version,
-                 prerelease ? " (pre-release)" : "", variant_switch ? " (variant switch)" : "");
+    if (cmp < 0) {
+        ESP_LOGI(TAG, "Update available: %s -> %s%s", ota_status.current_version, latest_version,
+                 prerelease ? " (pre-release)" : "");
 #else
     if (cmp < 0) {
         ESP_LOGI(TAG, "Update available: %s -> %s", ota_status.current_version, latest_version);
@@ -745,7 +706,6 @@ static esp_err_t ota_check_periodic_callback(void)
 static void ota_load_options_from_nvs(void)
 {
     s_channel = OTA_CHANNEL_STABLE;
-    s_alarm_variant = RUNNING_ALARMCLOCK;
 
     nvs_handle_t nvs_handle;
     if (nvs_open(OTA_NVS_NAMESPACE, NVS_READONLY, &nvs_handle) != ESP_OK) {
@@ -756,27 +716,18 @@ static void ota_load_options_from_nvs(void)
         value <= OTA_CHANNEL_PRERELEASE) {
         s_channel = (ota_channel_t) value;
     }
-    if (nvs_get_u8(nvs_handle, OTA_NVS_ALARM_KEY, &value) == ESP_OK) {
-        s_alarm_variant = (value != 0);
-    }
     nvs_close(nvs_handle);
 }
 
 void ota_get_options(ota_options_t *out)
 {
     out->channel = s_channel;
-    out->alarmclock = want_alarm_variant();
-    out->alarmclock_available = BOARD_HAL_HAS_SPEAKER;
-    out->running_alarmclock = RUNNING_ALARMCLOCK;
 }
 
-esp_err_t ota_set_options(ota_channel_t channel, bool alarmclock)
+esp_err_t ota_set_options(ota_channel_t channel)
 {
     if (channel != OTA_CHANNEL_STABLE && channel != OTA_CHANNEL_PRERELEASE) {
         return ESP_ERR_INVALID_ARG;
-    }
-    if (alarmclock && !BOARD_HAL_HAS_SPEAKER) {
-        return ESP_ERR_NOT_SUPPORTED;
     }
     if (ota_status.state == OTA_STATE_CHECKING || ota_status.state == OTA_STATE_DOWNLOADING ||
         ota_status.state == OTA_STATE_INSTALLING) {
@@ -790,9 +741,6 @@ esp_err_t ota_set_options(ota_channel_t channel, bool alarmclock)
     }
     err = nvs_set_u8(nvs_handle, OTA_NVS_CHANNEL_KEY, (uint8_t) channel);
     if (err == ESP_OK) {
-        err = nvs_set_u8(nvs_handle, OTA_NVS_ALARM_KEY, alarmclock ? 1 : 0);
-    }
-    if (err == ESP_OK) {
         err = nvs_commit(nvs_handle);
     }
     nvs_close(nvs_handle);
@@ -801,14 +749,12 @@ esp_err_t ota_set_options(ota_channel_t channel, bool alarmclock)
     }
 
     s_channel = channel;
-    s_alarm_variant = alarmclock;
 
     // The last check answered a different question - forget it.
     update_available = false;
     if (ota_status_mutex && xSemaphoreTake(ota_status_mutex, portMAX_DELAY) == pdTRUE) {
         ota_status.latest_version[0] = '\0';
         ota_status.latest_prerelease = false;
-        ota_status.variant_switch = false;
         xSemaphoreGive(ota_status_mutex);
     }
     set_ota_state(OTA_STATE_IDLE, NULL);
