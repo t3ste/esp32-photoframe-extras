@@ -5,9 +5,10 @@ list of optional features and [docs/FEATURE_FLAGS_PLAN.md](docs/FEATURE_FLAGS_PL
 verified; this file covers what changed and when.
 
 This is a rebuild of [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe) (starting from
-`v2.18.0-27`) — not a GitHub fork, so that an earlier fork of the same project could stay as it is — carried
-forward as a real fork of its own from here on. With no build option chosen, this firmware *is* the upstream
-firmware.
+`v2.18.0-27`), run as a fork of it: the canonical repository is the GitHub fork
+[t3stier/esp32-photoframe-rebuild](https://github.com/t3stier/esp32-photoframe-rebuild), and
+[t3ste/esp32-photoframe-rebuild](https://github.com/t3ste/esp32-photoframe-rebuild) is a mirror of it (the first
+two releases were published there). With no build option chosen, this firmware *is* the upstream firmware.
 
 **Versions** are `v<upstream>.<minor>.<patch>`: the first number is the upstream version without its dot
 (upstream 2.18 → `218`) and only changes once this repository has taken over everything of that upstream
@@ -15,6 +16,18 @@ version; the last two numbers count this repository's own releases (`v218.0.0`, 
 has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
+
+## [v218.0.2] - 2026-09-28
+
+Transition release: the project moves to [t3stier/esp32-photoframe-rebuild](https://github.com/t3stier/esp32-photoframe-rebuild).
+It is published in the fork and once more in the former home, `t3ste/esp32-photoframe-rebuild`, so that frames
+running v218.0.0 or v218.0.1 (which ask the former home for updates) receive it and from then on ask the fork.
+
+### Changed
+
+- **The frame's update feed, the web flasher (<https://t3stier.github.io/esp32-photoframe-rebuild/>) and all links
+  point to the fork.** The CI bakes the feed into the firmware from the repository variable `OTA_REPO`, so the
+  mirror's release builds point at the fork too. `t3ste/esp32-photoframe-rebuild` stays as a mirror.
 
 ### Fixed
 

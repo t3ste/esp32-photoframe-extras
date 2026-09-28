@@ -48,7 +48,7 @@ const ecosystem = [
   {
     title: "Firmware",
     blurb: "ESP-IDF firmware for the photoframe. Image pipeline, REST API, Home Assistant.",
-    href: "https://github.com/t3ste/esp32-photoframe-rebuild",
+    href: "https://github.com/t3stier/esp32-photoframe-rebuild",
     tag: "C / ESP-IDF",
   },
   {
@@ -206,7 +206,7 @@ async function loadVersionInfo() {
   } else {
     try {
       const stableResponse = await fetch(
-        "https://api.github.com/repos/t3ste/esp32-photoframe-rebuild/releases/latest"
+        "https://api.github.com/repos/t3stier/esp32-photoframe-rebuild/releases/latest"
       );
       stableVersion.value = (await stableResponse.json()).tag_name;
     } catch (error) {
@@ -312,7 +312,7 @@ function scrollTo(id) {
           <span class="version-chip">{{ stableVersion }}</span>
           <a
             class="nav-github"
-            href="https://github.com/t3ste/esp32-photoframe-rebuild"
+            href="https://github.com/t3stier/esp32-photoframe-rebuild"
             target="_blank"
             rel="noopener"
             aria-label="View on GitHub"
@@ -739,7 +739,7 @@ function scrollTo(id) {
           </div>
           <div class="footer-links">
             <a
-              href="https://github.com/t3ste/esp32-photoframe-rebuild"
+              href="https://github.com/t3stier/esp32-photoframe-rebuild"
               target="_blank"
               rel="noopener"
               >Firmware</a
@@ -760,7 +760,7 @@ function scrollTo(id) {
               >App</a
             >
             <a
-              href="https://github.com/t3ste/esp32-photoframe-rebuild/blob/main/LICENSE"
+              href="https://github.com/t3stier/esp32-photoframe-rebuild/blob/main/LICENSE"
               target="_blank"
               rel="noopener"
               >License</a

@@ -42,10 +42,12 @@ menu "Photoframe optional features"
 
     config FORK_OTA_REPO
         string "GitHub repository that OTA updates are fetched from (owner/name)"
-        default "t3ste/esp32-photoframe-rebuild"
+        default "t3stier/esp32-photoframe-rebuild"
         help
             The release feed the firmware checks for updates. Defaults to this
-            project's own repository, which publishes its own releases; pass
+            project's own repository (the GitHub fork t3stier/esp32-photoframe-rebuild;
+            t3ste/esp32-photoframe-rebuild is a mirror of it), which publishes its own
+            releases; pass
             build.py --ota-repo owner/name to point a build at another feed
             (e.g. the upstream project itself, or during development).
             A build with optional features that updates itself from the upstream

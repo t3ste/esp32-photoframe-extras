@@ -110,6 +110,10 @@ jobs:
     - name: Generate splash screen
       run: python3 build.py --board ${{ matrix.board }} --step splash
 
+    # The release feed baked into the firmware: the repository variable OTA_REPO (set in
+    # this repository and in its mirror, both to the canonical repository) or, when there
+    # is none, this repository itself. A mirror that builds a release therefore still
+    # points the frame at the canonical feed.
     - name: Setup ESP-IDF
       uses: espressif/esp-idf-ci-action@v1
       with:
@@ -117,7 +121,7 @@ jobs:
         target: ${{ matrix.target }}
         command: |
           python3 build.py --board ${{ matrix.board }} ${{ matrix.feature_args }} --step firmware \
-            --ota-repo ${{ github.repository }} \
+            --ota-repo ${{ vars.OTA_REPO || github.repository }} \
             -DFIRMWARE_VERSION='${{ steps.version.outputs.version }}'
 
     - name: Install esptool

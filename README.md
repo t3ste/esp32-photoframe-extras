@@ -1,12 +1,16 @@
 # ESP32 PhotoFrame
 
-> **About this repository.** A standalone rebuild of
-> [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe) - not a GitHub
-> fork, so that the earlier fork of the same project can stay as it is. With no build option
-> the firmware and the web UI are the upstream ones; the additional features (Telegram,
-> agenda, overlays, alarm clock, HTTPS, ...) are switched on one by one at build time, see
-> [docs/FEATURES.md](docs/FEATURES.md) and the [changelog](CHANGELOG.md). Upstream's history
-> is the first commit of this repository, its [MIT license](LICENSE) applies.
+> **About this repository.** A rebuild of
+> [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe), run as a fork of
+> it: the canonical repository is the GitHub fork
+> [t3stier/esp32-photoframe-rebuild](https://github.com/t3stier/esp32-photoframe-rebuild)
+> (releases, web flasher, update feed);
+> [t3ste/esp32-photoframe-rebuild](https://github.com/t3ste/esp32-photoframe-rebuild) is a
+> mirror of it. With no build option the firmware and the web UI are the upstream ones; the
+> additional features (Telegram, agenda, overlays, alarm clock, HTTPS, ...) are switched on
+> one by one at build time, see [docs/FEATURES.md](docs/FEATURES.md) and the
+> [changelog](CHANGELOG.md). Upstream's history is part of this repository, its
+> [MIT license](LICENSE) applies.
 
 A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently supporting **Waveshare PhotoPainter**, **Seeed Studio XIAO EE02/EE03/EE04**, **Seeed Studio reTerminal E1002/E1003/E1004**, and **M5Stack M5Paper**). This firmware replaces stock firmware with a powerful RESTful API, web interface, and **significantly better image quality**.
 
