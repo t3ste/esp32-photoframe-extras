@@ -533,15 +533,9 @@ def main():
     parser.add_argument("--fork", default="fork-import")
     args = parser.parse_args()
 
-    base_ref = (
-        args.base
-        or subprocess.run(
-            ["git", "rev-list", "--max-parents=0", "HEAD"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-        ).stdout.split()[0]
-    )
+    # 1347744 = aitjcize/esp32-photoframe @ v2.18.0-27, grafted as the parent
+    # of this repository's own history.
+    base_ref = args.base or "1347744414364110f96d9c121b4cc6e13b2364f2"
     base = git_show(base_ref, args.file)
     fork = git_show(args.fork, args.file)
     fork = normalize_fork(fork) if fork is not None else None

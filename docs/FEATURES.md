@@ -52,10 +52,11 @@ Which optional hardware each board has:
 
 ## OTA updates
 
-The firmware checks the release feed in `CONFIG_FORK_OTA_REPO`. Local builds default to
-the upstream project; `python build.py --ota-repo owner/name` picks another feed, and the CI
-of this repository builds every firmware with its own repository (`github.repository`), so
-the released firmware updates from these releases. The releases carry the plain firmware
+The firmware checks the release feed in `CONFIG_FORK_OTA_REPO`, which defaults to this
+project's own repository - `python build.py --ota-repo owner/name` picks another feed (e.g.
+the upstream project, for comparing against it). The CI builds every released firmware with
+its own repository (`--ota-repo ${{ github.repository }}`) explicitly, so this holds even if
+the default ever changes. The releases carry the plain firmware
 (`esp32-photoframe-<board>.bin`, built without features). A build with features that
 installs such an update becomes the plain firmware again: keep the automatic update check
 off in the settings for feature builds. `build.py` prints a note whenever features are
