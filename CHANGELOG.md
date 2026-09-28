@@ -9,7 +9,16 @@ This is a rebuild of [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp
 forward as a real fork of its own from here on. With no build option chosen, this firmware *is* the upstream
 firmware.
 
+**Versions** are `v<upstream>.<minor>.<patch>`: the first number is the upstream version without its dot
+(upstream 2.18 → `218`) and only changes once this repository has taken over everything of that upstream
+version; the last two numbers count this repository's own releases (`v218.0.0`, `v218.0.1`, ...; when upstream
+has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
+
 ## [Unreleased]
+
+## [v218.0.0] - 2026-09-28
+
+First release. Based on upstream `v2.18.0-27`.
 
 ### Added
 

@@ -128,3 +128,26 @@ files at once and needs review before it's committed, let alone pushed):
    itself, `1347744...`, never moves - new upstream commits just land on top of it); add a `CHANGELOG.md` entry.
 6. Merge `feature/upstream-<date>` into `main` locally, same as any other feature branch; push needs the user's OK
    like any push.
+
+## 10. Versioning and releasing
+
+**Scheme** (decided by the user, 2026-09-28): `v<upstream>.<minor>.<patch>`. The first number is upstream's version
+without the dot (upstream 2.18 → `218`) and only changes once this repository has taken over everything of that
+upstream version; the last two numbers count this repository's own releases: `v218.0.0` (first release, on top of
+upstream `v2.18.0-27`), `v218.0.1` next while upstream has no new release, `v219.0.0` after upstream 2.19 has been merged
+in (section 9), then `v219.0.1` ... The firmware's OTA compares `major.minor.patch` numerically (`main/ota_manager.c`
+`version_compare`), so these sort correctly. Pre-releases (the `ota-channel` feature's channel) are not wired up in the
+CI yet - choose a tag suffix such as `-rc1` together with that work.
+
+**Steps** (only when the user asks for a release):
+
+1. Move the `CHANGELOG.md` entries from `[Unreleased]` into a new `## [vX.Y.Z] - <date>` section, commit on `main`.
+   The commit that gets tagged must NOT contain `[skip ci]` in its message (GitHub skips tag-push workflows whose head
+   commit says so, and then no release is built).
+2. `git tag -a vX.Y.Z -m "..."` on that commit, `git push origin main vX.Y.Z`.
+3. The `Build Firmware` workflow builds all 8 boards, and its `release` job creates a **draft** release with the plain
+   `esp32-photoframe-<board>.bin` (what the OTA installs) and `photoframe-firmware-<board>-merged.bin` (what the web
+   flasher and `esptool` write at offset 0) of every board; `full` builds are not part of a release.
+4. Edit the draft's notes (`gh release edit vX.Y.Z --notes-file ...`), then publish it (`gh release edit vX.Y.Z
+   --draft=false`). Publishing triggers the workflow once more, which refreshes the GitHub Pages demo so the web
+   flasher's "stable" entry follows the published release.
