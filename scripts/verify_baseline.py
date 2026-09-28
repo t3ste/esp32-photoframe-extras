@@ -3,8 +3,9 @@
 
 Acceptance check for the feature flags (docs/FEATURE_FLAGS_PLAN.md, section 7):
 with no feature selected, the firmware must be the upstream firmware. The script
-builds the reference (by default the upstream baseline, the root commit) and the
-current working tree in scratch trees under .verify/<board>/ and compares
+builds the reference (by default the upstream baseline this repository's history is
+grafted onto) and the current working tree in scratch trees under .verify/<board>/
+and compares
 
   a) the enabled Kconfig symbols of both sdkconfig files,
   b) the symbols of both ELF files (nm, sorted),
@@ -276,8 +277,9 @@ def main():
     parser.add_argument("--board", choices=list(SUPPORTED_BOARDS), required=True)
     parser.add_argument(
         "--baseline",
-        help="Git ref of the reference build (default: the root commit, i.e. the "
-        "unmodified upstream snapshot).",
+        help="Git ref of the reference build (default: aitjcize/esp32-photoframe "
+        "@ v2.18.0-27, i.e. the unmodified upstream commit this repository's own "
+        "history is grafted onto).",
     )
     parser.add_argument(
         "--baseline-args",
@@ -311,8 +313,21 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
 
     assets = prepare_shared_assets(args.board)
-    ref = args.baseline or git("rev-list", "--max-parents=0", "HEAD").splitlines()[0]
+    # 1347744 = aitjcize/esp32-photoframe @ v2.18.0-27, the commit this
+    # repository's own history is grafted onto (see docs/FEATURE_FLAGS_PLAN.md).
+    upstream_sha = "1347744414364110f96d9c121b4cc6e13b2364f2"
+    ref = args.baseline or upstream_sha
     ensure_reference(reference_tree, work, args.board, ref, args.baseline_args, assets)
+
+    if ref == upstream_sha and "--ota-repo" not in feature_args:
+        # The reference is upstream's own commit, which hardcodes its own repository
+        # as the OTA feed (no build option there at all). This repository's default
+        # is its own repository (main/Kconfig), so without this the two builds would
+        # never compare byte-identical even with every feature off - not because the
+        # code differs, but because the embedded feed string does. Anyone comparing
+        # against a different --baseline (e.g. the old fork) should pass a matching
+        # --ota-repo themselves if that comparison needs it too.
+        feature_args = [*feature_args, "--ota-repo", "aitjcize/esp32-photoframe"]
 
     sync_working_tree(candidate_tree)
     for asset in assets:

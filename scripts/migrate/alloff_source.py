@@ -54,7 +54,7 @@ def normalise(text):
 
 
 def main():
-    baseline = git("rev-list", "--max-parents=0", "HEAD").split()[0]
+    baseline = "1347744414364110f96d9c121b4cc6e13b2364f2"  # grafted parent of this repo's own history, see the runbook
     unexpected, unused = [], set(EXPECTED)
     checked = 0
     for name in git("ls-tree", "-r", "--name-only", baseline).splitlines():
