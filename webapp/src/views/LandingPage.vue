@@ -34,19 +34,15 @@ const selectedBoardMeta = computed(
 // manifest is only deployed then). Selectable as a third release channel.
 const prereleaseAvailable = ref(false);
 const prereleaseVersion = ref("");
-// The "full" build (--all-features): every optional feature the board supports
-// (Telegram, agenda, overlays, alarm clock, HTTPS, ...) - see docs/FEATURES.md.
-// The plain build (default) is the upstream firmware.
-const withFullFeatures = ref(false);
-// Manifest filename suffix for the selected firmware variant ("" = plain build).
-const variantSuffix = computed(() => (withFullFeatures.value ? "-full" : ""));
-const manifestFile = computed(() => {
-  const base =
-    { stable: "manifest", dev: "manifest-dev", prerelease: "manifest-prerelease" }[
+// The firmware offered here is the full build: every optional feature the board's
+// hardware supports (Telegram, agenda, overlays, alarm clock, HTTPS, ...) - see
+// docs/FEATURES.md. Whoever wants the plain upstream firmware gets it from upstream.
+const manifestFile = computed(
+  () =>
+    ({ stable: "manifest", dev: "manifest-dev", prerelease: "manifest-prerelease" })[
       selectedVersion.value
-    ] || "manifest";
-  return base + variantSuffix.value + ".json";
-});
+    ] + ".json"
+);
 
 const ecosystem = [
   {
@@ -182,7 +178,7 @@ onMounted(async () => {
   }
 });
 
-watch([selectedBoard, withFullFeatures], () => loadVersionInfo());
+watch(selectedBoard, () => loadVersionInfo());
 
 async function loadVersionInfo() {
   // The stable version label MUST come from the deployed manifest — that is
@@ -193,9 +189,7 @@ async function loadVersionInfo() {
   // deployed for this board.
   let manifestVersion = null;
   try {
-    const stableManifest = await fetch(
-      baseUrl + selectedBoard.value + "/manifest" + variantSuffix.value + ".json"
-    );
+    const stableManifest = await fetch(baseUrl + selectedBoard.value + "/manifest.json");
     stableAvailable.value = stableManifest.ok;
     if (stableManifest.ok) {
       manifestVersion = (await stableManifest.json()).version || null;
@@ -224,9 +218,7 @@ async function loadVersionInfo() {
   // The pre-release channel (FEATURE_OTA_CHANNEL): only offered when a newer
   // pre-release than the stable release has actually been deployed here.
   try {
-    const preManifest = await fetch(
-      baseUrl + selectedBoard.value + "/manifest-prerelease" + variantSuffix.value + ".json"
-    );
+    const preManifest = await fetch(baseUrl + selectedBoard.value + "/manifest-prerelease.json");
     prereleaseAvailable.value = preManifest.ok;
     prereleaseVersion.value = preManifest.ok ? (await preManifest.json()).version || "" : "";
   } catch {
@@ -238,10 +230,8 @@ async function loadVersionInfo() {
   }
 
   try {
-    let devResponse = await fetch(
-      baseUrl + selectedBoard.value + "/manifest-dev" + variantSuffix.value + ".json"
-    );
-    if (!devResponse.ok && !variantSuffix.value) {
+    let devResponse = await fetch(baseUrl + selectedBoard.value + "/manifest-dev.json");
+    if (!devResponse.ok) {
       devResponse = await fetch(baseUrl + "manifest-dev.json");
     }
     if (devResponse.ok) {
@@ -579,11 +569,7 @@ function scrollTo(id) {
                   <span class="radio-text">
                     <strong>Stable</strong>
                     <em class="radio-tag">{{
-                      stableAvailable
-                        ? stableVersion
-                        : variantSuffix
-                          ? "none for this build yet"
-                          : "none for this board yet"
+                      stableAvailable ? stableVersion : "none for this board yet"
                     }}</em>
                   </span>
                 </label>
@@ -615,23 +601,9 @@ function scrollTo(id) {
               </select>
             </div>
 
-            <div class="flash-row">
-              <label class="flash-label">Build</label>
-              <div class="radio-row">
-                <label class="radio">
-                  <input v-model="withFullFeatures" type="checkbox" />
-                  <span class="radio-dot"></span>
-                  <span class="radio-text">
-                    <strong>All features</strong>
-                    <em class="radio-tag">Telegram, agenda, overlays, alarm clock, HTTPS, ...</em>
-                  </span>
-                </label>
-              </div>
-            </div>
-
             <div class="flash-row flash-action">
               <esp-web-install-button
-                :key="selectedBoard + selectedVersion + variantSuffix"
+                :key="selectedBoard + selectedVersion"
                 :manifest="
                   (baseUrl.endsWith('/') ? baseUrl : baseUrl + '/') +
                   selectedBoard +
@@ -648,6 +620,7 @@ function scrollTo(id) {
               </esp-web-install-button>
               <p class="flash-note">
                 Requires Chrome, Edge, or Opera. Web Serial is not available in Safari or Firefox.
+                Your WiFi and settings are kept unless you tick “Erase device”.
               </p>
             </div>
           </div>
