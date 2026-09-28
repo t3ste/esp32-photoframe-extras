@@ -53,11 +53,14 @@ def normalise(text):
     return [line for line in lines if line]
 
 
+# The newest upstream commit merged into this repository (7ccabe0, after v2.18.0-27
+# which the history is grafted onto): move it with every upstream merge, see
+# docs/FEATURE_FLAGS_PLAN.md section 9. alloff_web.py uses it too.
+BASELINE = "7ccabe0eb2f47c6b94d1089b94c404865486cd82"
+
+
 def main():
-    # The newest upstream commit merged into this repository (151e716, after v2.18.0-27
-    # which the history is grafted onto): move it with every upstream merge, see
-    # docs/FEATURE_FLAGS_PLAN.md section 9.
-    baseline = "151e71674a655ce1162853bd2ede988a39d58e4d"
+    baseline = BASELINE
     unexpected, unused = [], set(EXPECTED)
     checked = 0
     for name in git("ls-tree", "-r", "--name-only", baseline).splitlines():
