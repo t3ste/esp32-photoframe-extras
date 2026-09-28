@@ -95,7 +95,7 @@ Done and verified (2026-09-27):
 Not decided, so not done:
 
 - OTA asset names for feature builds: only the plain `esp32-photoframe-<board>.bin` is ever published as a release asset (installing an update replaces a `full` build with the plain one, see `docs/FEATURES.md`); `full` stays a workflow artifact and only ever gets a *dev* manifest on the demo page, never a stable one.
-- Cutting an actual first release (tag, version number): the `release` job has never run, it only runs for a `v*` tag push.
+- (done) The first release `v218.0.0` was cut and published on 2026-09-28, see section 10.
 - The pre-release channel's CI wiring: the landing page and `generate_manifests.py` already support a `manifest-prerelease(-full)?.json`, but `deploy-pages` does not yet detect/deploy an actual GitHub pre-release; needs a tag-naming convention decided together with the first release.
 - The old fork's `docs/DIFF.md` and README screenshots are not taken over (`CHANGELOG.md` *was* - written fresh for this repository's own history, not imported).
 - On-device test of the hand-integrated boot paths of `main.c`: done (2026-09-27, both physical test devices) - see the runbook.
@@ -151,3 +151,7 @@ CI yet - choose a tag suffix such as `-rc1` together with that work.
 4. Edit the draft's notes (`gh release edit vX.Y.Z --notes-file ...`), then publish it (`gh release edit vX.Y.Z
    --draft=false`). Publishing triggers the workflow once more, which refreshes the GitHub Pages demo so the web
    flasher's "stable" entry follows the published release.
+
+Release notes must not claim that flashing keeps the device's settings: the `-merged.bin` image (web flasher, `esptool`
+at offset 0) is contiguous from 0x0 and overwrites the settings partition; only the frame's own update function (the
+`esp32-photoframe-<board>.bin`) keeps them.
