@@ -90,10 +90,12 @@ Done and verified (2026-09-27):
 
 **Web flasher / demo page: ported**, adapted from the old fork's for two build variants instead of an alarm-clock one: `scripts/generate_manifests.py --variant full` (matching the CI's `plain`/`full` build matrix), `scripts/launch_demo.py` and the landing page (`webapp/src/views/LandingPage.vue`) derive the GitHub repo from the git remote rather than a hardcoded fork URL, and the "All features" toggle applies to every board (not board-restricted, since `--all-features` itself already skips what a board can't run). `webapp/vite.config.demo.js` needed its own `featureDirectives` plugin (a pre-existing gap: the demo page pulls in the shared store modules, which carry the same fenced `#if` directives as the main app) and its GitHub Pages base path, which the old fork itself had never actually corrected to its own name.
 
-Not decided, so not done (nothing beyond what's described above is pushed):
+**CI: has run** (first runs 2026-09-28): the formatting job, host tests, feature tooling, all 16 firmware builds (8 boards x plain/full), the per-feature compile jobs and `deploy-pages` are green; the baked-in OTA target of the CI-built plain and full binaries was checked and is this repository. `deploy-pages` publishes the demo site and the per-board dev manifests (plain and full) to the `gh-pages` branch; GitHub Pages itself still has to be enabled in the repository settings (Pages -> deploy from branch `gh-pages`, folder `/`).
+
+Not decided, so not done:
 
 - OTA asset names for feature builds: only the plain `esp32-photoframe-<board>.bin` is ever published as a release asset (installing an update replaces a `full` build with the plain one, see `docs/FEATURES.md`); `full` stays a workflow artifact and only ever gets a *dev* manifest on the demo page, never a stable one.
-- Cutting an actual first release (tag, version number, `gh release`) - the CI workflows have still never been run.
+- Cutting an actual first release (tag, version number): the `release` job has never run, it only runs for a `v*` tag push.
 - The pre-release channel's CI wiring: the landing page and `generate_manifests.py` already support a `manifest-prerelease(-full)?.json`, but `deploy-pages` does not yet detect/deploy an actual GitHub pre-release; needs a tag-naming convention decided together with the first release.
 - The old fork's `docs/DIFF.md` and README screenshots are not taken over (`CHANGELOG.md` *was* - written fresh for this repository's own history, not imported).
 - On-device test of the hand-integrated boot paths of `main.c`: done (2026-09-27, both physical test devices) - see the runbook.
