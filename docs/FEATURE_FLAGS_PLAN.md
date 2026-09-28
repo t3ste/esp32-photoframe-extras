@@ -172,6 +172,8 @@ in (section 9), then `v219.0.1` ... The firmware's OTA compares `major.minor.pat
    --draft=false`). Publishing triggers the workflow once more, which refreshes the GitHub Pages demo so the web
    flasher's "stable" entry follows the published release.
 
-Release notes must not claim that flashing keeps the device's settings: the `-merged.bin` image (web flasher, `esptool`
-at offset 0) is contiguous from 0x0 and overwrites the settings partition; only the frame's own update function (the
-`esp32-photoframe-<board>.bin`) keeps them.
+Release notes must be exact about settings: the web flasher writes the image part by part and keeps them (unless
+"Erase device" is ticked), and so does the frame's own update (`esp32-photoframe-<board>.bin`); but the `-merged.bin`
+image written with `esptool` at offset 0 is contiguous from 0x0 and overwrites the settings partition.
+
+More background for a new maintainer (accounts, commands, pitfalls) is in [MAINTAINING.md](MAINTAINING.md).

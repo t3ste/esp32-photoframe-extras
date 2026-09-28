@@ -1,6 +1,6 @@
 # Alarm Clock - user guide
 
-> **Build option:** compiled in only with `python build.py --with alarmclock` (and `--with voice-stop` for the spoken stop word`; without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
+> **Build option:** compiled in only with `python build.py --with alarmclock` (and `--with voice-stop` for the spoken stop word); without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)). The project's releases, the web flasher and the frame's own update are the full build and contain it on boards that have the hardware.
 
 The frame can act as a bedside alarm clock: at the set time it rings a melody
 on its speaker. You stop it with the KEY button, with a spoken **stop word**, or
@@ -10,13 +10,13 @@ from the Web UI.
 
 | Feature | Needs |
 | --- | --- |
-| Alarm (schedule, ringing, KEY, button setting, Web UI tab) | the **Alarm Clock firmware** on a board with a speaker (today: `waveshare_photopainter_73`) |
-| Stop by voice, microphone tools | the Alarm Clock firmware on a board with a speaker **and** a microphone (today: `waveshare_photopainter_73`) |
+| Alarm (schedule, ringing, KEY, button setting, Web UI tab) | a firmware built with the `alarmclock` feature (the release firmware is) on a board with a speaker (today: `waveshare_photopainter_73`) |
+| Stop by voice, microphone tools | a firmware built with `alarmclock` and `voice-stop` (the release firmware is) on a board with a speaker **and** a microphone (today: `waveshare_photopainter_73`) |
 
-Regular firmware builds contain none of this. To get the Alarm Clock firmware,
-choose the **Alarm Clock** option in the web flasher, or switch in the Web UI's
-Updates tab ("Alarm Clock firmware"). The **Alarm Clock** tab only appears when
-the frame runs it.
+A build without these features (upstream's firmware, or this project's `plain` CI build) contains none of this.
+There is no separate "Alarm Clock firmware" to choose in the web flasher or the Updates tab: the release firmware
+already includes it wherever the hardware allows. The **Alarm Clock** tab only appears when the frame runs a
+firmware that has the feature and the board has a speaker.
 
 ## How it works
 
@@ -127,7 +127,8 @@ immediately.
 
 ## Troubleshooting
 
-- **No Alarm Clock tab** - the frame runs the regular firmware; install the Alarm Clock variant.
+- **No Alarm Clock tab** - the firmware was built without the `alarmclock` feature, or the board has no speaker.
+  Flash a release (or build with `--with alarmclock`).
 - **No "Stop by voice" card** - the board has no microphone.
 - **The word is not recognised** - Forget and teach again (4 examples, near the
   frame), check with Test, look at the noise with Live level; a very loud room

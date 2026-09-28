@@ -10,7 +10,9 @@
 > additional features (Telegram, agenda, overlays, alarm clock, HTTPS, ...) are switched on
 > one by one at build time, see [docs/FEATURES.md](docs/FEATURES.md) and the
 > [changelog](CHANGELOG.md). Upstream's history is part of this repository, its
-> [MIT license](LICENSE) applies.
+> [MIT license](LICENSE) applies. Maintaining or contributing to this fork:
+> [docs/MAINTAINING.md](docs/MAINTAINING.md) (handover guide); planned demo package:
+> [docs/DEMO_PLAN.md](docs/DEMO_PLAN.md).
 
 A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently supporting **Waveshare PhotoPainter**, **Seeed Studio XIAO EE02/EE03/EE04**, **Seeed Studio reTerminal E1002/E1003/E1004**, and **M5Stack M5Paper**). This firmware replaces stock firmware with a powerful RESTful API, web interface, and **significantly better image quality**.
 
