@@ -154,10 +154,13 @@ in (section 9), then `v219.0.1` ... The firmware's OTA compares `major.minor.pat
    the mirror (`origin`): `git push t3stier main vX.Y.Z`, `git push origin main vX.Y.Z` (see the runbook for the two
    accounts; workflow-file changes need a token with the `workflow` scope, i.e. push as `t3stier`). The mirror's
    Actions are switched off since v218.0.2, it only receives the code; a mirror release is needed only in a
-   transition like v218.0.2. **In the fork a push starts no workflow run** (observed for `main` and for tags, also
-   after re-pushing a tag; only manual runs and the release event run there, unexplained), so start the build by
-   hand on the tag: `gh workflow run build.yml -R t3stier/esp32-photoframe-rebuild --ref vX.Y.Z` (the `release` job
-   runs for a manual run on a tag as well). If pushes ever start runs there, do not start the run twice.
+   transition like v218.0.2. Quirk of the fresh fork: until 2026-09-28 (v218.0.2) a push started **no** workflow
+   run there (`main` and tags, also after re-pushing a tag; only manual runs and the release event ran); the first
+   push that changed a workflow file (`9cfb2b8`) made branch pushes start runs. Whether a tag push now starts
+   the run is not yet confirmed - after the tag push look at `gh run list -R t3stier/esp32-photoframe-rebuild`; if
+   nothing started, start the build by hand on the tag:
+   `gh workflow run build.yml -R t3stier/esp32-photoframe-rebuild --ref vX.Y.Z` (the `release` job runs for a
+   manual run on a tag as well). Never have both a push run and a manual run build the same tag.
 3. The `Build Firmware` workflow builds all 8 boards, and its `release` job creates a **draft** release with the
    `esp32-photoframe-<board>.bin` (what the OTA installs) and `photoframe-firmware-<board>-merged.bin` (what the web
    flasher and `esptool` write at offset 0) of every board - the full builds, see section 8. Keep the GitHub API
