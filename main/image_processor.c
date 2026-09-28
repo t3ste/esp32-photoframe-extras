@@ -97,13 +97,13 @@ static rgb_t palette_measured[7];
 // Theoretical is the device output ramp (value = round(i * 255 / 15) = i * 17),
 // mirroring epaper-image-convert; measured is the calibrated perceived ramp
 // used for color matching and error diffusion.
-#if FORK_IMAGE_PIPELINE
 // clang-format off
+#if FORK_IMAGE_PIPELINE
 #define GRAY(v) {(v), (v), (v)}
-// clang-format on
 #else
 #define GRAY(v) {(v), (v), (v)}
 #endif
+// clang-format on
 static const rgb_t gray_theoretical[16] = {
     GRAY(0),   GRAY(17),  GRAY(34),  GRAY(51),  GRAY(68),  GRAY(85),  GRAY(102), GRAY(119),
     GRAY(136), GRAY(153), GRAY(170), GRAY(187), GRAY(204), GRAY(221), GRAY(238), GRAY(255)};
