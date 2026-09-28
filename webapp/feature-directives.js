@@ -22,13 +22,20 @@ export function flagsFor(featureList) {
     .split(",")
     .map((n) => n.trim())
     .filter(Boolean);
+  // "site" is not a firmware feature: only the project's demo page (GitHub Pages,
+  // vite.config.demo.js) asks for it, to get what belongs to that site - the fork's
+  // links and release channels in views/LandingPage.vue. A device build never has it, so
+  // the landing page inside the firmware stays upstream's.
+  const site = names.includes("site");
+  const features = names.filter((n) => n !== "site");
   const flags = new Set(
-    names.map((n) =>
+    features.map((n) =>
       n === "fixes" ? "FORK_FIXES" : `FEATURE_${n.toUpperCase().replace(/-/g, "_")}`
     )
   );
   if (flags.size > 0) flags.add("FORK_ANY");
   if (flags.has("FEATURE_TELEGRAM") || flags.has("FEATURE_OVERLAYS")) flags.add("FORK_EXIF");
+  if (site) flags.add("FORK_SITE");
   return flags;
 }
 

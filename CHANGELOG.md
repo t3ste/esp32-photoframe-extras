@@ -17,6 +17,14 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Changed
+
+- Upstream `7ccabe0` (the image upload dithers with the preview's palette) is merged.
+- The landing page inside the firmware is upstream's again: what belongs to the project's demo site only (fork links,
+  pre-release channel, manifest names) is fenced with `#if FORK_SITE`, which only the demo site's build switches on.
+  With every feature off the web bundle is byte-identical to upstream's again (it had silently stopped being so);
+  `scripts/migrate/alloff_web.py` now checks that in CI.
+
 ## [v218.0.2] - 2026-09-28
 
 Transition release: the project moves to [t3stier/esp32-photoframe-rebuild](https://github.com/t3stier/esp32-photoframe-rebuild).

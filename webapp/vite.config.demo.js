@@ -24,9 +24,10 @@ function renameHtmlPlugin() {
 // only shows the image-processing preview, not a real device's settings UI, so
 // the shared store modules it pulls in (../stores) are stripped to the plain
 // (no-feature) code path, same as VITE_FEATURES="" would for the main app - see
-// feature-directives.js.
+// feature-directives.js. "site" switches on what only this site has: the fork's
+// links and release channels in views/LandingPage.vue.
 export default defineConfig({
-  plugins: [featureDirectives(""), vue(), vuetify({ autoImport: true }), renameHtmlPlugin()],
+  plugins: [featureDirectives("site"), vue(), vuetify({ autoImport: true }), renameHtmlPlugin()],
   base: "/esp32-photoframe-rebuild/",
   publicDir: resolve(__dirname, "../demo"), // Serve demo folder as public (for sample.jpg, manifests)
   build: {

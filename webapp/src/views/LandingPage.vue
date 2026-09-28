@@ -30,6 +30,7 @@ const selectedBoardMeta = computed(
   () => supportedBoards.find((b) => b.value === selectedBoard.value) || supportedBoards[0]
 );
 
+// #if FORK_SITE
 // The newest published pre-release, when it is newer than the stable release (its
 // manifest is only deployed then). Selectable as a third release channel.
 const prereleaseAvailable = ref(false);
@@ -44,11 +45,16 @@ const manifestFile = computed(
     ] + ".json"
 );
 
+// #endif
 const ecosystem = [
   {
     title: "Firmware",
     blurb: "ESP-IDF firmware for the photoframe. Image pipeline, REST API, Home Assistant.",
+    // #if FORK_SITE
     href: "https://github.com/t3stier/esp32-photoframe-rebuild",
+    // #else
+    href: "https://github.com/aitjcize/esp32-photoframe",
+    // #endif
     tag: "C / ESP-IDF",
   },
   {
@@ -206,7 +212,11 @@ async function loadVersionInfo() {
   } else {
     try {
       const stableResponse = await fetch(
+        // #if FORK_SITE
         "https://api.github.com/repos/t3stier/esp32-photoframe-rebuild/releases/latest"
+        // #else
+        "https://api.github.com/repos/aitjcize/esp32-photoframe/releases/latest"
+        // #endif
       );
       stableVersion.value = (await stableResponse.json()).tag_name;
     } catch (error) {
@@ -215,6 +225,7 @@ async function loadVersionInfo() {
     }
   }
 
+  // #if FORK_SITE
   // The pre-release channel (FEATURE_OTA_CHANNEL): only offered when a newer
   // pre-release than the stable release has actually been deployed here.
   try {
@@ -229,6 +240,7 @@ async function loadVersionInfo() {
     selectedVersion.value = stableAvailable.value ? "stable" : "dev";
   }
 
+  // #endif
   try {
     let devResponse = await fetch(baseUrl + selectedBoard.value + "/manifest-dev.json");
     if (!devResponse.ok) {
@@ -312,7 +324,11 @@ function scrollTo(id) {
           <span class="version-chip">{{ stableVersion }}</span>
           <a
             class="nav-github"
+            <!-- #if FORK_SITE -->
             href="https://github.com/t3stier/esp32-photoframe-rebuild"
+            <!-- #else -->
+            href="https://github.com/aitjcize/esp32-photoframe"
+            <!-- #endif -->
             target="_blank"
             rel="noopener"
             aria-label="View on GitHub"
@@ -581,6 +597,7 @@ function scrollTo(id) {
                     <em class="radio-tag">{{ devVersion }}</em>
                   </span>
                 </label>
+                <!-- #if FORK_SITE -->
                 <label v-if="prereleaseAvailable" class="radio">
                   <input v-model="selectedVersion" type="radio" value="prerelease" />
                   <span class="radio-dot"></span>
@@ -589,6 +606,7 @@ function scrollTo(id) {
                     <em class="radio-tag">{{ prereleaseVersion }}</em>
                   </span>
                 </label>
+                <!-- #endif -->
               </div>
             </div>
 
@@ -608,7 +626,11 @@ function scrollTo(id) {
                   (baseUrl.endsWith('/') ? baseUrl : baseUrl + '/') +
                   selectedBoard +
                   '/' +
+                  <!-- #if FORK_SITE -->
                   manifestFile
+                  <!-- #else -->
+                  (selectedVersion === 'stable' ? 'manifest.json' : 'manifest-dev.json')
+                  <!-- #endif -->
                 "
               >
                 <!-- native web-component slot (not a Vue slot): the attribute must stay -->
@@ -620,7 +642,9 @@ function scrollTo(id) {
               </esp-web-install-button>
               <p class="flash-note">
                 Requires Chrome, Edge, or Opera. Web Serial is not available in Safari or Firefox.
+                <!-- #if FORK_SITE -->
                 Your WiFi and settings are kept unless you tick “Erase device”.
+                <!-- #endif -->
               </p>
             </div>
           </div>
@@ -738,12 +762,18 @@ function scrollTo(id) {
             </div>
           </div>
           <div class="footer-links">
+            <!-- #if FORK_SITE -->
             <a
               href="https://github.com/t3stier/esp32-photoframe-rebuild"
               target="_blank"
               rel="noopener"
               >Firmware</a
             >
+            <!-- #else -->
+            <a href="https://github.com/aitjcize/esp32-photoframe" target="_blank" rel="noopener"
+              >Firmware</a
+            >
+            <!-- #endif -->
             <a
               href="https://github.com/aitjcize/esp32-photoframe-server"
               target="_blank"
@@ -760,7 +790,11 @@ function scrollTo(id) {
               >App</a
             >
             <a
+              <!-- #if FORK_SITE -->
               href="https://github.com/t3stier/esp32-photoframe-rebuild/blob/main/LICENSE"
+              <!-- #else -->
+              href="https://github.com/aitjcize/esp32-photoframe/blob/main/LICENSE"
+              <!-- #endif -->
               target="_blank"
               rel="noopener"
               >License</a

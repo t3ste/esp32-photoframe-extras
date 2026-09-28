@@ -6,3 +6,4 @@ src/components/SettingsPanel.vue
 src/stores/settings.js
 src/views/ProvisionPage.vue
 src/views/MainApp.vue
+src/views/LandingPage.vue

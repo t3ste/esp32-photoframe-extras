@@ -79,7 +79,7 @@ Actual course: the shared-file gating (steps 1-8, C code and web UI) was done in
 
 Done and verified (2026-09-27):
 
-- **A** all off == upstream: Kconfig symbols, ELF symbols and `.bin` size identical on `waveshare_photopainter_73` and `seeedstudio_xiao_ee02`; the web bundle is byte-identical (16 files incl. `.gz`). At source level `scripts/migrate/alloff_source.py` resolves every guard with all flags off and compares each of the 170 files that also exist upstream: only the intended build wiring differs (it runs in CI).
+- **A** all off == upstream: Kconfig symbols, ELF symbols and `.bin` size identical on `waveshare_photopainter_73` and `seeedstudio_xiao_ee02`; the web bundle is byte-identical (16 files incl. `.gz`; re-checked on 2026-09-28 against upstream `7ccabe0` after it had silently stopped being true, see below). At source level `scripts/migrate/alloff_source.py` resolves every guard with all flags off and compares each of the 170 C files that also exist upstream: only the intended build wiring differs (it runs in CI); `scripts/migrate/alloff_web.py` does the same for the 31 web sources that end up in the bundle (`webapp/src`, `index.html`, `public/`; only the demo site's `index-demo.html` may differ) by running the build's own directive plugin, and runs in CI too. **Lesson of 2026-09-28:** `views/LandingPage.vue` is part of the device bundle (`router/index.js`), and the changes made there for the project's demo page (fork links, pre-release channel, manifest names) were ungated, so the "no flags" bundle differed from upstream's for a day - unnoticed because `verify_baseline.py` gives both builds the same prebuilt web assets. Everything that belongs to the demo site only is now fenced with `#if FORK_SITE` (a flag only `webapp/vite.config.demo.js` turns on), the upstream text sits in the `#else`.
 - **B** all on vs the old fork tip (`v218.7.0`, built from a `fork-import` worktree with `--alarmclock`) on `waveshare_photopainter_73`: the image is 608 B larger (+0.03 %). Nothing exists only in the old fork's ELF. The differences are the upstream code the old fork had lost (`GUI_ReadBmp_RGB_Gray16`, `GUI_ReadPng_Gray16`, `Paint_DrawGrayscaleCalibrationPattern`, the bounded WiFi wake: `wifi_manager_keep_reconnecting`, `late_wifi_task`, `startup_online_work`, `forget_wifi_and_reprovision`) and `cold_boot_wifi_retry`, the old fork's cold-boot retry re-implemented on that flow; the Kconfig symbol `ALARM_CLOCK_ENABLED` is now `FEATURE_ALARMCLOCK`.
 - **C** every flag alone, none and all: compile + link on `waveshare_photopainter_73` (18 sets); compile on `seeedstudio_xiao_ee02` (14 sets, the board without speaker, microphone and sensor); none/all compile on all other boards; all-features links on `seeedstudio_xiao_ee02` and the ESP32 board `m5stack_m5paper_v11`. Web app builds for every set.
 - **D** 292 host tests pass; formatters (clang-format 18, black, isort, prettier) clean.
@@ -124,14 +124,17 @@ files at once and needs review before it's committed, let alone pushed):
      hunk of this file's own history (`git log -p` on it) shows how the original hand-integration reasoned about it.
 4. After resolving conflicts, re-verify from scratch - a merge can silently break "no flags == upstream" even with no
    conflicts (e.g. upstream renaming something a gate references): `scripts/migrate/xref.py`,
-   `scripts/migrate/alloff_source.py`, `scripts/verify_baseline.py --board <b>` for at least one board with the
-   hardware and one without, the full feature compile matrix (`scripts/feature_matrix.py --board <b> single`), and
-   the host tests.
+   `scripts/migrate/alloff_source.py` (C sources), `scripts/migrate/alloff_web.py` (web sources), a byte comparison of
+   the web bundle (build upstream's `webapp` at the baseline into a scratch dir, build ours with `VITE_FEATURES=""`
+   and `VITE_OUT_DIR=<dir>`, compare every file's hash - `alloff_web.py` is the text-level version of this),
+   `scripts/verify_baseline.py --board <b>` for at least one board with the hardware and one without (note: it feeds
+   the SAME prebuilt web assets to both builds, so it does not check the web bundle), the full feature compile matrix
+   (`scripts/feature_matrix.py --board <b> single`), and the host tests.
 5. Move the baseline of the equality proofs to the newest merged upstream commit: `upstream_sha` in
-   `scripts/verify_baseline.py` and `baseline` in `scripts/migrate/alloff_source.py` (both currently `151e716`, the
-   first merge after the graft point `1347744`, which itself never moves; `gate.py` keeps the graft point, it analyses
-   the old fork against the original upstream). Without that "no flags == upstream" reports the merged upstream change
-   as a difference. Add a `CHANGELOG.md` entry.
+   `scripts/verify_baseline.py` and `BASELINE` in `scripts/migrate/alloff_source.py` (which `alloff_web.py` imports;
+   both currently `7ccabe0`, the second merge after the graft point `1347744`, which itself never moves; `gate.py`
+   keeps the graft point, it analyses the old fork against the original upstream). Without that "no flags == upstream"
+   reports the merged upstream change as a difference. Add a `CHANGELOG.md` entry.
 6. Merge `feature/upstream-<date>` into `main` locally, same as any other feature branch; push needs the user's OK
    like any push.
 

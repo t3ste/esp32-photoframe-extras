@@ -14,6 +14,7 @@ export default [
       "src/components/SettingsPanel.vue",
       "src/stores/app.js",
       "src/stores/settings.js",
+      "src/views/LandingPage.vue",
     ],
   },
   ...pluginVue.configs["flat/recommended"],

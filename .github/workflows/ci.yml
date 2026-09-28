@@ -76,13 +76,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          # the upstream baseline is the root commit of the history
+          # the upstream baseline is a fixed upstream commit in the history
           fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '18'
 
       - name: Feature registry tests
         run: python -m unittest discover -s scripts -p "test_*.py"
@@ -95,3 +100,6 @@ jobs:
 
       - name: With every feature off the sources are the upstream sources
         run: python scripts/migrate/alloff_source.py
+
+      - name: With every feature off the web sources are the upstream web sources
+        run: python scripts/migrate/alloff_web.py
