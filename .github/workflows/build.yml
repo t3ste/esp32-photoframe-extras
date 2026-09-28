@@ -366,11 +366,14 @@ jobs:
           # Full variant (--all-features): only released as a workflow artifact, never
           # as a GitHub release (installing an update would replace it with the plain
           # firmware, see docs/FEATURES.md) - so only its dev manifest is ever generated.
-          if [ -f "firmware-artifacts/photoframe-firmware-full-$board-merged.bin" ]; then
-            cp "firmware-artifacts/photoframe-firmware-full-$board-merged.bin" \
-              "demo/$board/photoframe-firmware-full-$board-dev.bin"
+          # (the variant suffix goes after the board name, see the matrix's `suffix` above)
+          if [ -f "firmware-artifacts/photoframe-firmware-$board-full-merged.bin" ]; then
+            cp "firmware-artifacts/photoframe-firmware-$board-full-merged.bin" \
+              "demo/$board/photoframe-firmware-$board-full-dev.bin"
             python3 scripts/generate_manifests.py --no-copy --dev --demo-dir "demo/$board" --board "$board" \
               --variant full
+          else
+            echo "::warning::No full-variant firmware artifact for $board; omitting its dev manifest."
           fi
         done
 
