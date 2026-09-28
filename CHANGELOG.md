@@ -16,6 +16,12 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Fixed
+
+- After installing an update over OTA the Updates tab kept offering the release that was just installed ("Update
+  available: v218.0.1" while running v218.0.1) until the next check, because the saved "update available" state was
+  restored unchecked at boot. It is only kept while the offered version is still newer than the running one.
+
 ## [v218.0.1] - 2026-09-28
 
 First release with the full firmware; replaces v218.0.0, whose assets are the plain (upstream-equivalent) build.

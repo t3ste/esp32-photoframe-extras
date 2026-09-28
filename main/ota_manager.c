@@ -568,6 +568,16 @@ esp_err_t ota_manager_init(void)
 
     // Load last known OTA status from NVS (latest_version, state)
     ota_load_status_from_nvs();
+#if FORK_FIXES
+    // The saved "update available" outlives the update: right after installing that
+    // very release the frame would keep offering it (current == latest) until the
+    // next check. Only an update that is still newer than what runs stays offered.
+    if (ota_status.state == OTA_STATE_UPDATE_AVAILABLE &&
+        version_compare(ota_status.current_version, ota_status.latest_version) >= 0) {
+        ota_status.state = OTA_STATE_IDLE;
+        ota_save_status_to_nvs();
+    }
+#endif
 #if FEATURE_OTA_CHANNEL
     ota_load_options_from_nvs();
 #endif
