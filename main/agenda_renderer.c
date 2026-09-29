@@ -1703,9 +1703,12 @@ static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rec
     // Each shown calendar's name/letter is drawn directly in that source's
     // own color (draw_calendar_label() - see its own comment for why no
     // separate swatch/badge box is used) - all five sources show whenever
-    // they contributed events this cycle; a mono profile just draws every
-    // one of them in the same plain header ink, since there's no color to
-    // legend in the first place there.
+    // they're ACTIVE (name_a.show/name_b.show/show_c/show_d/show_e - the
+    // caller derives these from being enabled+configured, not from having
+    // events this cycle, see agenda_renderer_render()'s is_a_active..
+    // is_e_active doc comment); a mono profile just draws every one of them
+    // in the same plain header ink, since there's no color to legend in the
+    // first place there.
     int hx = rect.x + AGENDA_PADDING;
     int hy = rect.y + AGENDA_PADDING;
     // A "," (no surrounding space) precedes every shown source after the
@@ -2140,7 +2143,9 @@ esp_err_t agenda_renderer_render(const todo_list_t *todo, const ics_event_list_t
                                  const ics_event_list_t *events_d, const ics_event_list_t *events_e,
                                  const weather_forecast_t *cal_weather, int lookahead_days,
                                  const char *output_path, image_format_t out_format,
-                                 const agenda_climate_t *climate)
+                                 const agenda_climate_t *climate, bool is_a_active,
+                                 bool is_b_active, bool is_c_active, bool is_d_active,
+                                 bool is_e_active)
 {
     if (!output_path) {
         return ESP_ERR_INVALID_ARG;
@@ -2151,7 +2156,10 @@ esp_err_t agenda_renderer_render(const todo_list_t *todo, const ics_event_list_t
     bool have_c = events_c && events_c->count > 0;
     bool have_d = events_d && events_d->count > 0;
     bool have_e = events_e && events_e->count > 0;
-    bool show_cal = have_a || have_b || have_c || have_d || have_e;
+    // The column itself renders whenever a source is ACTIVE, not just when
+    // one happens to have events this cycle - see the is_a_active..is_e_active
+    // doc comment in agenda_renderer.h for why.
+    bool show_cal = is_a_active || is_b_active || is_c_active || is_d_active || is_e_active;
     if (!show_todo && !show_cal) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -2312,12 +2320,16 @@ esp_err_t agenda_renderer_render(const todo_list_t *todo, const ics_event_list_t
                       compare_tagged_by_start);
             }
             // Header shows the actual calendar source name(s) instead of a
-            // generic "CALENDAR" label - just whichever one(s) actually
-            // contributed events this cycle (have_a/have_b), not simply
-            // whichever have a URL configured, since a configured-but-
-            // currently-failed source contributes nothing to show a name
-            // for. Falls back to "Calendar A"/"Calendar B" if the user
-            // hasn't set a custom display name for that source.
+            // generic "CALENDAR" label - every source that's actually ACTIVE
+            // (is_a_active..is_e_active: enabled and, for A/B, has a URL
+            // saved), not just whichever contributed events this cycle -
+            // an active source with nothing due this window, or a momentary
+            // fetch failure, must still show its name so it doesn't look
+            // indistinguishable from a source that was never set up at all
+            // (confirmed live 2026-09-29: adding an event for the current
+            // week was the only way to tell the two apart before this).
+            // Falls back to "Calendar A"/"Calendar B" if the user hasn't set
+            // a custom display name for that source.
             const char *name_a = config_manager_get_agenda_cal_name();
             if (!name_a || name_a[0] == '\0') {
                 name_a = "Calendar A";
@@ -2326,11 +2338,11 @@ esp_err_t agenda_renderer_render(const todo_list_t *todo, const ics_event_list_t
             if (!name_b || name_b[0] == '\0') {
                 name_b = "Calendar B";
             }
-            agenda_cal_name_tag_t tag_a = {.show = have_a, .name = name_a};
-            agenda_cal_name_tag_t tag_b = {.show = have_b, .name = name_b};
+            agenda_cal_name_tag_t tag_a = {.show = is_a_active, .name = name_a};
+            agenda_cal_name_tag_t tag_b = {.show = is_b_active, .name = name_b};
             draw_calendar_column(rgb, width, height, cal_rect, now, lookahead_days, &profile,
-                                 tagged, tagged_count, cal_weather, tag_a, tag_b, have_c, have_d,
-                                 have_e, !both, cal_climate);
+                                 tagged, tagged_count, cal_weather, tag_a, tag_b, is_c_active,
+                                 is_d_active, is_e_active, !both, cal_climate);
         } else {
             ESP_LOGW(TAG, "Failed to allocate Calendar render scratch buffers - skipping column");
         }

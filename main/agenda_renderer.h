@@ -69,10 +69,22 @@ typedef struct {
  * both sensor reads failed) - when present, a small right-aligned readout
  * is drawn into BOTH column headers (ToDo and Calendar alike), in the free
  * space after the existing header text.
+ * @param is_a_active .. is_e_active Whether each Calendar source is actually
+ * configured (enabled, and - for A/B - has a URL saved), independent of
+ * `events_a`..`events_e`/whether it found anything to show *this* cycle.
+ * Controls only whether that source's name/letter appears in the Calendar
+ * header - an active source with a genuinely empty window, or one whose
+ * fetch failed this one cycle, still gets its name shown rather than looking
+ * indistinguishable from a source that was never set up at all (confirmed
+ * live 2026-09-29: with no other signal, a user cannot tell "this calendar
+ * has nothing on this week" from "this calendar stopped being read").
+ * `events_a`..`events_e` (actual event content) are unaffected by these -
+ * an inactive source's events, if somehow non-NULL, are never drawn either
+ * way, and an active-but-empty source draws no events, just its header name.
  * @return ESP_ERR_INVALID_ARG on bad arguments, ESP_ERR_INVALID_STATE if
- * `todo`, `events_a`, and `events_b` are all NULL/empty (nothing to render -
- * callers should check this first rather than relying on it),
- * ESP_ERR_NO_MEM if the canvas buffer can't be allocated, otherwise
+ * `todo` is NULL/empty and none of `is_a_active`..`is_e_active` is true
+ * (nothing to render - callers should check this first rather than relying
+ * on it), ESP_ERR_NO_MEM if the canvas buffer can't be allocated, otherwise
  * whatever image_processor_write_rgb_to_fmt() returns.
  */
 esp_err_t agenda_renderer_render(const todo_list_t *todo, const ics_event_list_t *events_a,
@@ -80,6 +92,8 @@ esp_err_t agenda_renderer_render(const todo_list_t *todo, const ics_event_list_t
                                  const ics_event_list_t *events_d, const ics_event_list_t *events_e,
                                  const weather_forecast_t *cal_weather, int lookahead_days,
                                  const char *output_path, image_format_t out_format,
-                                 const agenda_climate_t *climate);
+                                 const agenda_climate_t *climate, bool is_a_active,
+                                 bool is_b_active, bool is_c_active, bool is_d_active,
+                                 bool is_e_active);
 
 #endif

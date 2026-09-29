@@ -1,8 +1,8 @@
 # Changelog
 
 All notable changes to this project are documented here. See [docs/FEATURES.md](docs/FEATURES.md) for the full
-list of optional features and [docs/FEATURE_FLAGS_PLAN.md](docs/FEATURE_FLAGS_PLAN.md) for how they're built and
-verified; this file covers what changed and when.
+list of optional features and [docs/MAINTAINING.md](docs/MAINTAINING.md) for how they're built and verified;
+this file covers what changed and when.
 
 This is a rebuild of [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe) (starting from
 `v2.18.0-27`), run as a fork of it: the canonical repository is the GitHub fork
@@ -16,6 +16,30 @@ version; the last two numbers count this repository's own releases (`v218.0.0`, 
 has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
+
+## [v218.0.3] - 2026-09-29
+
+### Added
+
+- The Agenda tab's Calendar color profiles (Settings → Agenda, slots 1-3) can now be **exported**, alongside the
+  existing import/remove - `GET /api/agenda/color-profile?slot=N` downloads the raw stored profile, byte-identical
+  to what `profile-editor.html` itself would export, so a profile can be backed up or moved to another device
+  without needing the editor tool again.
+- The debug log now reports how many Calendar A/B events were actually found within the render window on a
+  successful fetch (`agenda_manager: Calendar A: N event(s) in window`) - a fetch that runs out of retries already
+  logged a warning, but a *successful* fetch that legitimately (or unexpectedly) finds zero events looked
+  identical to "nothing wrong" until now.
+
+### Fixed
+
+- **Agenda: an active Calendar source's name could disappear from the Calendar header.** The header used to show a
+  source's name only when it had contributed at least one event *this* render cycle - a calendar that was fully
+  configured but simply had nothing due in the current window (or hit a momentary fetch error) looked identical to
+  one that had never been set up at all, with no way to tell the two apart (confirmed live: adding an event for the
+  current week was the only way to make the name reappear). The header now shows every *active* source's name
+  (enabled, and - for Calendar A/B - with a URL saved) regardless of whether it has events this cycle; likewise, an
+  agenda render that has no events anywhere but does have at least one active source now still updates the display
+  (showing all active names with an empty body) instead of silently leaving the previous, possibly stale, screen up.
 
 ### Changed
 

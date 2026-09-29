@@ -275,6 +275,13 @@ esp_err_t agenda_manager_run(bool wifi_connected)
     // one first, while heap is freshest, is a safe, low-risk mitigation
     // regardless of the exact numbers.
     bool have_events_a = false, have_events_b = false;
+    // Whether A/B are configured at all (enabled + a URL saved) - independent
+    // of whether THIS cycle's fetch actually found any events. Threaded
+    // through to the renderer so an active-but-currently-empty (or
+    // momentarily fetch-failed) source still gets its name shown in the
+    // header instead of looking indistinguishable from "not set up" - see
+    // agenda_renderer_render()'s own comment on is_a_active/is_b_active.
+    bool is_a_active = false, is_b_active = false;
     // The 7-day grid layouts always need a full 7-day fetch window
     // regardless of the (1-3, list-mode-only) agenda_cal_days setting -
     // draw_calendar_column() falls back to plain list rendering (using
@@ -291,6 +298,8 @@ esp_err_t agenda_manager_run(bool wifi_connected)
         if (url[0] == '\0' && url2[0] == '\0') {
             ESP_LOGW(TAG, "Calendar enabled but no URL configured");
         }
+        is_a_active = url[0] != '\0';
+        is_b_active = url2[0] != '\0';
         time_t now = time(NULL);
         time_t window_end = now + (time_t) cal_days * 86400;
         if (url[0] != '\0' && wifi_connected) {
@@ -304,6 +313,7 @@ esp_err_t agenda_manager_run(bool wifi_connected)
             have_events_a = ok;
             if (ok) {
                 config_manager_set_agenda_cal_etag(etag_out);
+                ESP_LOGI(TAG, "Calendar A: %d event(s) in window", events_a->count);
             } else {
                 ESP_LOGW(TAG, "Calendar fetch failed, that column will be omitted this cycle");
             }
@@ -319,6 +329,7 @@ esp_err_t agenda_manager_run(bool wifi_connected)
             have_events_b = ok;
             if (ok) {
                 config_manager_set_agenda_cal_etag2(etag_out);
+                ESP_LOGI(TAG, "Calendar B: %d event(s) in window", events_b->count);
             } else {
                 ESP_LOGW(TAG, "Calendar 2 fetch failed, that source will be omitted this cycle");
             }
@@ -335,11 +346,15 @@ esp_err_t agenda_manager_run(bool wifi_connected)
     // "only matters if the Calendar column is actually showing" logic as
     // A/B.
     bool have_events_c = false, have_events_d = false, have_events_e = false;
+    bool is_c_active = false, is_d_active = false, is_e_active = false;
     if (want_cal) {
         time_t now = time(NULL);
         const char *name_c = config_manager_get_agenda_cal_c_name();
         const char *name_d = config_manager_get_agenda_cal_d_name();
         const char *name_e = config_manager_get_agenda_cal_e_name();
+        is_c_active = config_manager_get_agenda_cal_c_enabled();
+        is_d_active = config_manager_get_agenda_cal_d_enabled();
+        is_e_active = config_manager_get_agenda_cal_e_enabled();
         have_events_c = load_extra_ics_source(config_manager_get_agenda_cal_c_enabled(),
                                               AGENDA_CAL_CACHE_PATH_C, AGENDA_CAL_CACHE_PATH_C_FLAT,
                                               name_c[0] ? name_c : "Calendar C", now, events_c);
@@ -401,10 +416,18 @@ esp_err_t agenda_manager_run(bool wifi_connected)
     agenda_climate_t climate;
     bool have_climate = build_agenda_climate(&climate);
 
+    // Whether to render the Calendar column at all: any ACTIVE source
+    // (enabled + configured), not just one that happened to find events this
+    // cycle - an active source with a genuinely empty week (or a momentary
+    // fetch failure) still gets its column with its name in the header, see
+    // agenda_renderer_render()'s own comment. Only skip the whole cycle, and
+    // leave the previous screen on display, when there is truly nothing
+    // configured to show at all.
+    bool any_cal_active = is_a_active || is_b_active || is_c_active || is_d_active || is_e_active;
+
     esp_err_t result;
-    if (!have_todo && !have_events_a && !have_events_b && !have_events_c && !have_events_d &&
-        !have_events_e) {
-        ESP_LOGW(TAG, "Nothing to render this agenda cycle (no source fetched successfully)");
+    if (!have_todo && !any_cal_active) {
+        ESP_LOGW(TAG, "Nothing to render this agenda cycle (no source configured)");
         result = ESP_FAIL;
     } else {
         result = agenda_renderer_render(
@@ -412,7 +435,8 @@ esp_err_t agenda_manager_run(bool wifi_connected)
             have_events_b ? events_b : NULL, have_events_c ? events_c : NULL,
             have_events_d ? events_d : NULL, have_events_e ? events_e : NULL,
             have_cal_weather ? &cal_weather : NULL, cal_days, AGENDA_OUTPUT_PATH, IMAGE_FORMAT_PNG,
-            have_climate ? &climate : NULL);
+            have_climate ? &climate : NULL, is_a_active, is_b_active, is_c_active, is_d_active,
+            is_e_active);
         if (result != ESP_OK) {
             ESP_LOGE(TAG, "Failed to render agenda screen: %s", esp_err_to_name(result));
         } else {
