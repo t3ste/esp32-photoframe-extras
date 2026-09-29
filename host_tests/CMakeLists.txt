@@ -323,6 +323,39 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# Demo package (examples/waveshare_photopainter_73/, docs/DEMO_PLAN.md): the
+# example calendars and todo.txt run through the firmware's own parsers, not
+# a re-implementation - links calendar_ics.c and todo.c directly, same stubs
+# as calendar_ics_test/todo_test above.
+add_executable(
+  example_calendars_test
+  test_example_calendars.cpp
+  ../main/calendar_ics.c
+  ../main/todo.c
+  stubs/fake_http_fetch.c
+  stubs/fake_image_processor_sanitize.c
+)
+
+target_compile_definitions(
+  example_calendars_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  EXAMPLE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../examples/waveshare_photopainter_73"
+)
+
+target_link_libraries(
+  example_calendars_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  example_calendars_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Discover tests
 include(GoogleTest)
 gtest_discover_tests(cron_test)
@@ -336,6 +369,7 @@ gtest_discover_tests(kws_test)
 gtest_discover_tests(headlines_test)
 gtest_discover_tests(todo_test)
 gtest_discover_tests(calendar_ics_test)
+gtest_discover_tests(example_calendars_test)
 
 # On-device image pipeline characterization tests (host build of
 # main/image_processor.c against ESP-IDF stubs + system libpng)
