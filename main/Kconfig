@@ -211,6 +211,17 @@ menu "Photoframe optional features"
             repeating events itself, instead of the frame downloading the whole
             calendar. Needs the source-auth feature (and through it Agenda).
 
+    config FEATURE_UPLOAD_DEDUP
+        bool "Duplicate detection at upload"
+        default n
+        help
+            Every album keeps a small index of the MD5 of its images. An
+            upload that is already in the album is refused (or stored with a
+            warning) - by the file bytes, or by the decoded pixels so that the
+            same picture from two browsers still counts. Images that were
+            there before can be indexed in the background, and a report lists
+            the duplicates of an album. Needs storage (SD card or flash).
+
     config FEATURE_MULTI_UPLOAD
         bool "Upload several images at once"
         default n

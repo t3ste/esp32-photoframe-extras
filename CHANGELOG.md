@@ -29,6 +29,11 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   expands repeating events itself, so monthly/yearly repeats and exceptions (which the on-device reader skips) show up, and a large calendar no
   longer runs into the 2 MB limit; a server that refuses the expand request is asked again without it
   ([docs/CALDAV.md](docs/CALDAV.md)).
+- **`upload-dedup` build option** (`--with upload-dedup`): every album keeps a small index (`.dedup`) of the MD5 of its images, and an upload the
+  album already has is refused (`409`, naming the file; the Web UI offers "Upload anyway") or stored with a warning - as a setting; compared by the file's
+  bytes or by the decoded pixels (an EPDGZ inside its gzip wrapper, a PNG as RGB), so the same photo converted by two browsers still counts as one. The
+  images that were there before can be indexed in the background (on save and at every start-up, or with "Index now"), and "Find duplicates" lists what an
+  album has twice with a delete button per file; the batch upload skips duplicates unless told otherwise ([docs/UPLOAD_DEDUP.md](docs/UPLOAD_DEDUP.md)).
 - **`multi-upload` build option** (`--with multi-upload`): the Web UI's upload takes a whole selection of files (up to 200) - photos are converted with
   the current settings one after the other (cover or fit, no editor), pre-rendered `.epdgz` files (for instance from `process-cli`) - and, if ticked,
   panel-sized PNGs - go up as they are; a queue shows progress and failures. The upload endpoint accepts an image without a thumbnail

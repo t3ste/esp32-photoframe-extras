@@ -153,6 +153,13 @@ FEATURES = (
         "CalDAV calendars (caldavs://): the server sends only the coming days, repeats expanded",
     ),
     Feature(
+        "upload-dedup",
+        "FEATURE_UPLOAD_DEDUP",
+        (),
+        (),
+        "Duplicate detection at upload: MD5 index per album, skip or warn, report",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),

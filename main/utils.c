@@ -19,6 +19,9 @@
 #include "color_palette.h"
 #include "config.h"
 #include "config_manager.h"
+#if FEATURE_UPLOAD_DEDUP
+#include "dedup_service.h"
+#endif
 #include "cron.h"
 #include "debug_log.h"
 #include "display_flow.h"
@@ -1129,6 +1132,27 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     item = cJSON_GetObjectItem(root, "agenda_shift_start");
     if (item && cJSON_IsString(item)) {
         config_manager_set_agenda_shift_start(cJSON_GetStringValue(item));
+    }
+#endif
+#if FEATURE_UPLOAD_DEDUP
+    item = cJSON_GetObjectItem(root, "dedup_mode");
+    if (item && cJSON_IsString(item)) {
+        const char *mode_str = cJSON_GetStringValue(item);
+        config_manager_set_dedup_mode(strcmp(mode_str, "off") == 0    ? 0
+                                      : strcmp(mode_str, "warn") == 0 ? 2
+                                                                      : 1);
+    }
+    item = cJSON_GetObjectItem(root, "dedup_hash");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_dedup_hash(strcmp(cJSON_GetStringValue(item), "payload") == 0 ? 1 : 0);
+    }
+    item = cJSON_GetObjectItem(root, "dedup_index_existing");
+    if (item && cJSON_IsBool(item)) {
+        bool was_on = config_manager_get_dedup_index_existing();
+        config_manager_set_dedup_index_existing(cJSON_IsTrue(item));
+        if (cJSON_IsTrue(item) && !was_on) {
+            dedup_service_scan_start(NULL);  // switched on: start indexing the earlier images
+        }
     }
 #endif
 #if FEATURE_AGENDA && FEATURE_OVERLAYS

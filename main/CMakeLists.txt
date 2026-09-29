@@ -77,6 +77,9 @@ endif()
 if(CONFIG_FEATURE_CALDAV)
     list(APPEND SOURCES "caldav.c")
 endif()
+if(CONFIG_FEATURE_UPLOAD_DEDUP)
+    list(APPEND SOURCES "dedup.c" "dedup_payload.c" "dedup_service.c")
+endif()
 if(CONFIG_FEATURE_FACECROP)
     list(APPEND SOURCES "facecrop_metadata.c")
 endif()
@@ -146,4 +149,8 @@ target_add_binary_data(${COMPONENT_LIB} "splash_data/setup_complete.epdgz" BINAR
 # during IDF's early requirement expansion, so it is added after registration.
 if(CONFIG_FEATURE_HTTPS)
     idf_component_optional_requires(PRIVATE esp_https_server)
+endif()
+# The duplicate index hashes with the ROM's MD5.
+if(CONFIG_FEATURE_UPLOAD_DEDUP)
+    idf_component_optional_requires(PRIVATE esp_rom)
 endif()

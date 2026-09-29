@@ -45,6 +45,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_WEBCAL
   CONFIG_FEATURE_SOURCE_AUTH
   CONFIG_FEATURE_CALDAV
+  CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
   CONFIG_FORK_FIXES
@@ -149,6 +150,30 @@ target_include_directories(
   source_auth_test
   PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# Duplicate detection index and MD5 (upload-dedup feature)
+add_executable(
+  dedup_test
+  test_dedup.cpp
+  test_dedup_payload.cpp
+  ../main/dedup.c
+  ../main/dedup_payload.c
+)
+
+target_link_libraries(
+  dedup_test
+  GTest::gtest_main
+  PNG::PNG
+  m
+)
+
+target_include_directories(
+  dedup_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
@@ -408,6 +433,7 @@ gtest_discover_tests(wake_schedule_test)
 gtest_discover_tests(http_auth_test)
 gtest_discover_tests(source_auth_test)
 gtest_discover_tests(caldav_test)
+gtest_discover_tests(dedup_test)
 gtest_discover_tests(network_backoff_test)
 gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)

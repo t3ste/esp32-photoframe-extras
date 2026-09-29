@@ -200,6 +200,11 @@ static char agenda_cal_e_url[AGENDA_CAL_E_URL_MAX_LEN] = {0};
 #if FEATURE_SOURCE_AUTH
 static bool source_auth_allow_http = false;
 #endif
+#if FEATURE_UPLOAD_DEDUP
+static uint8_t dedup_mode = 1;  // skip
+static uint8_t dedup_hash = 0;  // stored bytes
+static bool dedup_index_existing = false;
+#endif
 static char agenda_cal_c_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
 static char agenda_cal_d_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
 static char agenda_cal_e_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
@@ -1282,6 +1287,20 @@ esp_err_t config_manager_init(void)
         nvs_get_str(nvs_handle, NVS_AGENDA_CAL_D_URL_KEY, agenda_cal_d_url, &agenda_cal_d_url_len);
         size_t agenda_cal_e_url_len = sizeof(agenda_cal_e_url);
         nvs_get_str(nvs_handle, NVS_AGENDA_CAL_E_URL_KEY, agenda_cal_e_url, &agenda_cal_e_url_len);
+#if FEATURE_UPLOAD_DEDUP
+        uint8_t stored_upload_dedup = 0;
+        if (nvs_get_u8(nvs_handle, NVS_DEDUP_MODE_KEY, &stored_upload_dedup) == ESP_OK &&
+            stored_upload_dedup <= 2) {
+            dedup_mode = stored_upload_dedup;
+        }
+        if (nvs_get_u8(nvs_handle, NVS_DEDUP_HASH_KEY, &stored_upload_dedup) == ESP_OK &&
+            stored_upload_dedup <= 1) {
+            dedup_hash = stored_upload_dedup;
+        }
+        if (nvs_get_u8(nvs_handle, NVS_DEDUP_INDEX_KEY, &stored_upload_dedup) == ESP_OK) {
+            dedup_index_existing = (stored_upload_dedup != 0);
+        }
+#endif
 #if FEATURE_SOURCE_AUTH
         uint8_t stored_source_auth_http = 0;
         if (nvs_get_u8(nvs_handle, NVS_SOURCE_AUTH_HTTP_KEY, &stored_source_auth_http) == ESP_OK) {
@@ -3601,6 +3620,41 @@ bool config_manager_get_agenda_cal_e_enabled(void)
 {
     return agenda_cal_e_enabled;
 }
+
+#if FEATURE_UPLOAD_DEDUP
+void config_manager_set_dedup_mode(int mode)
+{
+    dedup_mode = (mode >= 0 && mode <= 2) ? (uint8_t) mode : 1;
+    agenda_nvs_set_u8(NVS_DEDUP_MODE_KEY, dedup_mode);
+}
+
+int config_manager_get_dedup_mode(void)
+{
+    return dedup_mode;
+}
+
+void config_manager_set_dedup_hash(int kind)
+{
+    dedup_hash = (kind == 1) ? 1 : 0;
+    agenda_nvs_set_u8(NVS_DEDUP_HASH_KEY, dedup_hash);
+}
+
+int config_manager_get_dedup_hash(void)
+{
+    return dedup_hash;
+}
+
+void config_manager_set_dedup_index_existing(bool on)
+{
+    dedup_index_existing = on;
+    agenda_nvs_set_u8(NVS_DEDUP_INDEX_KEY, on ? 1 : 0);
+}
+
+bool config_manager_get_dedup_index_existing(void)
+{
+    return dedup_index_existing;
+}
+#endif
 
 #if FEATURE_SOURCE_AUTH
 void config_manager_set_source_auth_allow_http(bool allow)

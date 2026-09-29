@@ -138,11 +138,67 @@ function loadImage(file) {
   });
 }
 
+// #if FEATURE_UPLOAD_DEDUP
+
+// Duplicate detection: the frame refuses an image its album already has (HTTP 409, naming the
+// file). A single upload then keeps its preview open and offers "Upload anyway"; in the "warn"
+// setting the image is stored and the reply says what it duplicates.
+const duplicateExisting = ref(""); // the file a refused upload duplicates, "" if none
+const allowDuplicates = ref(false); // upload even if the album has it (retry, batch option)
+let lastDuplicateOf = ""; // what the last upload was refused for
+let lastDuplicateStored = ""; // what the last (stored) upload duplicates
+// #if FEATURE_MULTI_UPLOAD
+const quietUpload = () => batchActive.value; // a batch reports per file in its own list
+// #else
+const quietUpload = () => false;
+// #endif
+
+async function noteDuplicate(response) {
+  lastDuplicateOf = "";
+  lastDuplicateStored = "";
+  duplicateExisting.value = "";
+  let body = {};
+  try {
+    body = await response.clone().json();
+  } catch (_error) {
+    // not JSON: an error page
+  }
+  if (response.status === 409 && body.status === "duplicate") {
+    lastDuplicateOf = body.existing || "an existing file";
+  } else if (response.ok && body.duplicate_of) {
+    lastDuplicateStored = body.duplicate_of;
+  }
+  if (quietUpload()) return;
+  if (lastDuplicateOf) {
+    duplicateExisting.value = lastDuplicateOf;
+  } else if (lastDuplicateStored) {
+    showMessage(
+      `Uploaded - the album already had the same image (${lastDuplicateStored})`,
+      "warning"
+    );
+  }
+}
+
+async function uploadAnyway() {
+  duplicateExisting.value = "";
+  allowDuplicates.value = true;
+  try {
+    await uploadImage("upload");
+  } finally {
+    allowDuplicates.value = false;
+  }
+}
+// #endif
+
 async function uploadImage(mode = "upload") {
   // #if FEATURE_MULTI_UPLOAD
   lastUploadOk = false;
   lastUploadStatus = 0;
   lastUploadError = "";
+  // #endif
+  // #if FEATURE_UPLOAD_DEDUP
+  lastDuplicateOf = "";
+  lastDuplicateStored = "";
   // #endif
   if (!selectedFile.value || !sourceCanvas.value || !imageProcessor) return;
 
@@ -288,9 +344,17 @@ async function uploadImage(mode = "upload") {
     // If mode is 'display' or SD card not available, use display-image endpoint
     const isDirectDisplay = mode === "display" || !canSaveToAlbum.value;
 
+    // #if FEATURE_UPLOAD_DEDUP
+    const uploadUrl = isDirectDisplay
+      ? "/api/display-image"
+      : `/api/upload?album=${encodeURIComponent(appStore.selectedAlbum)}${
+          allowDuplicates.value ? "&duplicates=allow" : ""
+        }`;
+    // #else
     const uploadUrl = isDirectDisplay
       ? "/api/display-image"
       : `/api/upload?album=${encodeURIComponent(appStore.selectedAlbum)}`;
+    // #endif
 
     const response = await fetch(uploadUrl, {
       method: "POST",
@@ -298,6 +362,9 @@ async function uploadImage(mode = "upload") {
     });
     // #if FEATURE_MULTI_UPLOAD
     lastUploadStatus = response.status;
+    // #endif
+    // #if FEATURE_UPLOAD_DEDUP
+    await noteDuplicate(response);
     // #endif
 
     if (response.ok) {
@@ -341,6 +408,9 @@ async function uploadImage(mode = "upload") {
 }
 
 function resetUpload() {
+  // #if FEATURE_UPLOAD_DEDUP
+  duplicateExisting.value = "";
+  // #endif
   selectedFile.value = null;
   previewUrl.value = null;
   showPreview.value = false;
@@ -437,10 +507,25 @@ async function uploadPrerendered(file, item, kind) {
   if (thumbnailBlob) {
     formData.append("thumbnail", thumbnailBlob, `${base}.jpg`);
   }
-  const response = await fetch(`/api/upload?album=${encodeURIComponent(appStore.selectedAlbum)}`, {
+  // #if FEATURE_UPLOAD_DEDUP
+  const uploadUrl = `/api/upload?album=${encodeURIComponent(appStore.selectedAlbum)}${
+    allowDuplicates.value ? "&duplicates=allow" : ""
+  }`;
+  // #else
+  const uploadUrl = `/api/upload?album=${encodeURIComponent(appStore.selectedAlbum)}`;
+  // #endif
+  const response = await fetch(uploadUrl, {
     method: "POST",
     body: formData,
   });
+  // #if FEATURE_UPLOAD_DEDUP
+  await noteDuplicate(response);
+  if (lastDuplicateOf) {
+    item.status = "skipped";
+    item.note = `already in the album (${lastDuplicateOf})`;
+    return true;
+  }
+  // #endif
   if (!response.ok) {
     throw new Error(`upload failed (HTTP ${response.status})`);
   }
@@ -474,6 +559,13 @@ async function uploadBatchFile(file, item) {
   selectedFile.value = file;
   sourceCanvas.value = canvas;
   await uploadImage("upload");
+  // #if FEATURE_UPLOAD_DEDUP
+  if (lastDuplicateOf) {
+    item.status = "skipped";
+    item.note = `already in the album (${lastDuplicateOf})`;
+    return;
+  }
+  // #endif
   if (!lastUploadOk) {
     throw new Error(
       lastUploadStatus ? `upload failed (HTTP ${lastUploadStatus})` : lastUploadError || "failed"
@@ -885,6 +977,14 @@ async function generateAiImage() {
             density="compact"
             hide-details
           />
+          <!-- #if FEATURE_UPLOAD_DEDUP -->
+          <v-checkbox
+            v-model="allowDuplicates"
+            label="Upload images the album already has, too"
+            density="compact"
+            hide-details
+          />
+          <!-- #endif -->
         </div>
         <v-list density="compact" style="max-height: 260px; overflow-y: auto">
           <v-list-item v-for="(item, i) in batchState.items" :key="i" :subtitle="item.note">
@@ -976,6 +1076,22 @@ async function generateAiImage() {
       </v-btn>
     </v-card-actions>
 
+    <!-- #if FEATURE_UPLOAD_DEDUP -->
+    <v-alert
+      v-if="duplicateExisting && showPreview"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      class="mx-4 mb-4"
+    >
+      This image is already in the album ({{ duplicateExisting }}), so it was not uploaded.
+      <template #append>
+        <v-btn size="small" variant="text" :loading="uploading" @click="uploadAnyway">
+          Upload anyway
+        </v-btn>
+      </template>
+    </v-alert>
+    <!-- #endif -->
     <!-- Upload Progress -->
     <v-progress-linear v-if="uploading" :model-value="uploadProgress" color="primary" height="4" />
 

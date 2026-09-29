@@ -902,6 +902,13 @@ typedef enum {
 // may also be sent over plain http:// (default no, see source_auth.h).
 #define NVS_SOURCE_AUTH_HTTP_KEY "src_auth_http"
 
+// upload-dedup feature: what to do with an upload the album already has (0 off, 1 skip, 2 warn),
+// what is compared (0 the stored bytes, 1 the decoded pixels), and whether files that were there
+// before the feature are indexed in the background.
+#define NVS_DEDUP_MODE_KEY "dedup_mode"
+#define NVS_DEDUP_HASH_KEY "dedup_hash"
+#define NVS_DEDUP_INDEX_KEY "dedup_index"
+
 // User-authored Calendar-view color profiles (see agenda_color_profile.h),
 // imported via the Web UI as JSON exported by the companion browser tool
 // "profile-editor.html". Up to AGENDA_COLOR_PROFILE_SLOTS profiles can be

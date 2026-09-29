@@ -840,6 +840,81 @@ async function clearDebugLog() {
   }
 }
 
+// #if FEATURE_UPLOAD_DEDUP
+// Duplicate images: index the images that were there before, and list what an album has twice.
+const dedupAlbum = ref(""); // "" = every album (indexing); the report needs one
+const dedupStatus = ref(null); // { running, finished, album, total, done, indexed, failed }
+const dedupReport = ref(null); // { album, hash, images, indexed, groups: [[file, ...], ...] }
+const dedupBusy = ref(false);
+let dedupTimer = null;
+
+const dedupProgress = computed(() => {
+  const s = dedupStatus.value;
+  if (!s) return "";
+  if (s.running) return `Indexing ${s.album || "..."}: ${s.done} of ${s.total} images`;
+  if (!s.finished) return "";
+  return `Indexed ${s.indexed} new image(s)${s.failed ? `, ${s.failed} could not be read` : ""}`;
+});
+
+async function dedupPollStatus() {
+  clearTimeout(dedupTimer);
+  try {
+    const response = await fetch("/api/dedup/status");
+    if (response.ok) dedupStatus.value = await response.json();
+  } catch (_error) {
+    // the frame is busy: the next poll will do
+  }
+  if (dedupStatus.value?.running) dedupTimer = setTimeout(dedupPollStatus, 1500);
+}
+
+async function dedupStartIndexing() {
+  dedupBusy.value = true;
+  try {
+    const response = await fetch("/api/dedup/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ album: dedupAlbum.value }),
+    });
+    if (!response.ok && response.status !== 409) throw new Error(`HTTP ${response.status}`);
+    await dedupPollStatus();
+  } catch (error) {
+    showSnackbar(`Could not start the indexing: ${error.message}`, "error");
+  } finally {
+    dedupBusy.value = false;
+  }
+}
+
+async function dedupFindDuplicates() {
+  if (!dedupAlbum.value) return;
+  dedupBusy.value = true;
+  try {
+    const response = await fetch(
+      `/api/dedup/duplicates?album=${encodeURIComponent(dedupAlbum.value)}`
+    );
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    dedupReport.value = await response.json();
+  } catch (error) {
+    showSnackbar(`Could not list the duplicates: ${error.message}`, "error");
+  } finally {
+    dedupBusy.value = false;
+  }
+}
+
+async function dedupDelete(file) {
+  const report = dedupReport.value;
+  if (!report) return;
+  if (!(await appStore.deleteImage(report.album, file))) {
+    showSnackbar(`Could not delete ${file}`, "error");
+    return;
+  }
+  report.groups = report.groups
+    .map((group) => group.filter((name) => name !== file))
+    .filter((group) => group.length > 1);
+}
+
+onMounted(dedupPollStatus);
+onUnmounted(() => clearTimeout(dedupTimer));
+// #endif
 // #if FEATURE_FACECROP
 const organizingCropVariants = ref(false);
 
@@ -3732,6 +3807,117 @@ async function performFactoryReset() {
                   <v-icon start>mdi-folder-move</v-icon>
                   Organize Crop Folders
                 </v-btn>
+              </v-col>
+            </v-row>
+
+            <v-divider class="my-6" />
+
+<!-- #endif -->
+<!-- #if FEATURE_UPLOAD_DEDUP -->
+            <div class="text-subtitle-1 mb-4">Duplicate Images</div>
+            <v-row>
+              <v-col cols="12">
+                <v-select
+                  v-model="settingsStore.deviceSettings.dedupMode"
+                  :items="[
+                    { title: 'Refuse it (reply: already in the album)', value: 'skip' },
+                    { title: 'Store it, but say so', value: 'warn' },
+                    { title: 'Do nothing (no check)', value: 'off' },
+                  ]"
+                  label="When an upload is already in the album"
+                  variant="outlined"
+                  density="compact"
+                  class="mb-2"
+                />
+                <v-select
+                  v-model="settingsStore.deviceSettings.dedupHash"
+                  :items="[
+                    { title: 'The file - the same bytes', value: 'stored' },
+                    { title: 'The picture - the same pixels', value: 'payload' },
+                  ]"
+                  label="What counts as the same image"
+                  variant="outlined"
+                  density="compact"
+                  class="mb-2"
+                />
+                <div class="text-caption text-medium-emphasis mb-2">
+                  Every album keeps a small list of the MD5 of its images. "The file" catches the
+                  same upload twice; "The picture" also catches one photo converted by two
+                  browsers (their compressed files differ, the pixels do not) - it takes a little
+                  longer per upload. Changing this only affects images added from now on; index the
+                  earlier ones again below.
+                </div>
+                <v-switch
+                  v-model="settingsStore.deviceSettings.dedupIndexExisting"
+                  label="Index the images that were there before, in the background"
+                  color="primary"
+                  hide-details
+                />
+                <div class="text-caption text-medium-emphasis mb-4">
+                  Switching this on (and saving) starts indexing at once, and again every time the
+                  frame starts up. It reads every image once - minutes for a large album - and
+                  keeps the frame awake while it does.
+                </div>
+
+                <v-select
+                  v-model="dedupAlbum"
+                  :items="[{ title: 'All albums', value: '' }, ...appStore.sortedAlbums.map((a) => a.name)]"
+                  label="Album"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  style="max-width: 260px"
+                  class="mb-3"
+                />
+                <div class="d-flex flex-wrap align-center ga-2">
+                  <v-btn
+                    variant="outlined"
+                    :loading="dedupBusy || dedupStatus?.running"
+                    @click="dedupStartIndexing"
+                  >
+                    <v-icon start>mdi-database-search</v-icon>
+                    Index now
+                  </v-btn>
+                  <v-btn
+                    variant="outlined"
+                    :disabled="!dedupAlbum"
+                    :loading="dedupBusy"
+                    @click="dedupFindDuplicates"
+                  >
+                    <v-icon start>mdi-content-duplicate</v-icon>
+                    Find duplicates
+                  </v-btn>
+                  <span class="text-caption text-medium-emphasis">{{ dedupProgress }}</span>
+                </div>
+
+                <template v-if="dedupReport">
+                  <div class="text-body-2 mt-4">
+                    {{ dedupReport.indexed }} of {{ dedupReport.images }} images in
+                    "{{ dedupReport.album }}" are indexed<span
+                      v-if="dedupReport.indexed < dedupReport.images"
+                    >
+                      - use "Index now" first for the rest</span
+                    >.
+                    <span v-if="dedupReport.groups.length === 0">No duplicates found.</span>
+                  </div>
+                  <v-list v-if="dedupReport.groups.length" density="compact" class="mt-2">
+                    <template v-for="(group, i) in dedupReport.groups" :key="i">
+                      <v-list-subheader>The same image, {{ group.length }} times</v-list-subheader>
+                      <v-list-item v-for="file in group" :key="file" :title="file">
+                        <template #append>
+                          <v-btn
+                            size="small"
+                            variant="text"
+                            color="error"
+                            icon="mdi-delete"
+                            :title="'Delete ' + file"
+                            @click="dedupDelete(file)"
+                          />
+                        </template>
+                      </v-list-item>
+                    </template>
+                  </v-list>
+                </template>
               </v-col>
             </v-row>
 

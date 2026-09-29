@@ -473,6 +473,17 @@ const char *config_manager_get_agenda_cal_e_url(void);
 void config_manager_set_agenda_cal_e_name(const char *name);
 const char *config_manager_get_agenda_cal_e_name(void);
 
+#if FEATURE_UPLOAD_DEDUP
+// Duplicate detection at upload (dedup.h): mode 0 off / 1 skip / 2 warn, hash 0 stored bytes /
+// 1 decoded pixels, and whether images from before are indexed in the background.
+void config_manager_set_dedup_mode(int mode);
+int config_manager_get_dedup_mode(void);
+void config_manager_set_dedup_hash(int kind);
+int config_manager_get_dedup_hash(void);
+void config_manager_set_dedup_index_existing(bool on);
+bool config_manager_get_dedup_index_existing(void);
+#endif
+
 #if FEATURE_SOURCE_AUTH
 // May the login in a calendar/ToDo URL (https://user:password@host/...) also be sent over plain
 // http://? Default no - the fetch is refused instead (source_auth.h).

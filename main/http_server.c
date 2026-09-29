@@ -33,6 +33,9 @@
 #include "debug_log.h"
 #include "display_flow.h"
 #include "display_manager.h"
+#if FEATURE_UPLOAD_DEDUP
+#include "dedup_service.h"
+#endif
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
@@ -968,6 +971,48 @@ static esp_err_t upload_image_handler(httpd_req_t *req)
     snprintf(final_dest_path, sizeof(final_dest_path), "%s/%s", album_path, dest_filename);
     snprintf(final_thumb_path, sizeof(final_thumb_path), "%s/%s", album_path, jpg_filename);
 
+#if FEATURE_UPLOAD_DEDUP
+    // Is this image already in the album (dedup.h)? The upload is still in its temporary file.
+    dedup_digest_t upload_digest;
+    bool have_digest = false;
+    bool is_duplicate = false;
+    char duplicate_of[256] = "";
+    if (dedup_service_mode() != DEDUP_MODE_OFF) {
+        have_digest = dedup_service_hash(result.image_path, &upload_digest) == ESP_OK;
+        if (have_digest) {
+            is_duplicate = dedup_service_find(album_path, &upload_digest, dest_filename,
+                                              duplicate_of, sizeof(duplicate_of));
+        }
+    }
+    if (is_duplicate && dedup_service_mode() == DEDUP_MODE_SKIP) {
+        // "duplicates=allow" stores it anyway (the Web UI's "add it anyway")
+        bool allow_duplicate = false;
+        char dup_query[128], dup_value[16];
+        if (httpd_req_get_url_query_str(req, dup_query, sizeof(dup_query)) == ESP_OK &&
+            httpd_query_key_value(dup_query, "duplicates", dup_value, sizeof(dup_value)) ==
+                ESP_OK) {
+            allow_duplicate = (strcmp(dup_value, "allow") == 0);
+        }
+        if (!allow_duplicate) {
+            ESP_LOGI(TAG, "Upload is already in the album as %s - not stored", duplicate_of);
+            unlink(result.image_path);
+            if (result.has_thumbnail) {
+                unlink(result.thumbnail_path);
+            }
+            cJSON *dup_response = cJSON_CreateObject();
+            cJSON_AddStringToObject(dup_response, "status", "duplicate");
+            cJSON_AddStringToObject(dup_response, "existing", duplicate_of);
+            char *dup_json = cJSON_Print(dup_response);
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_set_status(req, "409 Conflict");
+            httpd_resp_sendstr(req, dup_json);
+            free(dup_json);
+            cJSON_Delete(dup_response);
+            return ESP_OK;
+        }
+    }
+#endif
+
     // Remove old files
     unlink(final_dest_path);
     unlink(final_thumb_path);
@@ -1007,9 +1052,21 @@ static esp_err_t upload_image_handler(httpd_req_t *req)
     ESP_LOGI(TAG, "Image saved successfully: %s (thumbnail: %s)", dest_filename, jpg_filename);
 #endif
 
+#if FEATURE_UPLOAD_DEDUP
+    if (have_digest) {
+        dedup_service_record(album_path, dest_filename, &upload_digest);
+    }
+#endif
+
     cJSON *response = cJSON_CreateObject();
     cJSON_AddStringToObject(response, "status", "success");
     cJSON_AddStringToObject(response, "filepath", final_dest_path);
+#if FEATURE_UPLOAD_DEDUP
+    if (is_duplicate) {
+        // stored anyway (the warn mode, or "add it anyway"): say what it duplicates
+        cJSON_AddStringToObject(response, "duplicate_of", duplicate_of);
+    }
+#endif
 
     char *json_str = cJSON_Print(response);
     httpd_resp_set_type(req, "application/json");
@@ -1213,6 +1270,17 @@ static esp_err_t delete_image_handler(httpd_req_t *req)
 
     // Delete thumbnail (ignore errors if it doesn't exist)
     unlink(jpg_path);
+
+#if FEATURE_UPLOAD_DEDUP
+    {
+        const char *last_slash = strrchr(filepath, '/');
+        if (last_slash) {
+            char image_dir[512];
+            snprintf(image_dir, sizeof(image_dir), "%.*s", (int) (last_slash - filepath), filepath);
+            dedup_service_forget(image_dir, last_slash + 1);
+        }
+    }
+#endif
 
     ESP_LOGI(TAG, "Image deleted successfully: %s", filepath_copy);
 
@@ -2601,6 +2669,19 @@ static esp_err_t config_handler(httpd_req_t *req)
         cJSON_AddItemToObject(root, "agenda_cron", agenda_cron_arr);
 
 #endif
+#if FEATURE_UPLOAD_DEDUP
+        {
+            static const char *const dedup_mode_names[] = {"off", "skip", "warn"};
+            int dedup_mode = config_manager_get_dedup_mode();
+            cJSON_AddStringToObject(
+                root, "dedup_mode",
+                dedup_mode_names[(dedup_mode >= 0 && dedup_mode <= 2) ? dedup_mode : 1]);
+            cJSON_AddStringToObject(root, "dedup_hash",
+                                    config_manager_get_dedup_hash() == 1 ? "payload" : "stored");
+            cJSON_AddBoolToObject(root, "dedup_index_existing",
+                                  config_manager_get_dedup_index_existing());
+        }
+#endif
 #if FEATURE_ALARMCLOCK
         // Alarm Clock - always reported (not just on a build compiled with
         // FEATURE_ALARMCLOCK): config_manager_get_alarm_*() and
@@ -2808,6 +2889,111 @@ static esp_err_t config_urls_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+#endif
+#if FEATURE_UPLOAD_DEDUP
+// Duplicate detection (dedup_service.h): the duplicates of an album, and the background indexing of
+// the images that were there before.
+static bool dedup_request_ok(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return false;
+    }
+    if (!storage_has_persistent_storage()) {
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Storage not found");
+        return false;
+    }
+    return true;
+}
+
+// An album name from the request: not empty (unless `allow_empty`), no path parts.
+static bool dedup_album_valid(const char *album, bool allow_empty)
+{
+    if (album[0] == '\0') {
+        return allow_empty;
+    }
+    return is_path_safe(album) && strchr(album, '/') == NULL && strchr(album, '\\') == NULL;
+}
+
+static esp_err_t dedup_duplicates_handler(httpd_req_t *req)
+{
+    if (!dedup_request_ok(req)) {
+        return ESP_FAIL;
+    }
+    char query[256], album_param[128], album[128];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+        httpd_query_key_value(query, "album", album_param, sizeof(album_param)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing album");
+        return ESP_FAIL;
+    }
+    url_decode(album, album_param, sizeof(album));
+    if (!dedup_album_valid(album, false)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid album");
+        return ESP_FAIL;
+    }
+    char *json = dedup_service_report_json(album);
+    if (!json) {
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Unknown album");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json);
+    free(json);
+    return ESP_OK;
+}
+
+static esp_err_t dedup_scan_handler(httpd_req_t *req)
+{
+    if (!dedup_request_ok(req)) {
+        return ESP_FAIL;
+    }
+    char album[128] = "";
+    char body[192];
+    int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received > 0) {
+        body[received] = '\0';
+        cJSON *root = cJSON_Parse(body);
+        cJSON *item = root ? cJSON_GetObjectItem(root, "album") : NULL;
+        if (item && cJSON_IsString(item)) {
+            snprintf(album, sizeof(album), "%s", cJSON_GetStringValue(item));
+        }
+        cJSON_Delete(root);
+    }
+    if (!dedup_album_valid(album, true)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid album");
+        return ESP_FAIL;
+    }
+    esp_err_t err = dedup_service_scan_start(album);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Could not start the indexing");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_ERR_INVALID_STATE) {
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_sendstr(req, "{\"status\":\"running\"}");
+    } else {
+        httpd_resp_sendstr(req, "{\"status\":\"started\"}");
+    }
+    return ESP_OK;
+}
+
+static esp_err_t dedup_status_handler(httpd_req_t *req)
+{
+    if (!dedup_request_ok(req)) {
+        return ESP_FAIL;
+    }
+    char *json = dedup_service_status_json();
+    if (!json) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json);
+    free(json);
+    return ESP_OK;
+}
 #endif
 static esp_err_t albums_handler(httpd_req_t *req)
 {
@@ -4328,6 +4514,11 @@ static void register_all_handlers(httpd_handle_t handle)
 #if FEATURE_CHIMES
     register_uri(handle, "/api/chimes/test", HTTP_POST, chime_test_handler);
 #endif
+#if FEATURE_UPLOAD_DEDUP
+    register_uri(handle, "/api/dedup/duplicates", HTTP_GET, dedup_duplicates_handler);
+    register_uri(handle, "/api/dedup/scan", HTTP_POST, dedup_scan_handler);
+    register_uri(handle, "/api/dedup/status", HTTP_GET, dedup_status_handler);
+#endif
 #if FEATURE_AGENDA
     register_uri(handle, "/api/agenda/extra-ics", HTTP_POST, agenda_extra_ics_upload_handler);
     register_uri(handle, "/api/agenda/color-profile", HTTP_GET, agenda_color_profile_handler);
@@ -4538,4 +4729,9 @@ void http_server_set_ready(void)
 {
     system_ready = true;
     ESP_LOGI(TAG, "System marked as ready for HTTP requests");
+#if FEATURE_UPLOAD_DEDUP
+    if (config_manager_get_dedup_index_existing()) {
+        dedup_service_scan_start(NULL);  // index what the album index does not know yet
+    }
+#endif
 }

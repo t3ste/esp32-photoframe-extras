@@ -40,6 +40,9 @@ MODULES = {
     "display-history": ["history_manager"],
     "https": ["https_cert"],
     "facecrop": ["facecrop_metadata"],
+    "source-auth": ["source_auth"],
+    "caldav": ["caldav"],
+    "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }
 ALWAYS_HELPERS = {
     "http_fetch": "FORK_HTTP_FETCH",
