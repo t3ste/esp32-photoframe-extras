@@ -488,6 +488,7 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
 | Push to the mirror: HTTP 403 or "refusing to allow ... without `workflow` scope" | Git Credential Manager uses the other account; `t3ste` token lacks `workflow` | `gh` credential helper with the right account; workflow-file changes as `t3stier` |
 | Tag pushed but no release appeared | Tagged commit contained `[skip ci]`, or fork quirk | Section 8/9 |
 | `docker: 502 Bad Gateway` in a build job | Docker Hub flake | `gh run rerun <id> --failed` |
+| "Build webapp" fails in `npm ci` at `canvas`: `prebuild-install warn install Request timed out`, then a `node-gyp` error | Network flake fetching the prebuilt binary, the source-build fallback lacks the cairo headers (seen once, 1 of 16 jobs) | `gh run rerun <id> --failed` |
 | `gh run watch --exit-status` returns 1 for a green run | Unreliable | `gh run view <id> --json status,conclusion` |
 | Climate History shows only a spinner | Handler built up to ~50k readings as pretty JSON | Bounded to 1000 points (`history_decimate.h`), compact JSON |
 | Browser console "Password field is not contained in a form" | Vuetify password fields with a placeholder | Harmless, left as is |
@@ -514,13 +515,15 @@ fix; the rest are standing notes, not work items.
   run in the fork now, matching the fix already made for branch pushes (`8c24444`). The documented fallback
   (`gh workflow run build.yml -R t3stier/esp32-photoframe-rebuild --ref vX.Y.Z`) is no longer needed but is kept
   in section 8 as a safety net in case this regresses.
-- **Pre-release CI wiring**: implemented 2026-09-29 (see sections 9 and 10), **acceptance pending** - it is
-  exercised for real by the first `-rc` tag (`v218.0.4-rc1`). Confirm: the tag-push run treats it as a pre-release
-  although the draft is invisible to `gh release view`; after publishing it as a pre-release the run it triggers
-  writes `manifest-prerelease.json` while `manifest.json` still names the previous stable version; a later push to
-  `main` keeps `manifest-prerelease.json` (restored from the release); the landing page shows the Pre-release
-  radio; a frame on the pre-release channel is offered it. Also part of the same check: the `gh release list`
-  query that restores an earlier pre-release has only been run against a repository without one.
+- **Pre-release CI wiring**: implemented and first exercised 2026-09-29 with `v218.0.4-rc1`. Confirmed: the
+  tag-push run produced a draft with 16 assets marked as a pre-release and left `manifest.json` on the previous
+  stable version while writing `manifest-prerelease.json` (the draft is invisible to `gh release view`, the tag
+  convention decided); publishing it as a pre-release triggered a run with the same result; the update feed showed
+  the release candidate as the newest release and `releases/latest` still the stable one; a real frame on the
+  pre-release channel installed it over OTA. **Still to confirm:** that a later push to `main` keeps
+  `manifest-prerelease.json` (the restore path - it has only run against a repository without a pre-release
+  before), that the landing page shows the Pre-release radio, and that a frame running the release candidate is
+  offered the final `v218.0.4` (the `-rc<n>` comparison, needs that release to exist).
 - ~~**Docker-pull retry**~~ **Done 2026-09-29.** `build.yml`'s `build` job pre-pulls `espressif/idf:release-v6.0`
   with a 3-attempt retry loop right before `Setup ESP-IDF`, so a Docker Hub 502 there is now usually absorbed
   before the action's own pull runs. `feature-compile` (the per-flag compile-only job) was left as is - its
