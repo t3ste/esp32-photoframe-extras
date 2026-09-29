@@ -41,12 +41,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/aitjcize/esp32-photoframe.git",
-    "directory": "esp32-photoframe/process-cli"
+    "url": "https://github.com/t3stier/esp32-photoframe-rebuild.git",
+    "directory": "process-cli"
   },
-  "homepage": "https://github.com/aitjcize/esp32-photoframe#readme",
+  "homepage": "https://github.com/t3stier/esp32-photoframe-rebuild#readme",
   "bugs": {
-    "url": "https://github.com/aitjcize/esp32-photoframe/issues"
+    "url": "https://github.com/t3stier/esp32-photoframe-rebuild/issues"
   },
   "author": "aitjcize",
   "license": "MIT",

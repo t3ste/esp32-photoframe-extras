@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare a build of this tree against a reference build of the same board.
 
-Acceptance check for the feature flags (docs/FEATURE_FLAGS_PLAN.md, section 7):
+Acceptance check for the feature flags (docs/MAINTAINING.md section 6):
 with no feature selected, the firmware must be the upstream firmware. The script
 builds the reference (by default the upstream baseline this repository's history is
 grafted onto) and the current working tree in scratch trees under .verify/<board>/
@@ -315,7 +315,7 @@ def main():
     assets = prepare_shared_assets(args.board)
     # The newest aitjcize/esp32-photoframe commit merged into this repository:
     # 7ccabe0 (after v2.18.0-27, the commit the history is grafted onto). Move it
-    # with every upstream merge (docs/FEATURE_FLAGS_PLAN.md, section 9).
+    # with every upstream merge (docs/MAINTAINING.md section 12).
     upstream_sha = "7ccabe0eb2f47c6b94d1089b94c404865486cd82"
     ref = args.baseline or upstream_sha
     ensure_reference(reference_tree, work, args.board, ref, args.baseline_args, assets)

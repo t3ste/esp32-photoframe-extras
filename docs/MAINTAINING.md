@@ -5,10 +5,8 @@ with **no memory of earlier sessions**). It collects what was learned while buil
 fit, the commands that work, the mistakes that were made once and must not be repeated. Read it top to bottom
 once; afterwards use the table of contents as a lookup.
 
-The design of the feature system, its acceptance criteria and the upstream-merge and release procedures have
-their own document, [FEATURE_FLAGS_PLAN.md](FEATURE_FLAGS_PLAN.md); this guide points into it instead of
-repeating it. What changed and when is in [../CHANGELOG.md](../CHANGELOG.md). What the features do for a user is in
-[FEATURES.md](FEATURES.md).
+This guide is meant to be self-sufficient for day-to-day maintenance. What changed and when is in
+[../CHANGELOG.md](../CHANGELOG.md). What the features do for a user is in [FEATURES.md](FEATURES.md).
 
 1. [The ten golden rules](#1-the-ten-golden-rules)
 2. [What this repository is](#2-what-this-repository-is)
@@ -160,8 +158,6 @@ them: no fetch, pull, checkout, commit, gc or new files there.
 
 ## 5. How the feature system works
 
-Full design: [FEATURE_FLAGS_PLAN.md](FEATURE_FLAGS_PLAN.md) sections 1-5. The short version:
-
 - **Registry**: `scripts/features.py` (name, Kconfig symbol, dependencies, hardware needs, sdkconfig overlay).
   Hardware capabilities: `boards/capabilities.json` (speaker, microphone, climate sensor per board); a CI check
   (`scripts/check_capabilities.py`) keeps `boards.json`, `capabilities.json` and the Kconfig tables consistent.
@@ -217,7 +213,7 @@ which to run after which change.
 | Binary acceptance A | `python scripts/verify_baseline.py --board <b>` (IDF shell) | Kconfig symbols, ELF `nm`, `.bin` size equal to an upstream build; `--all-features` variants compare against the old fork | **feeds both builds the same prebuilt web assets - cannot see web differences** |
 | Web bundle byte compare | manual, below | the all-off web bundle is byte-identical to a build of upstream's own webapp | - |
 | Compile matrix | `python scripts/feature_matrix.py --board <b> off fixes single ...` (IDF shell) | every flag alone, none, all compile (`--full` also links) | runtime |
-| Host tests | section 7 | 298 tests: upstream tests on the all-off code + module tests + "(fork)" image variants | hardware |
+| Host tests | section 7 | 307 tests: upstream tests on the all-off code + module tests + "(fork)" image variants | hardware |
 
 After **any** edit to a shared file: `alloff_source.py`, `alloff_web.py`, `xref.py`, host tests, plus a real build
 of the board you touched. After an **upstream merge** or a **web change**: also the manual bundle compare and
@@ -282,7 +278,7 @@ ctest --test-dir ~/pf-host-build            # SERIAL: tests of one binary share 
 ```
 
 Keep the build directory outside the repository. `-j` with ctest makes the DisplayFlow tests flake. Result at the
-time of writing: 298/298.
+time of writing: 307/307.
 
 **Tooling traps on Windows**: `json.dumps` reformats files (edit JSON as text); backslash escapes and odd numbers
 of quotes/backticks in shell-tool heredocs are unreliable (write patch scripts to a file and run them); `which`
@@ -328,8 +324,7 @@ not PowerShell.
 
 ## 9. Releasing
 
-Only when the maintainer asks. The steps are in [FEATURE_FLAGS_PLAN.md](FEATURE_FLAGS_PLAN.md) section 10; the
-essentials:
+Only when the maintainer asks:
 
 1. Move `[Unreleased]` in `CHANGELOG.md` into `## [vX.Y.Z] - <date>`; commit on `main` (no `[skip ci]`).
 2. `git tag -a vX.Y.Z -m "..."`; push `main` and the tag to the fork and the mirror (section 3; workflow-file
@@ -353,9 +348,10 @@ History:
 | `v218.0.2` | 2026-09-28 | Transition release: update feed, web flasher and links move to the fork; OTA stale-state fix. Published in BOTH repositories (built once in the mirror with the fork's feed baked in via `OTA_REPO`, the 16 assets re-uploaded to the fork's release). From now on only the fork needs releases. |
 | next | undecided | `v218.0.3` would carry the second upstream merge, the landing-page fix and later work. Maintainer decides when. |
 
-Pre-releases (the `ota-channel` feature's channel) will use the tag suffix `-rc1` (`v218.0.3-rc1`). The frontend and
-`generate_manifests.py` already support a `manifest-prerelease.json`; `deploy-pages` does not yet detect a real
-GitHub pre-release. That wiring is done when the first pre-release is made.
+Pre-releases (the `ota-channel` feature's channel) use the tag suffix `-rc1` (`v218.0.3-rc1`). The frontend,
+`generate_manifests.py --prerelease-version` and `deploy-pages`'s own pre-release detection (`gh release view
+<tag> --json isPrerelease`, section 16) are wired up as of 2026-09-29 - not yet exercised by an actual `-rc1` tag
+push, so treat the first one as the real acceptance test.
 
 ## 10. Web flasher and the Pages site
 
@@ -395,8 +391,8 @@ GitHub pre-release. That wiring is done when the first pre-release is made.
 
 ## 12. Merging upstream changes
 
-The procedure is [FEATURE_FLAGS_PLAN.md](FEATURE_FLAGS_PLAN.md) section 9; do it when the maintainer asks, never
-on your own initiative. Experience from the two merges so far (`151e716`, `7ccabe0`):
+Do it when the maintainer asks, never on your own initiative. Experience from the two merges so far
+(`151e716`, `7ccabe0`):
 
 1. `git fetch upstream`; `git log refs/heads/main..upstream/main --oneline`; branch `feature/upstream-<date>`;
    `git merge upstream/main` (message file, `[skip ci]` optional for the merge commit).
@@ -431,7 +427,7 @@ on your own initiative. Experience from the two merges so far (`151e716`, `7ccab
   never quote it** into replies, files or commits.
 - Useful endpoints: `GET /api/config`, `PATCH /api/config`, `GET /api/climate-history`, `POST /api/rotate`,
   OTA endpoints; documented in [API.md](API.md). What a configuration file for the web UI's import may and may not
-  contain is analysed in [DEMO_PLAN.md](DEMO_PLAN.md).
+  contain: [DEMO_PACKAGE.md](DEMO_PACKAGE.md) and `main/utils.c`'s `apply_config_from_json()`.
 - OTA end-to-end test recipe: flash a dev build that is older than the latest release, open Updates, check, install,
   verify the frame reboots into the release with settings kept and state `idle`.
 - Measure before you guess: the climate-history slowness was first blamed on "50,000 readings" and the device had
@@ -485,26 +481,71 @@ on your own initiative. Experience from the two merges so far (`151e716`, `7ccab
 | Handler registration fails at boot (`HANDLERS_FULL`) | `max_uri_handlers` too small | Raise the base + per-feature count |
 | NVS write fails silently | Key longer than 15 characters | Shorten (CI rejects it) |
 | Time off by an hour after DST | `mktime()` with `tm_isdst` unset | Set `tm_isdst = -1` |
-| Wrong weather location after config import | An old geocoded latitude/longitude counts as a manual one and wins over the name | Set `weather_lat`, `weather_lon` and the name together (demo plan) |
+| Wrong weather location after config import | An old geocoded latitude/longitude counts as a manual one and wins over the name | Set `weather_lat`, `weather_lon` and the name together (DEMO_PACKAGE.md) |
 | Test device gone silent | Deep sleep, WiFi, SD card | One check, then ask the maintainer (section 13) |
 
 ## 16. Open items
 
-Nothing here is started without the maintainer's decision.
+Nothing here is started without the maintainer's decision. Each actionable one below has a concrete proposed
+fix; the rest are standing notes, not work items.
 
-- **Release `v218.0.3`** (or a pre-release `-rc1`): pending; Unreleased in the changelog holds the second upstream
-  merge and the landing-page fix.
-- **Tag-push runs in the fork** are unconfirmed (section 8); confirm at the next tag.
-- **Pre-release CI wiring** (`-rc1`, `manifest-prerelease.json`) is not built.
-- **Demo package** for the `waveshare_photopainter_73` (importable example configuration, example calendars, ToDo
-  file): planned, not built - [DEMO_PLAN.md](DEMO_PLAN.md).
-- Optional retry around the Docker pull in `build.yml`.
+### Actionable
+
+- **Release `v218.0.3`**: unblocked - the changelog's `[v218.0.3]` section holds the second upstream merge, the
+  landing-page `FORK_SITE` fix, color-profile export and the Calendar-header-active-name fix, none of which
+  depend on the demo package below. Proposed fix: cut it following the existing procedure (section 9) as is; no
+  other change needed first.
+- **Tag-push CI trigger unconfirmed** (whether pushing a release tag alone starts a run in the fork, section 8):
+  proposed fix - no separate action needed; it resolves itself at the next real release tag push. Check
+  `gh run list -R t3stier/esp32-photoframe-rebuild --limit 5` right after pushing the tag. If a run did start,
+  this item is closed for good; if not, keep using the documented fallback
+  (`gh workflow run build.yml -R t3stier/esp32-photoframe-rebuild --ref vX.Y.Z`). To get certainty sooner without
+  waiting for a real release, push a disposable pre-release tag (e.g. `v218.0.2-test1`), observe, then delete the
+  tag and its draft release (`gh release delete`, `git push --delete`) - `build.yml`'s `release` job only reacts to
+  a tag matching `v*`, so this is safe and reversible.
+- ~~**Pre-release CI wiring**~~ **Done 2026-09-29.** `build.yml`'s `deploy-pages` job now asks GitHub whether the
+  pushed tag's release is actually marked a pre-release (`gh release view <tag> --json isPrerelease`) instead of
+  trusting the tag name; when it is, the stable manifest keeps pointing at the latest real stable release (looked
+  up via `gh release list --exclude-pre-releases`) while this build's own binary is staged under the
+  `-prerelease-*` file names and `generate_manifests.py --prerelease-version` is passed. The `release` job also
+  now sets the GitHub release's own `prerelease` flag from the tag (`contains(github.ref, '-rc')`). **Not yet
+  exercised by a real `-rc1` tag push** - treat the first one as the acceptance test (confirm
+  `manifest-prerelease.json` appears on Pages and the landing page's pre-release radio picks it up).
+- ~~**Docker-pull retry**~~ **Done 2026-09-29.** `build.yml`'s `build` job pre-pulls `espressif/idf:release-v6.0`
+  with a 3-attempt retry loop right before `Setup ESP-IDF`, so a Docker Hub 502 there is now usually absorbed
+  before the action's own pull runs. `feature-compile` (the per-flag compile-only job) was left as is - its
+  existing `gh run rerun --failed` workaround is enough for how rarely it fails, and it doesn't ship a release.
+- **Demo package** for the `waveshare_photopainter_73`: built and tested locally (`examples/waveshare_photopainter_73/`,
+  `scripts/generate_demo_photos.py`, `scripts/test_example_config.py`, `host_tests/test_example_calendars.cpp`);
+  committed 2026-09-29, not published (not live on Pages, no CI wiring yet - see the deferred steps below).
+  User-facing overview: [DEMO_PACKAGE.md](DEMO_PACKAGE.md) (the fuller internal
+  planning notes are intentionally not part of this repository - see the note on `docs/DEMO_PLAN.md` below).
+  Remaining steps, each needing the maintainer's go-ahead first since they go online:
+  1. Wire `scripts/test_example_config.py` into `ci.yml`'s feature-tooling job (same style as
+     `alloff_source.py`/`alloff_web.py`) - it already passes locally via
+     `python -m unittest discover -s scripts -p "test_*.py"`.
+  2. Add a copy-`examples/`-into-the-site step to `build.yml`'s `deploy-pages` job, plus a post-deploy check that
+     the six published URLs answer `200` - a workflow-file change, must be pushed as `t3stier` (section 3). Until
+     this happens the URLs baked into the two example config files are not live.
+  3. A "Try the demo configuration" link on the landing page (`#if FORK_SITE`-fenced, since the page ships inside
+     the device bundle) and from the README/FEATURES.md.
+  4. Live device tests (needs the maintainer's permission, like any flash/device test - section 13).
+  5. A `CHANGELOG.md` entry and a release that actually ships the published URLs - only meaningful once step 2 is
+     live.
+  Deliberately deferred, not part of `v218.0.3` - the maintainer's "local only for now" instruction for this
+  package has not been rescinded for anything that goes online (steps 2-4 above).
+
+### Standing notes (not action items)
+
 - Documentation drift to keep an eye on: several feature docs were written for the old fork (an always-on
   firmware with a separate "Alarm Clock firmware" variant). [ALARMCLOCK_USER_GUIDE.md](ALARMCLOCK_USER_GUIDE.md) was
   corrected on 2026-09-28; when touching another feature doc, check for claims about variants, the old repository
   or menu names that no longer exist.
-- `docs/GUIDE.html` (an end-user guide draft) is deliberately **untracked** (gitignored) on the maintainer's machine;
-  do not add it without being asked.
+- `docs/GUIDE.html` (an end-user guide draft) and `docs/DEMO_PLAN.md` (this demo package's internal planning
+  notes - research, decisions, the full verification/CI checklist the "Demo package" item above summarizes) are
+  both deliberately **gitignored, local-only** on the maintainer's machine - `docs/DEMO_PLAN.md` was untracked on
+  2026-09-29 specifically because it isn't meant to be public; its user-facing counterpart is the tracked
+  [DEMO_PACKAGE.md](DEMO_PACKAGE.md). Do not track either without being asked.
 - Upstream's `gh-pages` and side branches copied into the fork are ignored; do not "clean up" without asking.
 
 ## 17. File map
@@ -523,12 +564,12 @@ Nothing here is started without the maintainer's decision.
 | `scripts/test_*.py` | Tooling unit tests (41) |
 | `webapp/` | Vue web UI; `feature-directives.js`, `vite.config.js`, `vite.config.demo.js`, `index-demo.html`, `src/` |
 | `process-cli/` | Host-side image processing tool (Node) |
-| `host_tests/` | GoogleTest host tests (298) |
+| `host_tests/` | GoogleTest host tests (307) |
 | `demo/` | Tracked stubs (`.nojekyll`, `_headers`, `favicon.svg`); the rest is generated site output (gitignored) |
 | `.github/workflows/ci.yml`, `build.yml` | CI, builds, release, Pages deploy |
-| `docs/FEATURE_FLAGS_PLAN.md` | Design, status, upstream-merge and release procedures |
 | `docs/FEATURES.md` | User-facing feature list and OTA notes |
-| `docs/API.md`, `OVERLAYS.md`, `TELEGRAM.md`, `ALARMCLOCK_USER_GUIDE.md`, `CALENDAR_RRULE_SUPPORT.md`, `CHIMES_CLIMATE_OVERHEAD.md`, `FACE_CROP.md`, `SCALE_MODE.md`, `MEASURED_PALETTE.md` | Feature and API documentation |
+| `docs/API.md`, `OVERLAYS.md`, `TELEGRAM.md`, `ALARMCLOCK_USER_GUIDE.md`, `CALENDAR_RRULE_SUPPORT.md`, `FACE_CROP.md`, `SCALE_MODE.md`, `MEASURED_PALETTE.md` | Feature and API documentation |
+| `docs/DEMO_PACKAGE.md`, `examples/waveshare_photopainter_73/` | User-facing demo package overview and its files (section 16) |
 | `CHANGELOG.md` | Fresh changelog of this fork |
 | `CLAUDE.md` | Short rules file for AI coding assistants; points here |
 
@@ -538,8 +579,7 @@ Nothing here is started without the maintainer's decision.
 - Comments explain the *why* (constraints, incidents), as the existing code does; do not restate the code.
 - Every behaviour change to a shared file is guarded (section 5) and gets a `CHANGELOG.md` entry under
   `[Unreleased]`.
-- Docs are English and tracked; keep [FEATURES.md](FEATURES.md) (user view) and
-  [FEATURE_FLAGS_PLAN.md](FEATURE_FLAGS_PLAN.md) (maintainer view) in step with the code, and update this guide when
-  a procedure changes.
+- Docs are English and tracked; keep [FEATURES.md](FEATURES.md) in step with the code, and update this guide
+  when a procedure changes.
 - Tests: a bug fix gets a host test where the logic can be isolated (pure helpers such as `history_decimate.h`
   exist for that reason); tooling changes get a `scripts/test_*.py` test.

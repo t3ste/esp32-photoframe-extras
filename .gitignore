@@ -44,3 +44,19 @@ build-matrix/
 *.ota-repo.defaults
 # Draft end-user guide (not ready to publish/track yet - user's own call when it is)
 docs/GUIDE.html
+# Local-only scratchpad of implementation ideas, not a commitment or a plan - never published
+IDEAS.md
+# Internal demo-package planning notes (research, decisions, CI/verification checklist) - not
+# meant to be public; the short user-facing counterpart is the tracked docs/DEMO_PACKAGE.md
+docs/DEMO_PLAN.md
+# Internal design/status/procedure notes for this fork's feature-flag system - not meant to be
+# public; the current design and how-tos are folded into docs/MAINTAINING.md and docs/FEATURES.md
+docs/FEATURE_FLAGS_PLAN.md
+# Describes an intermediate, now-superseded architecture (chimes/climate always compiled in,
+# internally hardware-stubbed) from before these became opt-in build flags that build.py refuses
+# to enable on a board without the hardware at all - the measurement no longer describes a
+# reachable state, see docs/FEATURES.md for the current chimes/climate build option
+docs/CHIMES_CLIMATE_OVERHEAD.md
+# Outdated process-cli flowcharts (predate face-crop/capture-date); regenerate and re-add if
+# wanted, see docs/FACE_CROP.md and process-cli/README.md
+docs/diagrams/

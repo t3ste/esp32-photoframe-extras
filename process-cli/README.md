@@ -14,8 +14,8 @@ Node.js CLI tool for processing images for ESP32 PhotoFrame. Uses the [epaper-im
 ### From source (recommended)
 
 ```bash
-git clone https://github.com/aitjcize/esp32-photoframe.git
-cd esp32-photoframe/process-cli
+git clone https://github.com/t3stier/esp32-photoframe-rebuild.git
+cd esp32-photoframe-rebuild/process-cli
 npm install
 npm link  # Makes photoframe-process command available globally
 ```
@@ -114,14 +114,6 @@ photoframe-process photo.jpg --detect-faces --metadata-only --board waveshare_ph
 Opt-in (off unless `--detect-faces` is given) - see [docs/FACE_CROP.md](../docs/FACE_CROP.md) for the
 full option list, the JSON schema, and how `--board`/`--resolution`/`--display-size-mm`/`--orientation`
 combine to pick the crop's target geometry.
-
-A complete flowchart of this CLI's entire option set and control flow (not just face-crop) is in
-`../docs/diagrams/` as three PlantUML files - render with the PlantUML VS Code extension,
-`plantuml.jar`, or https://www.plantuml.com/plantuml:
-
-- [process-cli-options.puml](../docs/diagrams/process-cli-options.puml) - every CLI option, grouped by concern
-- [process-cli-main-flow.puml](../docs/diagrams/process-cli-main-flow.puml) - the main CLI control flow
-- [process-cli-image-flow.puml](../docs/diagrams/process-cli-image-flow.puml) - the per-image `processImageFile()` detail
 
 ### Image Server Mode
 

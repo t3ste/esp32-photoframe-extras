@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Turn the difference between upstream and the old fork into feature-gated source.
 
-Migration aid (docs/FEATURE_FLAGS_PLAN.md, section 4). For one file it
+One-off migration aid used to build this fork's feature-gated files from the old fork's
+diff against upstream (see docs/MAINTAINING.md section 5 - never re-run `apply` on a file
+that was later hand-edited). For one file it
 
   1. diffs the upstream baseline (--base, default: the root commit) against the
      old fork's version (--fork, default: branch fork-import) into hunks,

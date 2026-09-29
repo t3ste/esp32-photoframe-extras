@@ -31,10 +31,10 @@ cd webapp
 npm install
 cd ..
 
-# Build for Waveshare PhotoPainter (7.3" 7-color e-paper)
+# Build for Waveshare PhotoPainter (7.3" 6-color e-paper)
 ./build.py --board waveshare_photopainter_73
 
-# Build for Seeed Studio XIAO EE02 (13.3" e-paper)
+# Build for Seeed Studio XIAO EE02 (13.3" 6-color e-paper)
 ./build.py --board seeedstudio_xiao_ee02
 
 # Build for Seeed Studio XIAO EE03 (10.3" 16-level grayscale e-paper)
@@ -45,6 +45,9 @@ cd ..
 
 # Build for Seeed Studio reTerminal E1002 (7.3" 6-color e-paper)
 ./build.py --board seeedstudio_reterminal_e1002
+
+# Build for Seeed Studio reTerminal E1003 (10.3" 16-level grayscale e-paper)
+./build.py --board seeedstudio_reterminal_e1003
 
 # Build for Seeed Studio reTerminal E1004 (13.3" 6-color e-paper)
 ./build.py --board seeedstudio_reterminal_e1004
@@ -73,9 +76,8 @@ features (Telegram, agenda, overlays, alarm clock, HTTPS, ...) are switched on p
 ```
 
 See [FEATURES.md](FEATURES.md) for the list, the hardware each feature needs and how the
-options are checked; [FEATURE_FLAGS_PLAN.md](FEATURE_FLAGS_PLAN.md) describes the design.
-To compile every feature on its own, run `python scripts/feature_matrix.py --board <board>
-single` in an activated ESP-IDF shell.
+options are checked. To compile every feature on its own, run
+`python scripts/feature_matrix.py --board <board> single` in an activated ESP-IDF shell.
 
 ### 3. Flash and Monitor
 
@@ -96,20 +98,19 @@ idf.py -p PORT flash monitor
 
 ## Configuration Options
 
-Edit `main/config.h` to customize firmware behavior:
+Almost everything (timezone, rotation schedule, image source, and every optional feature's own
+settings) is a **runtime** setting the device stores in NVS and exposes over the Web UI and
+`GET`/`PATCH /api/config` - see [API.md](API.md). `main/config.h` only holds the handful of
+values a fresh device starts with before its first configuration, plus fixed limits:
 
 ```c
 #define AUTO_SLEEP_TIMEOUT_SEC      120          // Auto-sleep timeout (2 minutes)
-#define DEFAULT_ROTATE_CRON         "0 */12 *"       // Default rotation schedule (every 12h)
-#define DISPLAY_WIDTH               800           // E-paper width
-#define DISPLAY_HEIGHT              480    // E-paper height
+#define DEFAULT_ROTATE_CRON         "0 */12 *"    // First-boot rotation schedule (every 12h)
 ```
 
-### Key Configuration Parameters
-
-- **AUTO_SLEEP_TIMEOUT_SEC**: Time in seconds before the device enters deep sleep when idle
-- **DEFAULT_ROTATE_CRON**: Default rotation schedule (cron) for fresh devices, configurable via the web interface
-- **DISPLAY_WIDTH/HEIGHT**: E-paper display dimensions (800×480 for landscape)
+Display dimensions are **not** a compile-time constant - each board reports its own native size
+(`BOARD_HAL_DISPLAY_WIDTH`/`BOARD_HAL_DISPLAY_HEIGHT` in `components/board_hal/include/board_hal.h`,
+resolved from the actual panel driver), since boards range from 800×480 up to 1872×1404.
 
 ## Development Workflow
 
@@ -149,19 +150,25 @@ Check Device Manager for COM ports.
 ## Project Structure
 
 ```
-esp32-photoframe/
+esp32-photoframe-rebuild/
 ├── main/
 │   ├── main.c                 # Entry point
-│   ├── config.h               # Configuration
+│   ├── config.h               # First-boot defaults, NVS keys, fixed limits
 │   ├── display_manager.c      # E-paper display control
 │   ├── http_server.c          # Web server and API
 │   ├── image_processor.c      # Image processing (dithering, tone mapping)
 │   ├── power_manager.c        # Sleep/wake management
-│   └── webapp/                # Web interface files
-├── components/
-│   └── epaper_src/            # E-paper driver
+│   ├── Kconfig                # FEATURE_*/FORK_* build-time options
+│   └── webapp/                # Built web UI output (generated, gitignored - source is webapp/)
+├── components/                # E-paper/sensor/board drivers (board_hal, epaper_*, sensor_*, ...)
+├── boards/                    # Per-board sdkconfig defaults, boards.json, capabilities.json
+├── features/                  # Per-feature sdkconfig overlays (sdkconfig.defaults.<name>)
+├── scripts/                   # Build/feature tooling, equality-proof and test scripts
+├── webapp/                    # Web UI source (Vue 3 + Vuetify)
 ├── process-cli/               # Node.js CLI tool
-└── docs/                      # Demo page
+├── host_tests/                # GoogleTest host-side unit tests
+├── examples/                  # Importable demo package (docs/DEMO_PACKAGE.md)
+└── docs/                      # Documentation
 ```
 
 ## Debugging

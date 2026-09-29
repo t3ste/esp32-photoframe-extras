@@ -16,8 +16,8 @@ python build.py --board seeedstudio_xiao_ee02 --list-features
 | `telegram` | Telegram bot photo rotation, remote commands, orientation pairing | - | [TELEGRAM.md](TELEGRAM.md) |
 | `overlays` | Weather and headline overlays, captions, low-battery badge | - | [OVERLAYS.md](OVERLAYS.md) |
 | `agenda` | Agenda mode: ToDo and calendars A-E, 7-day grid, colour profiles | - | [CALENDAR_RRULE_SUPPORT.md](CALENDAR_RRULE_SUPPORT.md) |
-| `chimes` | Beep feedback for firmware events | speaker | [CHIMES_CLIMATE_OVERHEAD.md](CHIMES_CLIMATE_OVERHEAD.md) |
-| `climate` | Temperature/humidity readout, badges and history | temperature/humidity sensor | [CHIMES_CLIMATE_OVERHEAD.md](CHIMES_CLIMATE_OVERHEAD.md) |
+| `chimes` | Beep feedback for firmware events | speaker | |
+| `climate` | Temperature/humidity readout, badges and history | temperature/humidity sensor | |
 | `alarmclock` | Bedside alarm clock with schedule and button UI | speaker | [ALARMCLOCK_USER_GUIDE.md](ALARMCLOCK_USER_GUIDE.md) |
 | `voice-stop` | Stop a ringing alarm with a spoken word | `alarmclock`, speaker, microphone | [ALARMCLOCK_USER_GUIDE.md](ALARMCLOCK_USER_GUIDE.md) |
 | `battery-history` | Battery history chart and days-remaining estimate | - | |
@@ -73,5 +73,3 @@ image (bootloader, partition table, OTA data, app) instead of the merged file, s
 settings partition (WiFi credentials, all settings) is left alone unless "Erase device" is
 ticked. Writing the merged image itself at offset 0 (`esptool write-flash 0x0 ...-merged.bin`)
 does erase the settings.
-
-Design and status: [FEATURE_FLAGS_PLAN.md](FEATURE_FLAGS_PLAN.md).

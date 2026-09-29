@@ -6,7 +6,7 @@
 // (a misspelt name then fails to match instead of silently compiling out).
 // With every feature off the firmware is the upstream firmware: a disabled
 // feature contributes no source file, no config key, no HTTP handler and no web
-// UI. See docs/FEATURE_FLAGS_PLAN.md.
+// UI. See docs/MAINTAINING.md section 5.
 
 #include "sdkconfig.h"
 

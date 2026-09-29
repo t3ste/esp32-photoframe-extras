@@ -1,4 +1,4 @@
-# ESP32 PhotoFrame
+# ESP32 PhotoFrame — a configurable fork
 
 > **About this repository.** A rebuild of
 > [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe), run as a fork of
@@ -11,8 +11,8 @@
 > one by one at build time, see [docs/FEATURES.md](docs/FEATURES.md) and the
 > [changelog](CHANGELOG.md). Upstream's history is part of this repository, its
 > [MIT license](LICENSE) applies. Maintaining or contributing to this fork:
-> [docs/MAINTAINING.md](docs/MAINTAINING.md) (handover guide); planned demo package:
-> [docs/DEMO_PLAN.md](docs/DEMO_PLAN.md).
+> [docs/MAINTAINING.md](docs/MAINTAINING.md) (handover guide); demo package:
+> [docs/DEMO_PACKAGE.md](docs/DEMO_PACKAGE.md).
 
 A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently supporting **Waveshare PhotoPainter**, **Seeed Studio XIAO EE02/EE03/EE04**, **Seeed Studio reTerminal E1002/E1003/E1004**, and **M5Stack M5Paper**). This firmware replaces stock firmware with a powerful RESTful API, web interface, and **significantly better image quality**.
 
@@ -28,7 +28,33 @@ A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently 
 - 🖼️ **Image Server**: [Companion server](https://github.com/aitjcize/esp32-photoframe-server) with many photo sources — Google Photos, Immich, Synology Photos, Unsplash, Pexels, Telegram bot, URL proxy, and AI generation — plus date/time and weather overlays
 - 🏠 **Home Assistant Ready**: [Companion integration](https://github.com/aitjcize/ha-esp32-photoframe) available
 - 🔌 **RESTful API**: Full programmatic control ([API docs](docs/API.md))
-- 🧩 **Optional build features**: Telegram, agenda, overlays, alarm clock, HTTPS and more, each switched on with `python build.py --with <feature>`; without any option this is the upstream firmware ([feature list](docs/FEATURES.md))
+
+## Optional Features
+
+Every row below is off by default (the firmware is then upstream's own, 1:1) and switched on one at a time -
+`python build.py --with telegram,agenda` and so on, or `--all-features` for everything the board's hardware
+supports. This project's own releases, the web flasher, and the frame's OTA update all ship the **full** build for
+each board (every feature that board's hardware supports) - see [Installation](#installation). Full list, hardware
+needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
+
+| Feature (`--with ...`) | What it adds | Needs | Docs |
+| --- | --- | --- | --- |
+| 🤖 `telegram` | Send photos to the frame straight from a Telegram chat, remote commands, two portraits auto-combined side by side | - | [docs](docs/TELEGRAM.md) |
+| ☀️ `overlays` | On-device weather forecast and news-headline text bar drawn on the photo, low-battery corner badge — no companion server needed | - | [docs](docs/OVERLAYS.md) |
+| 🗓️ `agenda` | ToDo (todo.txt) and up to five ICS calendars (A-E) shown full-screen on their own schedule, 7-day grid layout, colour profiles | - | [docs](docs/CALENDAR_RRULE_SUPPORT.md) |
+| 🔔 `chimes` | Short beep feedback on the onboard speaker for events like rotation, low battery, or a new Telegram photo, with quiet hours | speaker | |
+| 🌡️ `climate` | Temperature/humidity readout from the onboard sensor, comfort badges, and a history chart | sensor | |
+| ⏰ `alarmclock` | Bedside alarm with a scheduled musical ring and a fully offline physical-button time-setting UI | speaker | [docs](docs/ALARMCLOCK_USER_GUIDE.md) |
+| 🎙️ `voice-stop` | Stop a ringing alarm by saying a taught word — nothing is recorded, needs `alarmclock` | speaker + mic | [docs](docs/ALARMCLOCK_USER_GUIDE.md) |
+| 🔋 `battery-history` | Battery history chart and a days-remaining-until-low estimate | - | |
+| 🔁 `display-history` | No-repeat random rotation — every image shows once before any repeat | - | |
+| 🔒 `https` | Web UI also served over HTTPS on port 443 | - | |
+| 📡 `offline-hotspot` | Offline mode plus an on-demand WiFi hotspot (hold BOOT for 3 s) | - | |
+| ⚠️ `error-banner` | On-display error banner after repeated WiFi/internet failures, not just in the logs | - | |
+| 🚀 `ota-channel` | Choose the stable or a pre-release OTA update channel | - | |
+| 📶 `wifi-resilience` | Cold-boot retry policy, option to keep credentials on a mere timeout, battery TX-power cap, a performance mode | - | |
+| 🙂 `facecrop` | Face-aware crop sidecars (via `process-cli`) and pre-rendered Cover/Fit image variants | - | [docs](docs/FACE_CROP.md), [docs](docs/SCALE_MODE.md) |
+| 🛠️ `fixes` | General bug fixes and robustness improvements over upstream | - | |
 
 ## Ecosystem
 
@@ -49,7 +75,7 @@ This project has companion tools for different use cases:
 
 ## Image Quality Comparison
 
-**🎨 [Try the Interactive Demo](https://aitjcize.github.io/esp32-photoframe/)** - Drag the slider to compare algorithms in real-time with your own images!
+**🎨 [Try the Interactive Demo](https://t3stier.github.io/esp32-photoframe-rebuild/)** - Drag the slider to compare algorithms in real-time with your own images!
 
 <table>
 <tr>
@@ -59,10 +85,10 @@ This project has companion tools for different use cases:
 <td align="center"><b>Our Algorithm<br/>(on device)</b></td>
 </tr>
 <tr>
-<td><a href="https://github.com/aitjcize/esp32-photoframe/raw/refs/heads/main/.img/sample.jpg"><img src=".img/sample.jpg" width="200"/></a></td>
-<td><a href="https://github.com/aitjcize/esp32-photoframe/raw/refs/heads/main/.img/stock_algorithm_on_computer.bmp"><img src=".img/stock_algorithm_on_computer.bmp" width="200"/></a></td>
-<td><a href="https://github.com/aitjcize/esp32-photoframe/raw/refs/heads/main/.img/stock_algorithm.bmp"><img src=".img/stock_algorithm.bmp" width="200"/></a></td>
-<td><a href="https://github.com/aitjcize/esp32-photoframe/raw/refs/heads/main/.img/our_algorithm.png"><img src=".img/our_algorithm.png" width="200"/></a></td>
+<td><a href="https://github.com/t3stier/esp32-photoframe-rebuild/raw/refs/heads/main/.img/sample.jpg"><img src=".img/sample.jpg" width="200"/></a></td>
+<td><a href="https://github.com/t3stier/esp32-photoframe-rebuild/raw/refs/heads/main/.img/stock_algorithm_on_computer.bmp"><img src=".img/stock_algorithm_on_computer.bmp" width="200"/></a></td>
+<td><a href="https://github.com/t3stier/esp32-photoframe-rebuild/raw/refs/heads/main/.img/stock_algorithm.bmp"><img src=".img/stock_algorithm.bmp" width="200"/></a></td>
+<td><a href="https://github.com/t3stier/esp32-photoframe-rebuild/raw/refs/heads/main/.img/our_algorithm.png"><img src=".img/our_algorithm.png" width="200"/></a></td>
 </tr>
 <tr>
 <td align="center">Source JPEG</td>
@@ -118,7 +144,7 @@ Configure your API keys in **Settings > AI Generation**.
 
 | Board | Display | Storage | Board Name |
 |-------|---------|---------|------------|
-| [Waveshare PhotoPainter](https://www.waveshare.com/wiki/ESP32-S3-PhotoPainter) | 7.3" 7-color | SD card (SDIO) | `waveshare_photopainter_73` |
+| [Waveshare PhotoPainter](https://www.waveshare.com/wiki/ESP32-S3-PhotoPainter) | 7.3" 6-color | SD card (SDIO) | `waveshare_photopainter_73` |
 | [Seeed Studio XIAO EE02](https://www.seeedstudio.com/XIAO-ePaper-DIY-Kit-EE02-for-13-3-Spectratm-6-E-Ink.html) | 13.3" 6-color | Internal flash | `seeedstudio_xiao_ee02` |
 | [Seeed Studio XIAO EE03](https://wiki.seeedstudio.com/getting_started_with_ee03/) | 10.3" 16-level grayscale | Internal flash | `seeedstudio_xiao_ee03` |
 | [Seeed Studio XIAO EE04](https://www.seeedstudio.com/XIAO-ePaper-EE04-DIY-Bundle-Kit.html) | 7.3" 6-color | Internal flash | `seeedstudio_xiao_ee04` |
@@ -168,21 +194,23 @@ Boards with larger flash chips (XIAO EE02/EE03/EE04, reTerminal E1002/E1004) use
 
 ### Web Flasher (Easiest) ⚡
 
-**[🌐 Flash from Browser](https://aitjcize.github.io/esp32-photoframe/#flash)** - Chrome/Edge/Opera required
+**[🌐 Flash from Browser](https://t3stier.github.io/esp32-photoframe-rebuild/#flash)** - Chrome/Edge/Opera required. Flashes part by part, so it keeps your WiFi credentials and settings unless you tick "Erase device".
 
 ### Manual Flash
 
-Download from [Releases](https://github.com/aitjcize/esp32-photoframe/releases):
+Download from [Releases](https://github.com/t3stier/esp32-photoframe-rebuild/releases) - every release is the **full** build (every optional feature your board's hardware supports, see [Optional Features](#optional-features) above); whoever wants the plain upstream firmware instead gets it from [upstream's own releases](https://github.com/aitjcize/esp32-photoframe/releases).
 
 ```bash
 esptool.py --chip esp32s3 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 photoframe-firmware-<board>-merged.bin
 ```
 
+This one-line merged-image flash **erases WiFi credentials and all settings** (it is one contiguous image from offset 0). To keep them, use the web flasher above, or flash the individual parts by hand - see [docs/MAINTAINING.md](docs/MAINTAINING.md#10-web-flasher-and-the-pages-site).
+
 **Device not detected?** Hold BOOT button + press PWR to enter download mode.
 
 **Build from source:**
 
-We provide a `build.py` helper script to simplify building for different boards.
+We provide a `build.py` helper script to simplify building for different boards. With no `--with`/`--all-features` option it builds the plain upstream firmware; see [Optional Features](#optional-features) above for adding any of the 16 build flags.
 
 ```bash
 # Build for Waveshare PhotoPainter (default)
@@ -298,18 +326,21 @@ See [process-cli/README.md](process-cli/README.md) for details.
 
 **Building your own image server?** The firmware's URL rotation fetch protocol — request method, custom `X-*` headers, `Authorization` / custom-header handling, and the `ETag` / `304 Not Modified` caching flow — is documented in [docs/API.md → URL Rotation Fetch](docs/API.md#url-rotation-fetch).
 
-## Support
-
-If you find this project useful, consider buying me a coffee! ☕
-
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/aitjcize)
-
 ## License
 
 This project is based on the ESP32-S3-PhotoPainter sample code. Please refer to the original project for licensing information.
 
 ## Credits
 
+- Upstream project: [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe)
 - Original PhotoPainter sample: Waveshare ESP32-S3-PhotoPainter
 - E-paper drivers: Waveshare
 - ESP-IDF: Espressif Systems
+- Weather condition icons (Settings → Overlays → "Weather condition display", optional): two
+  selectable sets, both re-rendered at a small fixed size for this project's overlay bar (see
+  `scripts/generate_weather_icons.py`) -
+  [MET Norway/yr.no weathericons](https://github.com/metno/weathericons) (MIT License), and a set
+  sourced via the [InkyPi](https://github.com/fatihak/InkyPi) project's weather plugin - originally
+  individual Flaticon creators' free-tier icons, see InkyPi's own
+  [attribution doc](https://github.com/fatihak/InkyPi/blob/main/docs/attribution.md) for full
+  per-icon credit

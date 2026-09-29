@@ -1,8 +1,8 @@
 # Notes for AI coding assistants
 
 This repository is a fork of `aitjcize/esp32-photoframe` with 16 opt-in features. **Read
-[docs/MAINTAINING.md](docs/MAINTAINING.md) first** - it has the accounts, the git model, the commands, the
-pitfalls and the open items. Design and procedures: [docs/FEATURE_FLAGS_PLAN.md](docs/FEATURE_FLAGS_PLAN.md).
+[docs/MAINTAINING.md](docs/MAINTAINING.md) first** - it has the accounts, the git model, the design, the commands,
+the pitfalls and the open items.
 
 Rules that must not be forgotten (details and reasons in MAINTAINING.md):
 

@@ -5,7 +5,7 @@ with no feature selected the firmware is the upstream firmware. build.py turns
 the selected features into sdkconfig.defaults overlays (features/) and passes
 the same list to the web app build.
 
-Compatibility rules (see docs/FEATURE_FLAGS_PLAN.md, section 3):
+Compatibility rules (see docs/MAINTAINING.md section 5):
   * a feature that was asked for by name but cannot be built for the board is an
     error, with the missing hardware or dependency spelled out;
   * --all-features silently keeps to what fits: incompatible features are
