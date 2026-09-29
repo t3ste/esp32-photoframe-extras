@@ -132,6 +132,13 @@ FEATURES = (
         "Face-aware crop sidecars and Cover/Fit image variants",
     ),
     Feature(
+        "webcal",
+        "FEATURE_WEBCAL",
+        (),
+        ("agenda",),
+        "webcal:// subscription links for the Agenda calendars",
+    ),
+    Feature(
         "fixes",
         "FORK_FIXES",
         (),

@@ -100,6 +100,12 @@
 #define FEATURE_FACECROP 0
 #endif
 
+#ifdef CONFIG_FEATURE_WEBCAL
+#define FEATURE_WEBCAL 1
+#else
+#define FEATURE_WEBCAL 0
+#endif
+
 #ifdef CONFIG_FORK_FIXES
 #define FORK_FIXES 1
 #else
@@ -148,11 +154,12 @@
 // the config JSON handler (apply_config_from_json() in utils.c) collects errors
 // instead of stopping at the first bad field, and the deep-sleep wake path runs on
 // a task with a larger stack.
-#define FORK_ANY                                                                               \
-    (FORK_FIXES || FEATURE_TELEGRAM || FEATURE_OVERLAYS || FEATURE_AGENDA || FEATURE_CHIMES || \
-     FEATURE_CLIMATE || FEATURE_ALARMCLOCK || FEATURE_VOICE_STOP || FEATURE_BATTERY_HISTORY || \
-     FEATURE_DISPLAY_HISTORY || FEATURE_HTTPS || FEATURE_OFFLINE_HOTSPOT ||                    \
-     FEATURE_ERROR_BANNER || FEATURE_OTA_CHANNEL || FEATURE_WIFI_RESILIENCE || FEATURE_FACECROP)
+#define FORK_ANY                                                                                   \
+    (FORK_FIXES || FEATURE_TELEGRAM || FEATURE_OVERLAYS || FEATURE_AGENDA || FEATURE_CHIMES ||     \
+     FEATURE_CLIMATE || FEATURE_ALARMCLOCK || FEATURE_VOICE_STOP || FEATURE_BATTERY_HISTORY ||     \
+     FEATURE_DISPLAY_HISTORY || FEATURE_HTTPS || FEATURE_OFFLINE_HOTSPOT ||                        \
+     FEATURE_ERROR_BANNER || FEATURE_OTA_CHANNEL || FEATURE_WIFI_RESILIENCE || FEATURE_FACECROP || \
+     FEATURE_WEBCAL)
 
 // Second line of defence behind build.py and Kconfig: the Kconfig capability
 // symbols mirror the board headers, and this makes a disagreement a build error.

@@ -2059,6 +2059,10 @@ async function performFactoryReset() {
               personal) - events from both are merged into one list, sorted by time, and colored by
               origin: Calendar A is blue, Calendar B is green (shown as a filled background on a
               light agenda background, plain colored text on a dark one - see Appearance below).
+<!-- #if FEATURE_WEBCAL -->
+              A webcal:// subscription link (a calendar app's "subscribe" address) works too - it is
+              fetched over https://.
+<!-- #endif -->
             </div>
             <v-row dense>
               <v-col cols="12" sm="6">

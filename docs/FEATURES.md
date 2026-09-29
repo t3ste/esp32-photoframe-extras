@@ -31,6 +31,7 @@ python build.py --board seeedstudio_xiao_ee02 --list-features
 | `ota-channel` | OTA release channel (stable/pre-release) | - | |
 | `wifi-resilience` | WiFi options: cold-boot retries instead of an early credential wipe, option to keep the credentials, battery TX cap, performance mode | - | |
 | `facecrop` | Face-aware crop sidecars and Cover/Fit image variants | - | [FACE_CROP.md](FACE_CROP.md), [SCALE_MODE.md](SCALE_MODE.md) |
+| `webcal` | `webcal://` subscription links for the Agenda calendars (fetched over https) | `agenda` | |
 | `fixes` | General bug fixes and robustness improvements | - | |
 
 Which optional hardware each board has:

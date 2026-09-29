@@ -19,6 +19,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **`webcal` build option** (`--with webcal`, needs `agenda`): a `webcal://` or `webcals://` subscription link - what calendar apps hand
+  out for "subscribe" - is accepted for Calendars A-E and fetched over `https://`. Without the option such a link is fetched as is and fails.
 - **`scripts/fetch_art.py`** (a PC helper, not firmware - no build option): fetches curated public-domain artworks from the public
   paperlesspaper art API, renders them for a chosen board with `process-cli` (cover/fit, the board's resolution, 16-level grey output for the
   grey panels) and writes an album folder for the SD card or uploads it to a frame, together with an `ATTRIBUTION.md`

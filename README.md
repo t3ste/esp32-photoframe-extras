@@ -54,6 +54,7 @@ needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
 | 🚀 `ota-channel` | Choose the stable or a pre-release OTA update channel | - | |
 | 📶 `wifi-resilience` | Cold-boot retry policy, option to keep credentials on a mere timeout, battery TX-power cap, a performance mode | - | |
 | 🙂 `facecrop` | Face-aware crop sidecars (via `process-cli`) and pre-rendered Cover/Fit image variants | - | [docs](docs/FACE_CROP.md), [docs](docs/SCALE_MODE.md) |
+| 📆 `webcal` | `webcal://` subscription links for the Agenda calendars, fetched over https | - | |
 | 🛠️ `fixes` | General bug fixes and robustness improvements over upstream | - | [docs](docs/FIXES.md) |
 
 ## Ecosystem
@@ -210,7 +211,7 @@ This one-line merged-image flash **erases WiFi credentials and all settings** (i
 
 **Build from source:**
 
-We provide a `build.py` helper script to simplify building for different boards. With no `--with`/`--all-features` option it builds the plain upstream firmware; see [Optional Features](#optional-features) above for adding any of the 16 build flags.
+We provide a `build.py` helper script to simplify building for different boards. With no `--with`/`--all-features` option it builds the plain upstream firmware; see [Optional Features](#optional-features) above for adding any of the build flags.
 
 ```bash
 # Build for Waveshare PhotoPainter (default)

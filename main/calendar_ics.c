@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "esp_log.h"
 #include "http_fetch.h"
@@ -658,6 +659,25 @@ static char *read_whole_file(const char *path, size_t *out_len)
     return buf;
 }
 
+#if FEATURE_WEBCAL
+const char *calendar_ics_resolve_url(const char *url, char *buf, size_t buf_len)
+{
+    static const char webcals[] = "webcals://";
+    static const char webcal[] = "webcal://";
+    size_t prefix = 0;
+    if (strncasecmp(url, webcals, sizeof(webcals) - 1) == 0) {
+        prefix = sizeof(webcals) - 1;
+    } else if (strncasecmp(url, webcal, sizeof(webcal) - 1) == 0) {
+        prefix = sizeof(webcal) - 1;
+    }
+    if (prefix == 0) {
+        return url;
+    }
+    int n = snprintf(buf, buf_len, "https://%s", url + prefix);
+    return (n < 0 || (size_t) n >= buf_len) ? NULL : buf;
+}
+#endif
+
 esp_err_t calendar_ics_fetch(const char *url, int timeout_ms, time_t window_start,
                              time_t window_end, const char *cache_path, const char *etag_in,
                              char *etag_out, size_t etag_out_len, ics_event_list_t *out)
@@ -672,6 +692,14 @@ esp_err_t calendar_ics_fetch(const char *url, int timeout_ms, time_t window_star
     if (!url || url[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
+#if FEATURE_WEBCAL
+    char resolved_url[ICS_URL_MAX_LEN];
+    url = calendar_ics_resolve_url(url, resolved_url, sizeof(resolved_url));
+    if (!url) {
+        ESP_LOGW(TAG, "Calendar URL is too long");
+        return ESP_ERR_INVALID_ARG;
+    }
+#endif
 
     char *body = NULL;
     size_t body_len = 0;
@@ -729,6 +757,14 @@ esp_err_t calendar_ics_fetch_once(const char *url, int timeout_ms, const char *c
     if (!url || url[0] == '\0' || !cache_path) {
         return ESP_ERR_INVALID_ARG;
     }
+#if FEATURE_WEBCAL
+    char resolved_url[ICS_URL_MAX_LEN];
+    url = calendar_ics_resolve_url(url, resolved_url, sizeof(resolved_url));
+    if (!url) {
+        ESP_LOGW(TAG, "Calendar URL is too long");
+        return ESP_ERR_INVALID_ARG;
+    }
+#endif
 
     char *body = NULL;
     size_t body_len = 0;

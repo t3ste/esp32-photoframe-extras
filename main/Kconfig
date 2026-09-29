@@ -180,6 +180,15 @@ menu "Photoframe optional features"
             Uses face-crop sidecar files and pre-rendered Cover/Fit variants
             produced by process-cli.
 
+    config FEATURE_WEBCAL
+        bool "webcal:// subscription links"
+        default n
+        depends on FEATURE_AGENDA
+        help
+            Accepts webcal:// (and webcals://) subscription links for the
+            Agenda calendars and fetches them over https://, the way calendar
+            apps hand them out. Needs the Agenda feature.
+
     config FORK_FIXES
         bool "General fixes and robustness improvements"
         default n

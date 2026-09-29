@@ -738,3 +738,45 @@ TEST_F(CalendarIcsExpandedCache, MalformedLineSkippedFailSoft)
     ASSERT_EQ(out.count, 1);
     EXPECT_STREQ(out.events[0].summary, "Valid Entry");
 }
+
+// webcal:// subscription links (FEATURE_WEBCAL) - what calendar apps hand out for
+// "subscribe" - are fetched over https://; everything else passes through untouched.
+TEST(CalendarIcsWebcal, WebcalBecomesHttps)
+{
+    char buf[ICS_URL_MAX_LEN];
+    EXPECT_STREQ(calendar_ics_resolve_url("webcal://cal.example.org/a/b.ics?x=1", buf, sizeof(buf)),
+                 "https://cal.example.org/a/b.ics?x=1");
+    EXPECT_STREQ(calendar_ics_resolve_url("webcals://cal.example.org/a.ics", buf, sizeof(buf)),
+                 "https://cal.example.org/a.ics");
+}
+
+TEST(CalendarIcsWebcal, SchemeIsCaseInsensitive)
+{
+    char buf[ICS_URL_MAX_LEN];
+    EXPECT_STREQ(calendar_ics_resolve_url("WEBCAL://Cal.Example.org/A.ics", buf, sizeof(buf)),
+                 "https://Cal.Example.org/A.ics");  // only the scheme is rewritten
+    EXPECT_STREQ(calendar_ics_resolve_url("WebCals://x.example/y", buf, sizeof(buf)),
+                 "https://x.example/y");
+}
+
+TEST(CalendarIcsWebcal, OtherUrlsAreReturnedUnchanged)
+{
+    char buf[ICS_URL_MAX_LEN] = "untouched";
+    const char *https_url = "https://cal.example.org/a.ics";
+    const char *http_url = "http://cal.example.org/a.ics";
+    const char *odd = "webcal.example.org/a.ics";  // "webcal" in the host, no scheme
+    EXPECT_EQ(calendar_ics_resolve_url(https_url, buf, sizeof(buf)), https_url);
+    EXPECT_EQ(calendar_ics_resolve_url(http_url, buf, sizeof(buf)), http_url);
+    EXPECT_EQ(calendar_ics_resolve_url(odd, buf, sizeof(buf)), odd);
+    EXPECT_STREQ(buf, "untouched");  // nothing was written
+}
+
+TEST(CalendarIcsWebcal, TooSmallBufferIsReported)
+{
+    char tiny[12];
+    EXPECT_EQ(calendar_ics_resolve_url("webcal://cal.example.org/a.ics", tiny, sizeof(tiny)),
+              nullptr);
+    char exact[sizeof("https://a.example/b")];
+    EXPECT_STREQ(calendar_ics_resolve_url("webcal://a.example/b", exact, sizeof(exact)),
+                 "https://a.example/b");
+}
