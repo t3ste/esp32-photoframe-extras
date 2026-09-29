@@ -520,10 +520,10 @@ fix; the rest are standing notes, not work items.
   stable version while writing `manifest-prerelease.json` (the draft is invisible to `gh release view`, the tag
   convention decided); publishing it as a pre-release triggered a run with the same result; the update feed showed
   the release candidate as the newest release and `releases/latest` still the stable one; a real frame on the
-  pre-release channel installed it over OTA. **Still to confirm:** that a later push to `main` keeps
-  `manifest-prerelease.json` (the restore path - it has only run against a repository without a pre-release
-  before), that the landing page shows the Pre-release radio, and that a frame running the release candidate is
-  offered the final `v218.0.4` (the `-rc<n>` comparison, needs that release to exist).
+  pre-release channel installed it over OTA; a later push to `main` kept `manifest-prerelease.json` for every
+  board (the restore path). **Still to confirm:** that the landing page shows the Pre-release radio (visual), and
+  that a frame running the release candidate is offered the final `v218.0.4` (the `-rc<n>` comparison, needs that
+  release to exist).
 - ~~**Docker-pull retry**~~ **Done 2026-09-29.** `build.yml`'s `build` job pre-pulls `espressif/idf:release-v6.0`
   with a 3-attempt retry loop right before `Setup ESP-IDF`, so a Docker Hub 502 there is now usually absorbed
   before the action's own pull runs. `feature-compile` (the per-flag compile-only job) was left as is - its
