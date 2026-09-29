@@ -14,6 +14,7 @@ Home Assistant instance, or a real calendar.
 | `calendars/calendar-a.ics` .. `calendar-e.ics` | Five example calendars (A-E), all fixed **weekly** recurring events so they never go stale |
 | `todo.txt` | An example [todo.txt](https://github.com/todotxt/todo.txt) list, in the format the Agenda's ToDo column reads |
 | `photos/` | Five generated placeholder photos (no camera, no licence question) for the storage profile |
+| `color_profiles/` | Three ready-made Calendar color profiles (exports from a device, differing in their marking color), to import into the Agenda tab's profile slots 1-3 |
 
 ## How to try it
 
@@ -25,7 +26,14 @@ Home Assistant instance, or a real calendar.
    `photos/` (or any photos of your own) - uploading without picking a different album lands them in "Default",
    which is enabled from the factory. If you upload into a different/new album instead, switch its own toggle in
    the Gallery on, or storage rotation has nothing enabled to rotate through.
-5. Watch the frame: a new photo every 10 minutes, the 7-day calendar every 15 minutes.
+5. Calendars C, D and E are downloaded **once**, when their URL is saved, and kept on the frame for about a
+   month. If the import ran while the files were not reachable (no WiFi yet, or the site was not deployed), press
+   **Refresh now** next to each of them in **Settings -> Agenda** - importing the same URL again does not fetch
+   again. Calendars A and B and the ToDo list are fetched by the frame on its own every Agenda cycle, so those
+   catch up without any action.
+6. Optional: **Settings -> Agenda -> Calendar color profiles**, **Import** one of the files in `color_profiles/`
+   into a slot (1-3) and pick it as the active one - the configuration itself does not touch the profiles.
+7. Watch the frame: a new photo every 10 minutes, the 7-day calendar every 15 minutes.
 
 To go back to your own settings, re-import the backup from step 2.
 
@@ -70,14 +78,15 @@ timezone and weather location.
 
 ## Hosting
 
-These files are meant to be served from this project's GitHub Pages site alongside the web flasher, at
+These files are served from this project's GitHub Pages site alongside the web flasher, at
 `https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/` - the URLs inside the two
-JSON files already point there. Until that is actually deployed (a `deploy-pages` change, done separately and only
-with the maintainer's sign-off - see [docs/MAINTAINING.md](../../docs/MAINTAINING.md)), those URLs are not live and
-an import that includes them will save the calendar/ToDo URLs but the frame's next Agenda wake will fail to fetch
-them (logged, fails soft - see [docs/CALENDAR_RRULE_SUPPORT.md](../../docs/CALENDAR_RRULE_SUPPORT.md)). Testing
-locally: point a device at a temporary local HTTP server instead, or edit the URLs in the JSON files before
-importing.
+JSON files point there. The site's `deploy-pages` job copies this whole `examples/` tree on every deploy and then
+checks that every URL the two configs use answers `200` (see [docs/MAINTAINING.md](../../docs/MAINTAINING.md)
+section 10). GitHub's CDN may keep serving a cached `404` for a URL for up to ten minutes after the file first
+appears - if an import fails right after a deploy, wait a little and press **Refresh now** (step 5 above).
+Testing locally: point a device at a temporary local HTTP server instead, or edit the URLs in the JSON files before
+importing (the frame logs a failed download and fails soft - see
+[docs/CALENDAR_RRULE_SUPPORT.md](../../docs/CALENDAR_RRULE_SUPPORT.md)).
 
 ## Regenerating the sample photos
 

@@ -346,34 +346,58 @@ jobs:
           --use-perceived-output --dither-algorithm stucki \
           .img/taipei101.jpg demo/taipei101_dithered.png
 
-        # Determine stable version (and, separately, a pre-release version -
-        # docs/MAINTAINING.md section 10/16: a `-rc<n>`-suffixed tag). The
-        # tag name alone is just a convention; what actually decides it is
-        # the release's own isPrerelease flag (the "Create Release" step
-        # above sets it from the same suffix, but the maintainer can
-        # override it before publishing) - never trust the suffix alone.
+        # Determine the stable version and, separately, a pre-release version
+        # (docs/MAINTAINING.md sections 10 and 16: a `-rc<n>`-suffixed tag).
+        # Every deploy rebuilds demo/ from scratch and force-pushes it, so
+        # whatever is not restored below vanishes from the site: the stable
+        # entry is the latest published non-pre-release release, the
+        # pre-release entry the newest published pre-release that is newer
+        # than that stable release.
         PRERELEASE_TAG=""
+        THIS_TAG=""
         if [[ "${{ github.ref }}" == refs/tags/* ]]; then
           TAG_NAME="${GITHUB_REF#refs/tags/}"
-          IS_PRERELEASE=$(gh release view "$TAG_NAME" --json isPrerelease -q .isPrerelease 2>/dev/null || echo "false")
+          # What decides is the release's own isPrerelease flag (the "Create
+          # Release" step above derives it from the same suffix, but the
+          # maintainer can override it before publishing). That lookup does
+          # not see a DRAFT, and the release job that creates the draft runs
+          # in parallel with this job, so on a tag-push run it usually finds
+          # nothing yet - only then fall back to the tag convention. The run
+          # the "published" event triggers later sees the real flag and
+          # corrects the site if the two ever disagree.
+          IS_PRERELEASE=$(gh release view "$TAG_NAME" --json isPrerelease -q .isPrerelease 2>/dev/null || echo "")
+          if [[ -z "$IS_PRERELEASE" ]]; then
+            if [[ "$TAG_NAME" == *-rc* ]]; then IS_PRERELEASE=true; else IS_PRERELEASE=false; fi
+          fi
           if [[ "$IS_PRERELEASE" == "true" ]]; then
             # A pre-release tag must not become the new "stable" entry -
             # stable stays whatever the latest actual (non-prerelease,
             # non-draft) release already is.
             PRERELEASE_TAG="$TAG_NAME"
+            THIS_TAG="$TAG_NAME"
             STABLE_TAG=$(gh release list --exclude-pre-releases -L 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
           else
             STABLE_TAG="$TAG_NAME"
           fi
         else
-          # On main branch: check if HEAD has a tag (e.g., tag and main pushed together)
-          HEAD_TAG=$(git tag --points-at HEAD | grep '^v' | head -1)
+          # On main branch: check if HEAD has a (stable) tag (e.g., tag and main pushed together)
+          HEAD_TAG=$(git tag --points-at HEAD | grep '^v' | grep -v -- '-rc' | head -1)
           if [[ -n "$HEAD_TAG" ]]; then
             STABLE_TAG="$HEAD_TAG"
           else
             # Fall back to latest published release
             STABLE_TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null || echo "")
           fi
+        fi
+        # Not a pre-release tag run: keep offering the newest published pre-release
+        # that is newer than the stable release (none once a newer stable one exists).
+        if [[ -z "$PRERELEASE_TAG" ]]; then
+          STABLE_AT=""
+          if [[ -n "$STABLE_TAG" ]]; then
+            STABLE_AT=$(gh release view "$STABLE_TAG" --json publishedAt -q .publishedAt 2>/dev/null || echo "")
+          fi
+          PRERELEASE_TAG=$(gh release list -L 30 --json tagName,isPrerelease,isDraft,publishedAt \
+            -q "[.[] | select(.isPrerelease and (.isDraft | not) and .publishedAt > \"${STABLE_AT}\")] | sort_by(.publishedAt) | reverse | .[0].tagName // empty" 2>/dev/null || echo "")
         fi
         echo "Stable version: ${STABLE_TAG:-none}"
         echo "Pre-release version: ${PRERELEASE_TAG:-none}"
@@ -386,11 +410,22 @@ jobs:
           # Dev firmware from this build (the full build, see the matrix above)
           cp "firmware-artifacts/photoframe-firmware-$board-merged.bin" "demo/$board/photoframe-firmware-$board-dev.bin"
 
-          if [[ -n "$PRERELEASE_TAG" ]]; then
+          if [[ -n "$PRERELEASE_TAG" && "$PRERELEASE_TAG" == "$THIS_TAG" ]]; then
             # This tag is a pre-release: stage this run's own build as the
             # pre-release asset (generate_manifests.py --prerelease-version's
             # expected file name), never as stable.
             cp "demo/$board/photoframe-firmware-$board-dev.bin" "demo/$board/photoframe-firmware-$board-prerelease-merged.bin"
+          elif [[ -n "$PRERELEASE_TAG" ]]; then
+            # An earlier published pre-release that is still the newest one:
+            # restore its asset (into a scratch directory - the download keeps
+            # the release's own file name, which is the stable one's name too).
+            mkdir -p "demo/$board/.pre"
+            if gh release download "$PRERELEASE_TAG" --pattern "photoframe-firmware-$board-merged.bin" --dir "demo/$board/.pre" --clobber; then
+              mv "demo/$board/.pre/photoframe-firmware-$board-merged.bin" "demo/$board/photoframe-firmware-$board-prerelease-merged.bin"
+            else
+              echo "::warning::No pre-release asset for $board at ${PRERELEASE_TAG} - omitting the pre-release option for it."
+            fi
+            rm -rf "demo/$board/.pre"
           fi
 
           if [[ "${{ github.ref }}" == refs/tags/* ]] && [[ -z "$PRERELEASE_TAG" ]]; then
@@ -427,6 +462,12 @@ jobs:
         # (the stable manifest may be absent if no release asset was available)
         [ -f demo/waveshare_photopainter_73/manifest.json ] && cp demo/waveshare_photopainter_73/manifest.json demo/
         cp demo/waveshare_photopainter_73/manifest-dev.json demo/
+
+        # The demo package (docs/DEMO_PACKAGE.md): its two importable configs point at
+        # <site>/examples/<board>/calendars/*.ics and .../todo.txt, so the whole tree is
+        # served from here (next to, not inside, the per-board firmware directories).
+        mkdir -p demo/examples
+        cp -r examples/. demo/examples/
       env:
         GH_TOKEN: ${{ github.token }}
 
@@ -449,3 +490,46 @@ jobs:
         git add -A
         git commit -q -m "Deploy demo site from ${GITHUB_SHA} (${GITHUB_REF_NAME}, run ${GITHUB_RUN_ID})"
         git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+
+    # The demo package's example configs (examples/*/demo-config-*.json) point at files served
+    # by this very site; a frame that imports one only finds out about a missing file from a
+    # 404 in its own log. Pages needs a moment after the push above, so retry for a few minutes.
+    # Only this repository's own site is checked (a fork's configs still point at the original
+    # site, which says nothing about the fork's own deploy).
+    - name: Check the published demo package URLs
+      run: |
+        SITE_PREFIX="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"
+        URLS=$(python3 - "$SITE_PREFIX" <<'PY'
+        import glob, json, sys
+        prefix = sys.argv[1]
+        urls = set()
+        for path in glob.glob("examples/*/demo-config-*.json"):
+            with open(path, encoding="utf-8") as f:
+                for key, value in json.load(f).get("config", {}).items():
+                    if "_url" in key and isinstance(value, str) and value.startswith(prefix):
+                        urls.add(value)
+        print("\n".join(sorted(urls)))
+        PY
+        )
+        URLS=$(echo "$URLS" | tr -d '\r')
+        if [[ -z "$URLS" ]]; then
+          echo "No example URL points at this site ($SITE_PREFIX) - nothing to check."
+          exit 0
+        fi
+        echo "Checking $(echo "$URLS" | wc -l) URL(s) the example configs point at..."
+        for attempt in $(seq 1 30); do
+          BAD=""
+          for url in $URLS; do
+            # A throw-away query string keeps a cached 404 from an earlier request out of the way.
+            code=$(curl -s -o /dev/null -w "%{http_code}" "${url}?check=${GITHUB_RUN_ID}-${attempt}" || true)
+            [[ "$code" == "200" ]] || BAD="$BAD ${url#$SITE_PREFIX}=$code"
+          done
+          if [[ -z "$BAD" ]]; then
+            echo "All example URLs answer 200 (attempt $attempt)."
+            exit 0
+          fi
+          echo "Attempt $attempt: not yet:$BAD"
+          sleep 10
+        done
+        echo "::error::Example URLs still not served after 5 minutes:$BAD"
+        exit 1

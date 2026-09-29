@@ -13,7 +13,10 @@ well-formed and within the device's 256-character limit, and none of the
 package's files (including the calendars and the ToDo list) leak anything
 that looks like a private IP, an email address, an embedded token or a local
 filesystem path. Calendar/ToDo *content* is checked separately, through the
-firmware's own parser, by host_tests/test_example_calendars.cpp.
+firmware's own parser, by host_tests/test_example_calendars.cpp. The Calendar
+color profiles (color_profiles/) are checked here against the same rules
+main/agenda_color_profile.c's parser enforces (its required color keys and
+color grammar are scraped from the source, like the config keys above).
 """
 
 import json
@@ -27,6 +30,8 @@ UTILS_C = REPO_ROOT / "main" / "utils.c"
 CONFIG_H = REPO_ROOT / "main" / "config.h"
 
 CONFIG_FILES = ["demo-config-url.json", "demo-config-storage.json"]
+COLOR_PROFILE_DIR = EXAMPLE_DIR / "color_profiles"
+AGENDA_COLOR_PROFILE_C = REPO_ROOT / "main" / "agenda_color_profile.c"
 
 # Never allowed in an example file, even though the firmware would accept
 # them ("deliberately absent", docs/DEMO_PACKAGE.md): any WiFi/network
@@ -248,6 +253,22 @@ class ExampleConfigFiles(unittest.TestCase):
                 )
                 self.assertRegex(value, URL_RE, f"{name}: {key}={value!r}")
 
+    def test_site_urls_point_at_files_in_this_package(self):
+        # deploy-pages copies examples/ to <site>/examples/ and then checks these
+        # very URLs answer 200 - a renamed or removed file must fail here first.
+        marker = "/examples/waveshare_photopainter_73/"
+        seen = 0
+        for name in CONFIG_FILES:
+            for key, value in load(name)["config"].items():
+                if "_url" in key and marker in value:
+                    seen += 1
+                    relative = value.split(marker, 1)[1]
+                    self.assertTrue(
+                        (EXAMPLE_DIR / relative).is_file(),
+                        f"{name}: {key} points at {relative!r}, not in the package",
+                    )
+        self.assertGreaterEqual(seen, 6)
+
     def test_field_lengths_fit_the_device_buffer(self):
         defines = config_h_defines()
         for name in CONFIG_FILES:
@@ -285,6 +306,63 @@ class ExampleConfigFiles(unittest.TestCase):
             self.assertFalse(
                 emails, f"{path.name}: real-looking email address(es) {emails}"
             )
+
+
+def firmware_profile_color_keys():
+    """The colors the parser requires (its COLOR_KEYS[16] table) and the color
+    names parse_color_value() accepts - scraped, so a change in the firmware
+    breaks this test instead of leaving an example profile the device rejects."""
+    text = AGENDA_COLOR_PROFILE_C.read_text(encoding="utf-8")
+    table = re.search(r"COLOR_KEYS\[16\]\s*=\s*\{(.*?)\};", text, re.DOTALL).group(1)
+    keys = re.findall(r'"([A-Za-z]+)"', table)
+    names = set(re.findall(r'strcmp\(s,\s*"([a-z]+)"\)\s*==\s*0', text))
+    return keys, names
+
+
+class ExampleColorProfiles(unittest.TestCase):
+    """The three Calendar color profiles: each must be a document the device
+    would import into a slot (Settings -> Agenda -> Calendar color profiles)."""
+
+    def profile_paths(self):
+        return sorted(COLOR_PROFILE_DIR.glob("*.json"))
+
+    def test_scraped_firmware_rules_are_sane(self):
+        keys, names = firmware_profile_color_keys()
+        self.assertEqual(len(keys), 16, keys)
+        self.assertIn("text", keys)
+        self.assertEqual(names, {"black", "white", "red", "yellow", "blue", "green"})
+
+    def test_no_more_profiles_than_slots(self):
+        slots = config_h_defines()["AGENDA_COLOR_PROFILE_SLOTS"]
+        paths = self.profile_paths()
+        self.assertGreaterEqual(len(paths), 1)
+        self.assertLessEqual(len(paths), slots)
+
+    def test_each_profile_is_importable(self):
+        keys, names = firmware_profile_color_keys()
+        max_bytes = config_h_defines()["AGENDA_COLOR_PROFILE_MAX_BYTES"]
+        hex_re = re.compile(r"^#[0-9a-fA-F]{6}$")
+        for path in self.profile_paths():
+            raw = path.read_bytes()
+            self.assertLessEqual(len(raw), max_bytes, f"{path.name}: too large")
+            doc = json.loads(raw.decode("utf-8"))
+            self.assertEqual(doc.get("type"), "spectra6-firmware-profile", path.name)
+            self.assertIsInstance(doc.get("name"), str, path.name)
+            self.assertTrue(doc["name"].strip(), f"{path.name}: empty name")
+            colors = doc.get("colors")
+            self.assertIsInstance(colors, dict, f"{path.name}: no colors object")
+            for key in keys:
+                value = colors.get(key)
+                self.assertIsInstance(value, str, f"{path.name}: colors.{key} missing")
+                self.assertTrue(
+                    value in names or hex_re.match(value),
+                    f"{path.name}: colors.{key}={value!r} is not a color the firmware accepts",
+                )
+
+    def test_profiles_differ(self):
+        docs = [json.loads(p.read_text(encoding="utf-8")) for p in self.profile_paths()]
+        names = [d["name"] for d in docs]
+        self.assertEqual(len(set(names)), len(names), "profile names must differ")
 
 
 if __name__ == "__main__":

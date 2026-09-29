@@ -657,6 +657,17 @@ function scrollTo(id) {
               <li>Wait for the flash to complete (about a minute).</li>
               <li>The device restarts and starts a <code>PhotoFrame-XXXX</code> WiFi AP.</li>
               <li>Connect, configure WiFi, you're on.</li>
+              <!-- #if FORK_SITE -->
+              <li>
+                Want to see what it can do? Import the
+                <a
+                  href="https://github.com/t3stier/esp32-photoframe-rebuild/blob/main/docs/DEMO_PACKAGE.md"
+                  target="_blank"
+                  rel="noopener"
+                  >demo configuration</a
+                >.
+              </li>
+              <!-- #endif -->
             </ol>
             <div class="flash-board-meta">
               <span class="flash-board-name">{{ selectedBoardMeta.label }}</span>

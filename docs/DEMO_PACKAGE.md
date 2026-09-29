@@ -5,7 +5,7 @@
 A ready-to-import example configuration that shows what the [optional features](FEATURES.md) can do, built
 entirely from invented, public example data - no private information of any kind. The files live in
 [`examples/waveshare_photopainter_73/`](../examples/waveshare_photopainter_73/): two importable configurations,
-five example calendars, an example todo.txt, and five generated placeholder photos.
+five example calendars, an example todo.txt, three Calendar color profiles and five generated placeholder photos.
 
 ## Try it
 
@@ -19,7 +19,10 @@ five example calendars, an example todo.txt, and five generated placeholder phot
    - `demo-config-storage.json` - photos from the frame's own album (upload the five generated sample photos, or
      your own) with a one-line weather overlay, plus the low-battery and climate badges.
 4. Either way, a 7-day Agenda calendar (five example calendars, one with 8 events on Monday alone) renders every
-   15 minutes.
+   15 minutes. Calendars C, D and E are downloaded only once, when their URL is saved: if the import ran without a
+   working connection, press **Refresh now** next to each of them in **Settings -> Agenda**.
+5. Optional: import one of the three color profiles from `color_profiles/` into a slot of **Settings -> Agenda ->
+   Calendar color profiles** and pick it as the active one - the configuration does not touch the profiles.
 
 The two profiles exist because the firmware can't draw an overlay on a URL-fetched photo (that mode streams the
 image straight to the display and never creates a file to draw on) - so the URL profile puts the weather on the
@@ -60,6 +63,11 @@ upcoming" mix realistic.
 **Sample photos** (`examples/waveshare_photopainter_73/photos/`): five generated 800×480 gradients, for the
 storage profile - no camera, no licence question. Regenerate with `python scripts/generate_demo_photos.py`.
 
+**Color profiles** (`examples/waveshare_photopainter_73/color_profiles/`): three exports of the Agenda's Calendar
+color profiles (the same file `profile-editor.html` and the Settings -> Agenda -> Calendar color profiles
+**Export** button produce), differing in their marking color (white, yellow, blue). Import one into a profile slot
+(1-3) to see the Calendar view in it - they hold color choices only.
+
 ## What it can't show
 
 WiFi, Telegram, and any other personal setting are not part of example data and are left untouched by the import.
@@ -69,6 +77,9 @@ ToDo file can't show "due today" matching the date you actually try it.
 
 ## Status
 
-The example calendars and todo.txt aren't hosted yet, so importing the config today saves their URLs but the
-frame won't be able to reach them until they're published (see [MAINTAINING.md](MAINTAINING.md) for what that
-still needs).
+The example files are served from this project's GitHub Pages site
+(`https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/`); every deploy of the
+site copies the whole `examples/` tree and checks that the URLs the two configs use answer `200`. GitHub's CDN can
+keep serving a cached `404` for up to ten minutes after a file first appears, so an import made right after a
+deploy may need a **Refresh now** for calendars C-E. See [MAINTAINING.md](MAINTAINING.md) for how it is deployed
+and checked.

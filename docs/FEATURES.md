@@ -4,6 +4,9 @@ This firmware is the upstream ESP32 PhotoFrame firmware plus a set of features t
 are switched on at build time. **Without any option the build is the upstream
 firmware**: same behaviour, same web UI, same `GET /api/config`.
 
+To see most of them working without setting up a Telegram bot, a calendar or a
+Home Assistant instance, import the ready-made [demo package](DEMO_PACKAGE.md).
+
 ```bash
 python build.py --board waveshare_photopainter_73 --with agenda,telegram
 python build.py --board waveshare_photopainter_73 --all-features

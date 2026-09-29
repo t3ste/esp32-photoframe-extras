@@ -17,6 +17,18 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Added
+
+- **The demo package is online.** The site's deploy now serves `examples/` at
+  `https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/` (the calendars and ToDo list
+  the two importable demo configs point at - importing one used to leave calendars A-E and the ToDo list failing
+  with HTTP 404 in the frame's log) and, as its last step, checks that every URL those configs use answers `200`.
+  Three example Calendar color profiles (`color_profiles/`) join the package, and the landing page's "How it goes"
+  list, `README.md` and `docs/FEATURES.md` link to it ([docs/DEMO_PACKAGE.md](docs/DEMO_PACKAGE.md)).
+- The web flasher's pre-release entry (`manifest-prerelease.json`) now survives the site's next deploy: the site is
+  rebuilt from scratch on every deploy, so the newest published pre-release (while it is newer than the stable
+  release) is restored from its release like the stable one already was.
+
 ### Changed
 
 - Upstream `495e0b6` is merged (two commits, both in `main/main.c`): waking a frame with its CLEAR button no longer
@@ -28,6 +40,9 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Fixed
 
+- **OTA: a frame that installed a release candidate is still offered the final release.** The version comparison
+  stopped at `major.minor.patch`, so `v218.0.4-rc1` and `v218.0.4` compared equal; with the `fixes` option `-rc<n>`
+  now sorts before the same version without a suffix (and `-rc2` before `-rc10`).
 - **Gallery: listing a large album could hang indefinitely instead of just being slow.** `GET /api/images` used
   to walk an album's entire SD card directory in one HTTP request; an album with hundreds of source photos, each
   carrying a `.jpg` thumbnail and (with `facecrop`) a `.facecrop.json` sidecar, triples the real directory-entry

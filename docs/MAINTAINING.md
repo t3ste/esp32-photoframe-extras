@@ -348,10 +348,12 @@ History:
 | `v218.0.2` | 2026-09-28 | Transition release: update feed, web flasher and links move to the fork; OTA stale-state fix. Published in BOTH repositories (built once in the mirror with the fork's feed baked in via `OTA_REPO`, the 16 assets re-uploaded to the fork's release). From now on only the fork needs releases. |
 | `v218.0.3` | 2026-09-29 | Second upstream merge, the landing-page `FORK_SITE` fix, Calendar color-profile export, the Calendar-header-active-name fix. Confirmed live: a tag push alone starts the fork's CI (section 16's long-standing open item is closed for good). |
 
-Pre-releases (the `ota-channel` feature's channel) use the tag suffix `-rc1` (e.g. `v218.0.4-rc1`). The frontend,
-`generate_manifests.py --prerelease-version` and `deploy-pages`'s own pre-release detection (`gh release view
-<tag> --json isPrerelease`, section 16) are wired up as of 2026-09-29 - not yet exercised by an actual `-rc1` tag
-push, so treat the first one as the real acceptance test.
+Pre-releases (the `ota-channel` feature's channel) use the tag suffix `-rc1` (e.g. `v218.0.4-rc1`); the `release`
+job marks a `-rc` tag's release as a pre-release, and it must be **published** (not left as a draft) before a frame
+on the pre-release channel can see it. A frame compares versions on `major.minor.patch` plus, under `fixes`, the
+`-rc<n>` suffix (`-rcN` sorts before the same version without one, so the final release is still offered to a frame
+that installed its release candidate; frames on builds without that comparison treat `-rc1` and the final as equal).
+The Pages site keeps offering the newest published pre-release until a newer stable release exists (section 10).
 
 ## 10. Web flasher and the Pages site
 
@@ -368,8 +370,18 @@ push, so treat the first one as the real acceptance test.
   erased state (boot the first app slot - necessary when a device was OTA-updated into the second slot).
   Tests: `scripts/test_generate_manifests.py` (synthetic S3 and ESP32 images). `--keep-merged` keeps the merged file.
 - Manifest names: `manifest.json` (stable, latest release), `manifest-dev.json` (build of `main`),
-  `manifest-prerelease.json` (planned); per board in `<board>/`. The stable entry follows the published release
-  (that is why publishing re-runs the workflow).
+  `manifest-prerelease.json` (newest published pre-release, only while it is newer than the stable one); per board
+  in `<board>/`. The stable entry follows the published release (that is why publishing re-runs the workflow).
+  Every deploy rebuilds `demo/` from scratch and force-pushes it, so `deploy-pages` **restores** both entries
+  from the published releases on every run (`gh release download`, the pre-release one via a scratch `.pre`
+  directory because the asset keeps the stable file's name); only a run for a pre-release tag stages its own build.
+- Pre-release detection: the release's own `isPrerelease` flag decides, but a **draft** is invisible to that lookup
+  and the `release` job creating it runs in parallel with `deploy-pages` - so a tag-push run falls back to the
+  `-rc` tag convention, and the run the "published" event triggers later sees the real flag and corrects the site.
+- The demo package: `deploy-pages` copies `examples/` to `<site>/examples/` and, as its last step, checks that every
+  URL the `examples/*/demo-config-*.json` files point at on this site answers `200` (retrying for 5 minutes; a
+  throw-away query string bypasses a CDN-cached 404). `scripts/test_example_config.py` checks the same URLs resolve
+  to files in the tree. GitHub's CDN may serve a cached 404 for a new URL for up to ten minutes.
 - `deploy-pages` runs only for `main` and tags; before a release the site shows the dev build.
 - Landing-page edits: everything that is fork-specific must sit in `#if FORK_SITE` fences (section 5).
 
@@ -502,37 +514,36 @@ fix; the rest are standing notes, not work items.
   run in the fork now, matching the fix already made for branch pushes (`8c24444`). The documented fallback
   (`gh workflow run build.yml -R t3stier/esp32-photoframe-rebuild --ref vX.Y.Z`) is no longer needed but is kept
   in section 8 as a safety net in case this regresses.
-- ~~**Pre-release CI wiring**~~ **Done 2026-09-29.** `build.yml`'s `deploy-pages` job now asks GitHub whether the
-  pushed tag's release is actually marked a pre-release (`gh release view <tag> --json isPrerelease`) instead of
-  trusting the tag name; when it is, the stable manifest keeps pointing at the latest real stable release (looked
-  up via `gh release list --exclude-pre-releases`) while this build's own binary is staged under the
-  `-prerelease-*` file names and `generate_manifests.py --prerelease-version` is passed. The `release` job also
-  now sets the GitHub release's own `prerelease` flag from the tag (`contains(github.ref, '-rc')`). **Not yet
-  exercised by a real `-rc1` tag push** - treat the first one as the acceptance test (confirm
-  `manifest-prerelease.json` appears on Pages and the landing page's pre-release radio picks it up).
+- **Pre-release CI wiring**: implemented 2026-09-29 (see sections 9 and 10), **acceptance pending** - it is
+  exercised for real by the first `-rc` tag (`v218.0.4-rc1`). Confirm: the tag-push run treats it as a pre-release
+  although the draft is invisible to `gh release view`; after publishing it as a pre-release the run it triggers
+  writes `manifest-prerelease.json` while `manifest.json` still names the previous stable version; a later push to
+  `main` keeps `manifest-prerelease.json` (restored from the release); the landing page shows the Pre-release
+  radio; a frame on the pre-release channel is offered it. Also part of the same check: the `gh release list`
+  query that restores an earlier pre-release has only been run against a repository without one.
 - ~~**Docker-pull retry**~~ **Done 2026-09-29.** `build.yml`'s `build` job pre-pulls `espressif/idf:release-v6.0`
   with a 3-attempt retry loop right before `Setup ESP-IDF`, so a Docker Hub 502 there is now usually absorbed
   before the action's own pull runs. `feature-compile` (the per-flag compile-only job) was left as is - its
   existing `gh run rerun --failed` workaround is enough for how rarely it fails, and it doesn't ship a release.
-- **Demo package** for the `waveshare_photopainter_73`: built and tested locally (`examples/waveshare_photopainter_73/`,
-  `scripts/generate_demo_photos.py`, `scripts/test_example_config.py`, `host_tests/test_example_calendars.cpp`);
-  committed 2026-09-29, not published (not live on Pages, no CI wiring yet - see the deferred steps below).
-  User-facing overview: [DEMO_PACKAGE.md](DEMO_PACKAGE.md) (the fuller internal
-  planning notes are intentionally not part of this repository - see the note on `docs/DEMO_PLAN.md` below).
-  Remaining steps, each needing the maintainer's go-ahead first since they go online:
-  1. Wire `scripts/test_example_config.py` into `ci.yml`'s feature-tooling job (same style as
-     `alloff_source.py`/`alloff_web.py`) - it already passes locally via
-     `python -m unittest discover -s scripts -p "test_*.py"`.
-  2. Add a copy-`examples/`-into-the-site step to `build.yml`'s `deploy-pages` job, plus a post-deploy check that
-     the six published URLs answer `200` - a workflow-file change, must be pushed as `t3stier` (section 3). Until
-     this happens the URLs baked into the two example config files are not live.
-  3. A "Try the demo configuration" link on the landing page (`#if FORK_SITE`-fenced, since the page ships inside
-     the device bundle) and from the README/FEATURES.md.
-  4. Live device tests (needs the maintainer's permission, like any flash/device test - section 13).
-  5. A `CHANGELOG.md` entry and a release that actually ships the published URLs - only meaningful once step 2 is
-     live.
-  Deliberately deferred, not part of `v218.0.3` - the maintainer's "local only for now" instruction for this
-  package has not been rescinded for anything that goes online (steps 2-4 above).
+- **Demo package** for the `waveshare_photopainter_73` (`examples/waveshare_photopainter_73/`,
+  `scripts/generate_demo_photos.py`, `scripts/test_example_config.py`, `host_tests/test_example_calendars.cpp`).
+  User-facing overview: [DEMO_PACKAGE.md](DEMO_PACKAGE.md) (the fuller internal planning notes are intentionally not
+  part of this repository - see the note on `docs/DEMO_PLAN.md` below). Status of the steps:
+  1. ~~CI~~ Done: `scripts/test_example_config.py` is picked up by `ci.yml`'s feature-tooling job through
+     `python -m unittest discover -s scripts -p "test_*.py"` (no separate wiring needed); the calendars/ToDo through
+     the firmware's own parsers by the host tests.
+  2. ~~Publish~~ Implemented 2026-09-29: `deploy-pages` copies `examples/` into the site and its last step checks
+     that every URL the two configs use answers `200`. Confirm on the first deploy (a fresh device that imported
+     the config before this deploy saw HTTP 404 for calendars A-E and the ToDo list, because nothing served them).
+  3. ~~Landing page and docs~~ Done: a `#if FORK_SITE` "demo configuration" step in the landing page's "How it goes"
+     list, README and FEATURES.md links.
+  4. Live device test: import `demo-config-storage.json` (and `-url.json`) on a fresh device **after** a deploy,
+     press "Refresh now" for calendars C-E if the import came first, import the three color profiles - needs the
+     maintainer's device.
+  5. A release that ships it: `v218.0.4-rc1` first, `v218.0.4` once the checks above pass.
+  Known gap: importing a config whose Calendar C/D/E URL equals the stored one never re-fetches (only a changed URL
+  or "Refresh now" does), so an import made while the files were unreachable leaves C-E without a cached file. A
+  fetch-if-the-cache-file-is-missing rule in `apply_extra_ics_url()` would close it (not done).
 
 ### Standing notes (not action items)
 
