@@ -127,6 +127,11 @@ photoframe-process --serve ~/Photos --serve-port 9000 --serve-format epdgz
 
 Serves random images on each request. Configure ESP32: **Rotation Mode** → URL, **Image URL** → `http://your-ip:9000/image`
 
+### Ready-made art albums
+
+`scripts/fetch_art.py` (repository root) fetches curated public-domain artworks from a public API and feeds them
+through this tool for a chosen board - see [docs/ART_FETCH.md](../docs/ART_FETCH.md).
+
 ## Options
 
 ```

@@ -19,6 +19,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **`scripts/fetch_art.py`** (a PC helper, not firmware - no build option): fetches curated public-domain artworks from the public
+  paperlesspaper art API, renders them for a chosen board with `process-cli` (cover/fit, the board's resolution, 16-level grey output for the
+  grey panels) and writes an album folder for the SD card or uploads it to a frame, together with an `ATTRIBUTION.md`
+  ([docs/ART_FETCH.md](docs/ART_FETCH.md)).
 - **The demo package is online.** The site's deploy now serves `examples/` at
   `https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/` (the calendars and ToDo list
   the two importable demo configs point at - importing one used to leave calendars A-E and the ToDo list failing
