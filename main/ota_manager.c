@@ -116,7 +116,31 @@ static int version_compare(const char *v1, const char *v2)
         return v1_major - v2_major;
     if (v1_minor != v2_minor)
         return v1_minor - v2_minor;
+#if FORK_FIXES
+    if (v1_patch != v2_patch)
+        return v1_patch - v2_patch;
+
+    // Same major.minor.patch, and sscanf() above stopped at the first '-': a
+    // pre-release suffix ("-rc1", the ota-channel feature's pre-release tags,
+    // docs/MAINTAINING.md section 10) sorts BEFORE the same version without
+    // one - otherwise a frame that installed v218.0.4-rc1 would never be
+    // offered the final v218.0.4, which compares equal to it - and two
+    // pre-releases compare by their number ("-rc2" < "-rc10").
+    const char *pre1 = strchr(v1, '-');
+    const char *pre2 = strchr(v2, '-');
+    if (!pre1 || !pre2) {
+        return (pre1 ? 0 : 1) - (pre2 ? 0 : 1);
+    }
+    while (*pre1 && (*pre1 < '0' || *pre1 > '9')) {
+        pre1++;
+    }
+    while (*pre2 && (*pre2 < '0' || *pre2 > '9')) {
+        pre2++;
+    }
+    return (int) (strtol(pre1, NULL, 10) - strtol(pre2, NULL, 10));
+#else
     return v1_patch - v2_patch;
+#endif
 }
 
 #if !FORK_FIXES
