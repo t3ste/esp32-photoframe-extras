@@ -127,6 +127,11 @@ photoframe-process --serve ~/Photos --serve-port 9000 --serve-format epdgz
 
 Serves random images on each request. Configure ESP32: **Rotation Mode** → URL, **Image URL** → `http://your-ip:9000/image`
 
+### Uploading a folder of results from the Web UI
+
+Built with `--with multi-upload`, the frame's Web UI accepts a whole selection of the `.epdgz` files this tool writes
+(rendered for this board) - see [docs/MULTI_UPLOAD.md](../docs/MULTI_UPLOAD.md).
+
 ### Ready-made art albums
 
 `scripts/fetch_art.py` (repository root) fetches curated public-domain artworks from a public API and feeds them

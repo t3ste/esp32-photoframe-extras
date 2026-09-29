@@ -139,6 +139,13 @@ FEATURES = (
         "webcal:// subscription links for the Agenda calendars",
     ),
     Feature(
+        "multi-upload",
+        "FEATURE_MULTI_UPLOAD",
+        (),
+        (),
+        "Web UI: upload several images at once, also pre-rendered ones",
+    ),
+    Feature(
         "fixes",
         "FORK_FIXES",
         (),

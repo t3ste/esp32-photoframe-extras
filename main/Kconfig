@@ -189,6 +189,16 @@ menu "Photoframe optional features"
             Agenda calendars and fetches them over https://, the way calendar
             apps hand them out. Needs the Agenda feature.
 
+    config FEATURE_MULTI_UPLOAD
+        bool "Upload several images at once"
+        default n
+        help
+            The Web UI's upload takes a whole selection of files: photos are
+            converted with the current settings one after the other, and
+            pre-rendered EPDGZ/PNG files (for instance from process-cli) are
+            uploaded as they are. The upload endpoint accepts an image
+            without a thumbnail.
+
     config FORK_FIXES
         bool "General fixes and robustness improvements"
         default n

@@ -19,6 +19,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **`multi-upload` build option** (`--with multi-upload`): the Web UI's upload takes a whole selection of files (up to 200) - photos are converted with
+  the current settings one after the other (cover or fit, no editor), pre-rendered `.epdgz` files (for instance from `process-cli`) - and, if ticked,
+  panel-sized PNGs - go up as they are; a queue shows progress and failures. The upload endpoint accepts an image without a thumbnail
+  ([docs/MULTI_UPLOAD.md](docs/MULTI_UPLOAD.md)).
 - **`webcal` build option** (`--with webcal`, needs `agenda`): a `webcal://` or `webcals://` subscription link - what calendar apps hand
   out for "subscribe" - is accepted for Calendars A-E and fetched over `https://`. Without the option such a link is fetched as is and fails.
 - **`scripts/fetch_art.py`** (a PC helper, not firmware - no build option): fetches curated public-domain artworks from the public

@@ -915,6 +915,17 @@ static esp_err_t upload_image_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
+#if FEATURE_MULTI_UPLOAD
+    // The thumbnail is optional: a pre-rendered .epdgz sent by the batch upload has no
+    // preview a browser could draw, so it comes without one (the gallery then shows its
+    // placeholder icon).
+    if (!result.has_image) {
+        if (result.has_thumbnail)
+            unlink(result.thumbnail_path);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Upload incomplete - expected an image");
+        return ESP_FAIL;
+    }
+#else
     if (!result.has_image || !result.has_thumbnail) {
         if (result.has_image)
             unlink(result.image_path);
@@ -924,6 +935,7 @@ static esp_err_t upload_image_handler(httpd_req_t *req)
                             "Upload incomplete - expected image and thumbnail");
         return ESP_FAIL;
     }
+#endif
 
     ESP_LOGI(TAG, "Upload complete, saving PNG directly");
 
@@ -965,18 +977,35 @@ static esp_err_t upload_image_handler(httpd_req_t *req)
     if (rename(result.image_path, final_dest_path) != 0) {
         ESP_LOGE(TAG, "Failed to move image to album");
         unlink(result.image_path);
+#if FEATURE_MULTI_UPLOAD
+        if (result.has_thumbnail)
+            unlink(result.thumbnail_path);
+#else
         unlink(result.thumbnail_path);
+#endif
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save image");
         return ESP_FAIL;
     }
 
     // Move thumbnail to final location
+#if FEATURE_MULTI_UPLOAD
+    if (!result.has_thumbnail) {
+        ESP_LOGI(TAG, "Image saved successfully: %s (no thumbnail)", dest_filename);
+    } else {
+        if (rename(result.thumbnail_path, final_thumb_path) != 0) {
+            ESP_LOGW(TAG, "Failed to move thumbnail");
+            unlink(result.thumbnail_path);
+        }
+        ESP_LOGI(TAG, "Image saved successfully: %s (thumbnail: %s)", dest_filename, jpg_filename);
+    }
+#else
     if (rename(result.thumbnail_path, final_thumb_path) != 0) {
         ESP_LOGW(TAG, "Failed to move thumbnail");
         unlink(result.thumbnail_path);
     }
 
     ESP_LOGI(TAG, "Image saved successfully: %s (thumbnail: %s)", dest_filename, jpg_filename);
+#endif
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddStringToObject(response, "status", "success");
