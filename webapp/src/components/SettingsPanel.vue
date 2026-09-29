@@ -355,6 +355,32 @@ function onAgendaColorProfileFileSelected(event, slot) {
   event.target.value = "";
 }
 
+async function exportAgendaColorProfile(slot) {
+  try {
+    const response = await fetch(`/api/agenda/color-profile?slot=${slot}`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    // Re-download exactly what the device has stored (not a re-serialized
+    // copy), so it stays byte-identical to what profile-editor.html itself
+    // would export - same convention as exportConfig() above.
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const name = agendaColorProfileSlots.value.find((s) => s.slot === slot)?.name;
+    const slug = (name || `slot-${slot}`).toLowerCase().replace(/\s+/g, "-");
+    a.download = `color-profile-${slug}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error(`Failed to export color profile slot ${slot}:`, error);
+    saveError.value = true;
+    saveMessage.value = `Failed to export profile slot ${slot}`;
+    setTimeout(() => (saveError.value = false), 5000);
+  }
+}
+
 async function deleteAgendaColorProfile(slot) {
   try {
     const response = await fetch(`/api/agenda/color-profile?slot=${slot}`, { method: "DELETE" });
@@ -2598,6 +2624,15 @@ async function performFactoryReset() {
                       @click="colorProfileFileInputs[slot]?.click()"
                     >
                       Import
+                    </v-btn>
+                    <v-btn
+                      v-if="agendaColorProfileSlots.find((s) => s.slot === slot)?.name"
+                      size="small"
+                      variant="outlined"
+                      class="ml-2"
+                      @click="exportAgendaColorProfile(slot)"
+                    >
+                      Export
                     </v-btn>
                     <v-btn
                       v-if="agendaColorProfileSlots.find((s) => s.slot === slot)?.name"

@@ -3688,7 +3688,10 @@ static esp_err_t agenda_extra_ics_upload_handler(httpd_req_t *req)
 // GET/POST/DELETE /api/agenda/color-profile?slot=1|2|3 - manages the up-to-
 // AGENDA_COLOR_PROFILE_SLOTS stored Calendar-view color profiles imported
 // from profile-editor.html's JSON export (see agenda_color_profile.h).
-// GET (no ?slot=) lists all slots' names + which one is active; POST
+// GET (no ?slot=) lists all slots' names + which one is active; GET with
+// ?slot= exports that slot's raw stored JSON, in the same schema
+// profile-editor.html itself exports/imports, so it can be re-imported
+// here or on another device without needing the editor tool again; POST
 // imports/replaces one slot's profile (raw JSON body, same non-multipart
 // convention as agenda_extra_ics_upload_handler() above); DELETE removes
 // one slot, clearing the active pointer first if it pointed there.
@@ -3703,7 +3706,12 @@ static esp_err_t agenda_color_profile_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    if (req->method == HTTP_GET) {
+    char query[32];
+    char slot_str[4] = {0};
+    bool have_slot = httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK &&
+                     httpd_query_key_value(query, "slot", slot_str, sizeof(slot_str)) == ESP_OK;
+
+    if (req->method == HTTP_GET && !have_slot) {
         cJSON *root = cJSON_CreateObject();
         cJSON *slots = cJSON_CreateArray();
         for (int slot = 1; slot <= AGENDA_COLOR_PROFILE_SLOTS; slot++) {
@@ -3727,10 +3735,7 @@ static esp_err_t agenda_color_profile_handler(httpd_req_t *req)
         return ESP_OK;
     }
 
-    char query[32];
-    char slot_str[4] = {0};
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
-        httpd_query_key_value(query, "slot", slot_str, sizeof(slot_str)) != ESP_OK) {
+    if (!have_slot) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing ?slot=1|2|3");
         return ESP_FAIL;
     }
@@ -3741,6 +3746,36 @@ static esp_err_t agenda_color_profile_handler(httpd_req_t *req)
     }
     char path[64];
     agenda_color_profile_path(slot, path, sizeof(path));
+
+    if (req->method == HTTP_GET) {
+        // Export: hand back exactly what's on disk - no re-serialization,
+        // so it round-trips byte-for-byte through profile-editor.html too.
+        FILE *fp = fopen(path, "rb");
+        if (!fp) {
+            httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "No profile in this slot");
+            return ESP_FAIL;
+        }
+        fseek(fp, 0, SEEK_END);
+        long size = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        if (size <= 0 || size > AGENDA_COLOR_PROFILE_MAX_BYTES) {
+            fclose(fp);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to read profile");
+            return ESP_FAIL;
+        }
+        char *buf = heap_caps_malloc((size_t) size, MALLOC_CAP_SPIRAM);
+        if (!buf) {
+            fclose(fp);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+            return ESP_FAIL;
+        }
+        size_t got = fread(buf, 1, (size_t) size, fp);
+        fclose(fp);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, buf, got);
+        heap_caps_free(buf);
+        return ESP_OK;
+    }
 
     if (req->method == HTTP_DELETE) {
         unlink(path);
