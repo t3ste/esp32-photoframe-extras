@@ -54,7 +54,7 @@ needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
 | 🚀 `ota-channel` | Choose the stable or a pre-release OTA update channel | - | |
 | 📶 `wifi-resilience` | Cold-boot retry policy, option to keep credentials on a mere timeout, battery TX-power cap, a performance mode | - | |
 | 🙂 `facecrop` | Face-aware crop sidecars (via `process-cli`) and pre-rendered Cover/Fit image variants | - | [docs](docs/FACE_CROP.md), [docs](docs/SCALE_MODE.md) |
-| 🛠️ `fixes` | General bug fixes and robustness improvements over upstream | - | |
+| 🛠️ `fixes` | General bug fixes and robustness improvements over upstream | - | [docs](docs/FIXES.md) |
 
 ## Ecosystem
 
