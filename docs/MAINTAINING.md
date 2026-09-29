@@ -346,9 +346,9 @@ History:
 | `v218.0.0` | 2026-09-28 | First release; its assets are the PLAIN build (plan before the "releases = full" decision). Kept, notes say superseded. |
 | `v218.0.1` | 2026-09-28 | First **full** release; part-wise web flasher, climate-history fix, OTA fixes. Published in the mirror (then the operational repo). |
 | `v218.0.2` | 2026-09-28 | Transition release: update feed, web flasher and links move to the fork; OTA stale-state fix. Published in BOTH repositories (built once in the mirror with the fork's feed baked in via `OTA_REPO`, the 16 assets re-uploaded to the fork's release). From now on only the fork needs releases. |
-| next | undecided | `v218.0.3` would carry the second upstream merge, the landing-page fix and later work. Maintainer decides when. |
+| `v218.0.3` | 2026-09-29 | Second upstream merge, the landing-page `FORK_SITE` fix, Calendar color-profile export, the Calendar-header-active-name fix. Confirmed live: a tag push alone starts the fork's CI (section 16's long-standing open item is closed for good). |
 
-Pre-releases (the `ota-channel` feature's channel) use the tag suffix `-rc1` (`v218.0.3-rc1`). The frontend,
+Pre-releases (the `ota-channel` feature's channel) use the tag suffix `-rc1` (e.g. `v218.0.4-rc1`). The frontend,
 `generate_manifests.py --prerelease-version` and `deploy-pages`'s own pre-release detection (`gh release view
 <tag> --json isPrerelease`, section 16) are wired up as of 2026-09-29 - not yet exercised by an actual `-rc1` tag
 push, so treat the first one as the real acceptance test.
@@ -491,18 +491,14 @@ fix; the rest are standing notes, not work items.
 
 ### Actionable
 
-- **Release `v218.0.3`**: unblocked - the changelog's `[v218.0.3]` section holds the second upstream merge, the
-  landing-page `FORK_SITE` fix, color-profile export and the Calendar-header-active-name fix, none of which
-  depend on the demo package below. Proposed fix: cut it following the existing procedure (section 9) as is; no
-  other change needed first.
-- **Tag-push CI trigger unconfirmed** (whether pushing a release tag alone starts a run in the fork, section 8):
-  proposed fix - no separate action needed; it resolves itself at the next real release tag push. Check
-  `gh run list -R t3stier/esp32-photoframe-rebuild --limit 5` right after pushing the tag. If a run did start,
-  this item is closed for good; if not, keep using the documented fallback
-  (`gh workflow run build.yml -R t3stier/esp32-photoframe-rebuild --ref vX.Y.Z`). To get certainty sooner without
-  waiting for a real release, push a disposable pre-release tag (e.g. `v218.0.2-test1`), observe, then delete the
-  tag and its draft release (`gh release delete`, `git push --delete`) - `build.yml`'s `release` job only reacts to
-  a tag matching `v*`, so this is safe and reversible.
+- ~~**Release `v218.0.3`**~~ **Published 2026-09-29**: <https://github.com/t3stier/esp32-photoframe-rebuild/releases/tag/v218.0.3>,
+  16 assets, the tag-push run completed green (publishing then re-triggers the workflow once more to refresh the
+  Pages site's stable entry, per the `release: types: [published]` trigger at the top of `build.yml`).
+- ~~**Tag-push CI trigger unconfirmed**~~ **Closed 2026-09-29.** Pushing the `v218.0.3` tag started a "Build
+  Firmware" run on `ref: v218.0.3` immediately (confirmed via `gh run list`) - a plain tag push alone does start a
+  run in the fork now, matching the fix already made for branch pushes (`8c24444`). The documented fallback
+  (`gh workflow run build.yml -R t3stier/esp32-photoframe-rebuild --ref vX.Y.Z`) is no longer needed but is kept
+  in section 8 as a safety net in case this regresses.
 - ~~**Pre-release CI wiring**~~ **Done 2026-09-29.** `build.yml`'s `deploy-pages` job now asks GitHub whether the
   pushed tag's release is actually marked a pre-release (`gh release view <tag> --json isPrerelease`) instead of
   trusting the tag name; when it is, the stable manifest keeps pointing at the latest real stable release (looked
