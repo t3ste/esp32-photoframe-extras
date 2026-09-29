@@ -2063,7 +2063,21 @@ async function performFactoryReset() {
               A webcal:// subscription link (a calendar app's "subscribe" address) works too - it is
               fetched over https://.
 <!-- #endif -->
+<!-- #if FEATURE_SOURCE_AUTH -->
+              A calendar that asks for a login takes it in the address, https://user:password@host/path
+              - write @ as %40 and : as %3A inside the user name or password. Like the rest of the
+              address it is never shown again.
+<!-- #endif -->
             </div>
+<!-- #if FEATURE_SOURCE_AUTH -->
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.sourceAuthAllowHttp"
+              label="Allow a login over plain http:// (not encrypted - only for a server in your own network)"
+              density="compact"
+              hide-details
+              class="mb-2"
+            />
+<!-- #endif -->
             <v-row dense>
               <v-col cols="12" sm="6">
                 <v-text-field

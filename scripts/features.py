@@ -139,6 +139,13 @@ FEATURES = (
         "webcal:// subscription links for the Agenda calendars",
     ),
     Feature(
+        "source-auth",
+        "FEATURE_SOURCE_AUTH",
+        (),
+        ("agenda",),
+        "Login (user:password@) in the Agenda calendar and ToDo URLs, Basic/Digest",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),

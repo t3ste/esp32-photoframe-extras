@@ -473,6 +473,13 @@ const char *config_manager_get_agenda_cal_e_url(void);
 void config_manager_set_agenda_cal_e_name(const char *name);
 const char *config_manager_get_agenda_cal_e_name(void);
 
+#if FEATURE_SOURCE_AUTH
+// May the login in a calendar/ToDo URL (https://user:password@host/...) also be sent over plain
+// http://? Default no - the fetch is refused instead (source_auth.h).
+void config_manager_set_source_auth_allow_http(bool allow);
+bool config_manager_get_source_auth_allow_http(void);
+#endif
+
 // Cached ETag validators for each source's conditional GET (see
 // AGENDA_TODO_CACHE_PATH etc. in config.h) - internal fetch-cache state,
 // not user data: not exposed via the HTTP API, same as the getters above are

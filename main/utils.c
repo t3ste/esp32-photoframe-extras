@@ -1315,6 +1315,12 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     if (item && cJSON_IsString(item)) {
         config_manager_set_agenda_cal_e_name(cJSON_GetStringValue(item));
     }
+#if FEATURE_SOURCE_AUTH
+    item = cJSON_GetObjectItem(root, "source_auth_allow_http");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_source_auth_allow_http(cJSON_IsTrue(item));
+    }
+#endif
     apply_extra_ics_url(root, "agenda_cal_c_url", "agenda_cal_c_refetch",
                         config_manager_get_agenda_cal_c_url(), AGENDA_CAL_CACHE_PATH_C,
                         AGENDA_CAL_CACHE_PATH_C_FLAT, config_manager_set_agenda_cal_c_url);

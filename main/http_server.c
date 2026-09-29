@@ -2586,6 +2586,10 @@ static esp_err_t config_handler(httpd_req_t *req)
         cJSON_AddBoolToObject(root, "agenda_cal_e_enabled",
                               config_manager_get_agenda_cal_e_enabled());
         cJSON_AddStringToObject(root, "agenda_cal_e_name", config_manager_get_agenda_cal_e_name());
+#if FEATURE_SOURCE_AUTH
+        cJSON_AddBoolToObject(root, "source_auth_allow_http",
+                              config_manager_get_source_auth_allow_http());
+#endif
         cJSON *agenda_cron_arr = cJSON_CreateArray();
         int agenda_cron_count = config_manager_get_agenda_cron_rule_count();
         for (int i = 0; i < agenda_cron_count; i++) {

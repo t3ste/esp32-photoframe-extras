@@ -189,6 +189,17 @@ menu "Photoframe optional features"
             Agenda calendars and fetches them over https://, the way calendar
             apps hand them out. Needs the Agenda feature.
 
+    config FEATURE_SOURCE_AUTH
+        bool "Login in the calendar and ToDo URLs"
+        default n
+        depends on FEATURE_AGENDA
+        help
+            A calendar or ToDo URL may carry a login,
+            https://user:password@host/path, which the frame answers a
+            server's 401 with (HTTP Basic or Digest). The URL fields stay
+            write-only. Over plain http:// the login is only sent when a
+            setting allows it. Needs the Agenda feature.
+
     config FEATURE_MULTI_UPLOAD
         bool "Upload several images at once"
         default n

@@ -43,6 +43,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_OTA_CHANNEL
   CONFIG_FEATURE_WIFI_RESILIENCE
   CONFIG_FEATURE_WEBCAL
+  CONFIG_FEATURE_SOURCE_AUTH
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
   CONFIG_FORK_FIXES
@@ -126,6 +127,25 @@ target_link_libraries(
 
 target_include_directories(
   http_auth_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# Login inside a download URL (user:password@host, source-auth feature)
+add_executable(
+  source_auth_test
+  test_source_auth.cpp
+  ../main/source_auth.c
+)
+
+target_link_libraries(
+  source_auth_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  source_auth_test
   PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
@@ -363,6 +383,7 @@ include(GoogleTest)
 gtest_discover_tests(cron_test)
 gtest_discover_tests(wake_schedule_test)
 gtest_discover_tests(http_auth_test)
+gtest_discover_tests(source_auth_test)
 gtest_discover_tests(network_backoff_test)
 gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)

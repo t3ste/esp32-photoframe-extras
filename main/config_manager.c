@@ -197,6 +197,9 @@ static bool agenda_cal_e_enabled = false;
 static char agenda_cal_c_url[AGENDA_CAL_C_URL_MAX_LEN] = {0};
 static char agenda_cal_d_url[AGENDA_CAL_D_URL_MAX_LEN] = {0};
 static char agenda_cal_e_url[AGENDA_CAL_E_URL_MAX_LEN] = {0};
+#if FEATURE_SOURCE_AUTH
+static bool source_auth_allow_http = false;
+#endif
 static char agenda_cal_c_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
 static char agenda_cal_d_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
 static char agenda_cal_e_name[AGENDA_CAL_CDE_NAME_MAX_LEN] = {0};
@@ -1279,6 +1282,12 @@ esp_err_t config_manager_init(void)
         nvs_get_str(nvs_handle, NVS_AGENDA_CAL_D_URL_KEY, agenda_cal_d_url, &agenda_cal_d_url_len);
         size_t agenda_cal_e_url_len = sizeof(agenda_cal_e_url);
         nvs_get_str(nvs_handle, NVS_AGENDA_CAL_E_URL_KEY, agenda_cal_e_url, &agenda_cal_e_url_len);
+#if FEATURE_SOURCE_AUTH
+        uint8_t stored_source_auth_http = 0;
+        if (nvs_get_u8(nvs_handle, NVS_SOURCE_AUTH_HTTP_KEY, &stored_source_auth_http) == ESP_OK) {
+            source_auth_allow_http = (stored_source_auth_http != 0);
+        }
+#endif
         size_t agenda_cal_c_name_len = sizeof(agenda_cal_c_name);
         nvs_get_str(nvs_handle, NVS_AGENDA_CAL_C_NAME_KEY, agenda_cal_c_name,
                     &agenda_cal_c_name_len);
@@ -3592,6 +3601,19 @@ bool config_manager_get_agenda_cal_e_enabled(void)
 {
     return agenda_cal_e_enabled;
 }
+
+#if FEATURE_SOURCE_AUTH
+void config_manager_set_source_auth_allow_http(bool allow)
+{
+    source_auth_allow_http = allow;
+    agenda_nvs_set_u8(NVS_SOURCE_AUTH_HTTP_KEY, allow ? 1 : 0);
+}
+
+bool config_manager_get_source_auth_allow_http(void)
+{
+    return source_auth_allow_http;
+}
+#endif
 
 // No etag to clear on change, unlike agenda_cal_url/_url2 above - these
 // three sources have no conditional-GET/periodic refresh at all (see

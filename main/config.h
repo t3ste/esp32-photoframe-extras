@@ -898,6 +898,10 @@ typedef enum {
 #define NVS_AGENDA_CAL_E_NAME_KEY "agenda_cal_e_nm"
 #define AGENDA_CAL_CDE_NAME_MAX_LEN 24
 
+// source-auth feature: whether the login in a calendar/ToDo URL (https://user:password@host/...)
+// may also be sent over plain http:// (default no, see source_auth.h).
+#define NVS_SOURCE_AUTH_HTTP_KEY "src_auth_http"
+
 // User-authored Calendar-view color profiles (see agenda_color_profile.h),
 // imported via the Web UI as JSON exported by the companion browser tool
 // "profile-editor.html". Up to AGENDA_COLOR_PROFILE_SLOTS profiles can be

@@ -7,8 +7,13 @@
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "feature_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#if FEATURE_SOURCE_AUTH
+#include "config_manager.h"
+#include "source_auth.h"
+#endif
 
 static const char *TAG = "http_fetch";
 
@@ -43,6 +48,12 @@ static esp_err_t body_capture_handler(esp_http_client_event_t *evt)
     if (evt->event_id != HTTP_EVENT_ON_DATA) {
         return ESP_OK;
     }
+#if FEATURE_SOURCE_AUTH
+    // The body of the 401 that opens a Basic/Digest handshake is not the answer.
+    if (esp_http_client_get_status_code(evt->client) == 401) {
+        return ESP_OK;
+    }
+#endif
     if (ctx->overflow || evt->data_len <= 0) {
         return ESP_OK;
     }
@@ -109,6 +120,36 @@ static esp_err_t do_http_fetch(const char *url, int timeout_ms, size_t max_respo
 
     esp_err_t last_err = ESP_FAIL;
 
+#if FEATURE_SOURCE_AUTH
+    // A login in the URL (https://user:password@host/...) is taken out of it here and handed to
+    // the HTTP client separately (see source_auth.h) - the client would neither decode the
+    // percent-escapes nor keep the password out of its error log.
+    char clean_url[SOURCE_AUTH_URL_MAX_LEN];
+    char login_user[SOURCE_AUTH_USER_MAX_LEN];
+    char login_pass[SOURCE_AUTH_PASS_MAX_LEN];
+    bool has_login = false;
+    switch (source_auth_split_url(url, clean_url, sizeof(clean_url), login_user, sizeof(login_user),
+                                  login_pass, sizeof(login_pass))) {
+    case SOURCE_AUTH_SPLIT:
+        if (!source_auth_is_https(clean_url) && !config_manager_get_source_auth_allow_http()) {
+            ESP_LOGE(TAG,
+                     "Not sending a login over plain http:// - use https://, or allow it in the "
+                     "settings");
+            return ESP_ERR_NOT_ALLOWED;
+        }
+        url = clean_url;
+        has_login = true;
+        break;
+    case SOURCE_AUTH_INVALID:
+        ESP_LOGE(TAG,
+                 "The login in the URL is not valid (a part is too long, or a special character "
+                 "is not percent-encoded, e.g. @ as %%40)");
+        return ESP_ERR_INVALID_ARG;
+    default:
+        break;
+    }
+#endif
+
     for (int attempt = 1; attempt <= HTTP_FETCH_RETRY_COUNT; attempt++) {
         if (attempt > 1) {
             ESP_LOGW(TAG, "Retrying GET (%d/%d) after %d ms...", attempt, HTTP_FETCH_RETRY_COUNT,
@@ -143,6 +184,22 @@ static esp_err_t do_http_fetch(const char *url, int timeout_ms, size_t max_respo
             // is universal for every host this shared helper talks to.
             .addr_type = HTTP_ADDR_TYPE_INET,
         };
+#if FEATURE_SOURCE_AUTH
+        if (has_login) {
+            config.username = login_user;
+            config.password = login_pass;
+            // https: send Basic right away (one request). http (only when the setting allows
+            // it): wait for the server's challenge instead, so a Digest server never sees the
+            // password itself. A Digest challenge is answered either way.
+            config.auth_type =
+                source_auth_is_https(url) ? HTTP_AUTH_TYPE_BASIC : HTTP_AUTH_TYPE_NONE;
+            // One answer to a challenge, then give up: a wrong password must not be tried ten
+            // times.
+            config.max_authorization_retries = 1;
+            // Never carry the login to a host a redirect points at.
+            config.disable_auto_redirect = true;
+        }
+#endif
 
         esp_http_client_handle_t client = esp_http_client_init(&config);
         if (!client) {
@@ -159,6 +216,25 @@ static esp_err_t do_http_fetch(const char *url, int timeout_ms, size_t max_respo
         esp_err_t err = esp_http_client_perform(client);
         int status = esp_http_client_get_status_code(client);
         esp_http_client_cleanup(client);
+
+#if FEATURE_SOURCE_AUTH
+        // Retrying cannot help here, and a wrong password must not be hammered at the server.
+        if (has_login && (status == 401 || status == 403)) {
+            ESP_LOGE(TAG,
+                     "The server refused the login (HTTP %d) - check the user name and password",
+                     status);
+            free(ctx.buf);
+            return ESP_FAIL;
+        }
+        if (has_login && status >= 300 && status < 400) {
+            ESP_LOGE(TAG,
+                     "The server redirects (HTTP %d) - not followed while a login is set, "
+                     "use the final address",
+                     status);
+            free(ctx.buf);
+            return ESP_FAIL;
+        }
+#endif
 
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "GET failed: %s", esp_err_to_name(err));

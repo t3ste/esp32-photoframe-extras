@@ -19,6 +19,11 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **`source-auth` build option** (`--with source-auth`, needs `agenda`): a calendar (A-E) or ToDo address may carry a login,
+  `https://user:password@host/path` (special characters percent-encoded); the frame takes it out of the address and answers the server's
+  401 with HTTP Basic or Digest. The address fields stay write-only and out of a normal config export; over plain `http://` the login is only
+  sent when a new setting allows it, a refused login is not retried, and redirects are not followed with a login set
+  ([docs/SOURCE_AUTH.md](docs/SOURCE_AUTH.md)).
 - **`multi-upload` build option** (`--with multi-upload`): the Web UI's upload takes a whole selection of files (up to 200) - photos are converted with
   the current settings one after the other (cover or fit, no editor), pre-rendered `.epdgz` files (for instance from `process-cli`) - and, if ticked,
   panel-sized PNGs - go up as they are; a queue shows progress and failures. The upload endpoint accepts an image without a thumbnail

@@ -1,0 +1,8 @@
+# Enabled by `build.py --with source-auth` (see docs/FEATURES.md).
+# Feature-specific sdkconfig lines belong in this file.
+CONFIG_FEATURE_SOURCE_AUTH=y
+
+# ESP-IDF ships both HTTP authentication schemes switched off; the HTTP client then answers a
+# 401 with whichever one the server asks for (Basic: Radicale/Nextcloud, Digest: Baikal's default).
+CONFIG_ESP_HTTP_CLIENT_ENABLE_BASIC_AUTH=y
+CONFIG_ESP_HTTP_CLIENT_ENABLE_DIGEST_AUTH=y

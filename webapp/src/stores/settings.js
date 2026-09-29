@@ -302,6 +302,9 @@ export const useSettingsStore = defineStore("settings", () => {
     agendaCalName2: "",
     agendaCalDays: 2,
 // #endif
+// #if FEATURE_SOURCE_AUTH
+    sourceAuthAllowHttp: false,
+// #endif
 // #if FEATURE_OVERLAYS
     // Annotates each Calendar day divider with that day's forecast (reuses
     // the same weather settings/provider as the photo weather overlay -
@@ -646,6 +649,9 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.agendaCalName2 = data.agenda_cal_name2 || "";
       deviceSettings.value.agendaCalDays = data.agenda_cal_days ?? 2;
 // #endif
+// #if FEATURE_SOURCE_AUTH
+      deviceSettings.value.sourceAuthAllowHttp = data.source_auth_allow_http === true;
+// #endif
 // #if FEATURE_OVERLAYS
       deviceSettings.value.agendaCalWeatherEnabled = data.agenda_cal_weather_enabled === true;
       deviceSettings.value.agendaCalWeatherRightAligned =
@@ -883,6 +889,9 @@ export const useSettingsStore = defineStore("settings", () => {
       agenda_cal_name: deviceSettings.value.agendaCalName,
       agenda_cal_name2: deviceSettings.value.agendaCalName2,
       agenda_cal_days: deviceSettings.value.agendaCalDays,
+// #endif
+// #if FEATURE_SOURCE_AUTH
+      source_auth_allow_http: deviceSettings.value.sourceAuthAllowHttp,
 // #endif
 // #if FEATURE_OVERLAYS
       agenda_cal_weather_enabled: deviceSettings.value.agendaCalWeatherEnabled,

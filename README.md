@@ -55,6 +55,7 @@ needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
 | 📶 `wifi-resilience` | Cold-boot retry policy, option to keep credentials on a mere timeout, battery TX-power cap, a performance mode | - | |
 | 🙂 `facecrop` | Face-aware crop sidecars (via `process-cli`) and pre-rendered Cover/Fit image variants | - | [docs](docs/FACE_CROP.md), [docs](docs/SCALE_MODE.md) |
 | 📆 `webcal` | `webcal://` subscription links for the Agenda calendars, fetched over https | - | |
+| 🔑 `source-auth` | A login (`https://user:password@host/...`) in the calendar and ToDo addresses - for calendars on a home server (Radicale, Baikal, Nextcloud) | - | [docs](docs/SOURCE_AUTH.md) |
 | 📤 `multi-upload` | Upload a whole selection of photos in the Web UI, or pre-rendered EPDGZ/PNG files (e.g. from `process-cli`) as they are | - | [docs](docs/MULTI_UPLOAD.md) |
 | 🛠️ `fixes` | General bug fixes and robustness improvements over upstream | - | [docs](docs/FIXES.md) |
 
