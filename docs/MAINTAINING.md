@@ -134,7 +134,7 @@ them: no fetch, pull, checkout, commit, gc or new files there.
   action (section 14).
 - Because history now reaches upstream's true root, `git rev-list --max-parents=0 HEAD` is **not** the baseline.
   The scripts use fixed SHAs: the **graft point** `1347744...` (never moves; `gate.py` uses it) and the
-  **equality baseline**, the newest merged upstream commit (`7ccabe0eb2f47c6b94d1089b94c404865486cd82` at the
+  **equality baseline**, the newest merged upstream commit (`495e0b6900d63ab2d75877d4e269d101834c379e` at the
   time of writing), stored in `scripts/verify_baseline.py` (`upstream_sha`) and `scripts/migrate/alloff_source.py`
   (`BASELINE`, imported by `alloff_web.py`). Move the baseline with each upstream merge (section 12).
 - Branches: `main` (release line), `feature/<name>` for work (merged locally into `main` after the checks,
@@ -391,13 +391,16 @@ push, so treat the first one as the real acceptance test.
 
 ## 12. Merging upstream changes
 
-Do it when the maintainer asks, never on your own initiative. Experience from the two merges so far
-(`151e716`, `7ccabe0`):
+Do it when the maintainer asks, never on your own initiative. Experience from the three merges so far
+(`151e716`, `7ccabe0`, `495e0b6`):
 
 1. `git fetch upstream`; `git log refs/heads/main..upstream/main --oneline`; branch `feature/upstream-<date>`;
    `git merge upstream/main` (message file, `[skip ci]` optional for the merge commit).
-2. Small upstream commits merged cleanly both times. Conflicts, if any, sit inside the `#else` branch of a guard
-   (take upstream's new code) or in a "manually edited" file (section 5; resolve by hand, keep the fences).
+2. Small upstream commits usually merge cleanly. Conflicts, if any, sit inside the `#else` branch of a guard
+   (take upstream's new code) or in a "manually edited" file (section 5; resolve by hand, keep the fences). The
+   third merge (`495e0b6`) conflicted twice in `main/main.c`, where an upstream change rewrote a function this
+   fork had added a `FORK_FIXES` line to (take upstream's structure, re-add the guarded fork line) and removed
+   calls next to a fork-only `FEATURE_CLIMATE` line (drop the calls, keep the fork line).
 3. Re-run the whole section 6 set, **including the manual web bundle byte compare** - the second merge is what
    revealed that the web bundle equality had broken.
 4. Move the baselines (`upstream_sha` in `verify_baseline.py`, `BASELINE` in `alloff_source.py`), add a

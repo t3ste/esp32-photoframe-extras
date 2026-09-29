@@ -17,6 +17,15 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Changed
+
+- Upstream `495e0b6` is merged (two commits, both in `main/main.c`): waking a frame with its CLEAR button no longer
+  re-runs `board_hal_init()`/`display_manager_init()` (the second `spi_bus_initialize()` aborted, so the frame
+  panicked and rebooted instead of clearing the screen - every ESP32-S3 board was affected; the climate reading
+  taken on that wake is kept), and the boot-time coredump log now also prints the panic reason and keeps a dump it
+  cannot summarise in flash instead of erasing it (debug builds only; the `fixes` option's extra `exc_cause`/
+  `exc_vaddr` line is kept on top of it).
+
 ### Fixed
 
 - **Gallery: listing a large album could hang indefinitely instead of just being slow.** `GET /api/images` used
