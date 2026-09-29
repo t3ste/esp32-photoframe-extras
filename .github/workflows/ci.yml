@@ -10,13 +10,13 @@ on:
 jobs:
   format-check:
     name: Code Formatting Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: '18'
 
@@ -47,13 +47,13 @@ jobs:
 
   host-tests:
     name: Host-Based Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: '18'
 
@@ -71,10 +71,10 @@ jobs:
 
   feature-tooling:
     name: Feature Flag Tooling
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # the upstream baseline is a fixed upstream commit in the history
           fetch-depth: 0
@@ -85,7 +85,7 @@ jobs:
           python-version: '3.11'
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: '18'
 

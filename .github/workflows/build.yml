@@ -24,7 +24,7 @@ jobs:
   # plain: no optional feature, i.e. the upstream firmware - built to prove that it still
   #        compiles and links, uploaded as a workflow artifact only (-plain file names).
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: ci
     permissions:
       contents: write
@@ -79,7 +79,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
       with:
         submodules: 'recursive'
 
@@ -95,7 +95,7 @@ jobs:
         echo "Building version: ${VERSION}"
 
     - name: Setup Node.js
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v7
       with:
         node-version: '20'
 
@@ -153,7 +153,7 @@ jobs:
         cp build/esp32-photoframe.bin firmware/esp32-photoframe-${{ matrix.board }}${{ matrix.suffix }}.bin
 
     - name: Upload firmware artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.artifact_prefix }}${{ matrix.board }}
         path: firmware/
@@ -163,7 +163,7 @@ jobs:
   # compile; a board only takes the features whose hardware it has. One job per set,
   # each with a fresh build directory.
   feature-compile:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: ci
     strategy:
       matrix:
@@ -182,12 +182,12 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
       with:
         submodules: 'recursive'
 
     - name: Setup Node.js
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v7
       with:
         node-version: '20'
 
@@ -210,7 +210,7 @@ jobs:
         command: python3 scripts/feature_matrix.py --board ${{ matrix.board }} --webapp skip ${{ matrix.feature_set }}
 
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ci, build]
     # A tag push, or a manual run on a tag (`gh workflow run build.yml --ref vX.Y.Z`, the
     # fallback when a push starts no run, see docs/MAINTAINING.md section 9). A
@@ -221,14 +221,14 @@ jobs:
       contents: write
     steps:
     - name: Download all firmware artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         path: firmware-artifacts
         pattern: photoframe-firmware-*
         merge-multiple: true
 
     - name: Create Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         draft: true
         # Pre-release tag convention (docs/MAINTAINING.md section 10): a
@@ -292,7 +292,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-pages:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ci, build]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     concurrency:
@@ -304,19 +304,19 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0
 
     - name: Download all firmware artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         path: firmware-artifacts
         pattern: photoframe-firmware-*
         merge-multiple: true
 
     - name: Setup Node.js
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v7
       with:
         node-version: '20'
 
