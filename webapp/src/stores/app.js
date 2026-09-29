@@ -31,9 +31,25 @@ export const useAppStore = defineStore("app", () => {
   const loading = ref({
     albums: false,
     images: false,
+    // #if FORK_FIXES
+    moreImages: false,
+    // #endif
     battery: false,
     systemInfo: false,
   });
+  // #if FORK_FIXES
+  // Server-side pagination for /api/images - see main/http_server.c's
+  // album_images_handler() doc comment: a large album (facecrop sidecars
+  // triple the real directory-entry count per photo) can make a single
+  // "list everything" request hang outright, since it forces the device to
+  // walk the whole, possibly huge, SD card directory in one HTTP request
+  // (confirmed live 2026-09-29). Fetch bounded pages instead -
+  // GALLERY_PAGE_SIZE also drives AlbumGallery.vue's "Load more" button, so
+  // one click fetches exactly one more page.
+  const GALLERY_PAGE_SIZE = 60;
+  const imagesHasMore = ref(false);
+  const imagesOffset = ref(0);
+  // #endif
 
   // API base URL (empty for same-origin)
   const API_BASE = "";
@@ -93,6 +109,50 @@ export const useAppStore = defineStore("app", () => {
     }
   }
 
+  // #if FORK_FIXES
+  // `append: true` fetches the next page onto the end of the current list
+  // (AlbumGallery.vue's "Load more") instead of replacing it - see the
+  // GALLERY_PAGE_SIZE comment above for why this fetches a bounded page at
+  // all instead of the whole album in one request.
+  async function loadImages(albumName, { append = false } = {}) {
+    loading.value[append ? "moreImages" : "images"] = true;
+    try {
+      if (!systemInfo.value.sdcard_inserted && !systemInfo.value.has_flash_storage) {
+        images.value = [];
+        imagesHasMore.value = false;
+        return;
+      }
+      // Mirrors AlbumGallery.vue's "Show thumbnails" preference (same
+      // localStorage key) so the device can skip its per-file thumbnail
+      // existence check entirely when the client won't render any anyway.
+      const showThumbnails = localStorage.getItem("photoframe_show_thumbnails") === "true";
+      const offset = append ? imagesOffset.value : 0;
+      const response = await fetch(
+        `${API_BASE}/api/images?album=${encodeURIComponent(albumName)}&thumbnails=${showThumbnails ? 1 : 0}&offset=${offset}&limit=${GALLERY_PAGE_SIZE}`
+      );
+      if (!response.ok || response.headers.get("content-type")?.includes("text/html")) {
+        if (!append) {
+          images.value = [];
+          imagesHasMore.value = false;
+        }
+        return;
+      }
+      const data = await response.json();
+      const page = Array.isArray(data) ? data : data.images; // tolerate a plain-array response too
+      images.value = append ? images.value.concat(page) : page;
+      imagesOffset.value = offset + page.length;
+      imagesHasMore.value = Array.isArray(data) ? false : Boolean(data.has_more);
+    } catch (error) {
+      console.log("Failed to load images (standalone mode):", error);
+      if (!append) {
+        images.value = [];
+        imagesHasMore.value = false;
+      }
+    } finally {
+      loading.value[append ? "moreImages" : "images"] = false;
+    }
+  }
+  // #else
   async function loadImages(albumName) {
     loading.value.images = true;
     try {
@@ -100,17 +160,7 @@ export const useAppStore = defineStore("app", () => {
         images.value = [];
         return;
       }
-      // #if FORK_FIXES
-      // Mirrors AlbumGallery.vue's "Show thumbnails" preference (same
-      // localStorage key) so the device can skip its per-file thumbnail
-      // existence check entirely when the client won't render any anyway.
-      const showThumbnails = localStorage.getItem("photoframe_show_thumbnails") === "true";
-      const response = await fetch(
-        `${API_BASE}/api/images?album=${encodeURIComponent(albumName)}&thumbnails=${showThumbnails ? 1 : 0}`
-      );
-      // #else
       const response = await fetch(`${API_BASE}/api/images?album=${encodeURIComponent(albumName)}`);
-      // #endif
       if (!response.ok || response.headers.get("content-type")?.includes("text/html")) {
         images.value = [];
         return;
@@ -123,6 +173,7 @@ export const useAppStore = defineStore("app", () => {
       loading.value.images = false;
     }
   }
+  // #endif
 
   function selectAlbum(albumName) {
     selectedAlbum.value = albumName;
@@ -269,6 +320,9 @@ export const useAppStore = defineStore("app", () => {
     albums,
     selectedAlbum,
     images,
+    // #if FORK_FIXES
+    imagesHasMore,
+    // #endif
     battery,
     systemInfo,
     loading,

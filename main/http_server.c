@@ -3011,6 +3011,23 @@ static esp_err_t album_images_handler(httpd_req_t *req)
     char album_name[128] = "";
 #if FORK_FIXES
     bool include_thumbnails = true;
+    // Pagination (offset/limit, both optional - omitting limit keeps the old
+    // "list everything" behavior for any other caller of this API). Added
+    // after a large facecrop-enabled album (each source photo carries a
+    // .jpg thumbnail and a .facecrop.json sidecar alongside the main image,
+    // tripling the real directory-entry count - confirmed live: 450 photos,
+    // 1350 entries) made a single listing request hang indefinitely rather
+    // than merely being slow: the device has to walk the entire, possibly
+    // huge, SD card directory in one HTTP request, and a marginal DMA-
+    // capable-memory budget elsewhere in the system occasionally makes one
+    // of the many block reads that requires fail outright (confirmed live
+    // 2026-09-29: `sdmmc_cmd: allocate_dma_buf: not enough mem`, reproduced
+    // across two different SD cards - not a worn-card issue). Bounding each
+    // request to `limit` matching images lets the scan stop as soon as it
+    // has enough, instead of needing to reach the end of a huge directory.
+    long offset = 0;
+    long limit = 0;
+    bool paginated = false;
 #endif
 
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
@@ -3020,6 +3037,21 @@ static esp_err_t album_images_handler(httpd_req_t *req)
         if (httpd_query_key_value(query, "thumbnails", thumbnails_param,
                                   sizeof(thumbnails_param)) == ESP_OK) {
             include_thumbnails = (strcmp(thumbnails_param, "0") != 0);
+        }
+        char offset_param[16] = "";
+        if (httpd_query_key_value(query, "offset", offset_param, sizeof(offset_param)) == ESP_OK) {
+            offset = strtol(offset_param, NULL, 10);
+            if (offset < 0) {
+                offset = 0;
+            }
+        }
+        char limit_param[16] = "";
+        if (httpd_query_key_value(query, "limit", limit_param, sizeof(limit_param)) == ESP_OK) {
+            limit = strtol(limit_param, NULL, 10);
+            paginated = true;
+            if (limit <= 0) {
+                limit = 1;
+            }
         }
 #endif
     }
@@ -3055,10 +3087,15 @@ static esp_err_t album_images_handler(httpd_req_t *req)
     // sequential storage lookups inside one handler call - since
     // esp_http_server processes requests on a single task, that blocked the
     // entire Web UI (not just this request) for as long as the scan ran.
+    // Only worth it for the unpaginated legacy path, which walks the whole
+    // directory anyway - when paginated, this full pre-scan would undo the
+    // early-exit above by walking the whole directory regardless of `limit`,
+    // so a targeted per-image stat() (bounded to at most `limit` calls) is
+    // used instead - see the thumbnail check below.
     char(*thumb_bases)[256] = NULL;
     size_t thumb_count = 0;
     size_t thumb_capacity = 0;
-    if (include_thumbnails) {
+    if (include_thumbnails && !paginated) {
         struct dirent *tentry;
         while ((tentry = readdir(dir)) != NULL) {
             if (tentry->d_type != DT_REG) {
@@ -3089,6 +3126,10 @@ static esp_err_t album_images_handler(httpd_req_t *req)
 
 #endif
     cJSON *response = cJSON_CreateArray();
+#if FORK_FIXES
+    long match_index = 0;
+    bool has_more = false;
+#endif
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) {
@@ -3101,6 +3142,17 @@ static esp_err_t album_images_handler(httpd_req_t *req)
                 (strcasecmp(ext, ".bmp") == 0 || strcasecmp(ext, ".png") == 0 ||
                  strcasecmp(ext, ".epdgz") == 0) &&
                 display_manager_is_photo_anchor(album_path, entry->d_name)) {
+                if (paginated) {
+                    if (match_index < offset) {
+                        match_index++;
+                        continue;
+                    }
+                    if (match_index >= offset + limit) {
+                        has_more = true;
+                        break;
+                    }
+                }
+                match_index++;
 #else
             if (ext && (strcasecmp(ext, ".bmp") == 0 || strcasecmp(ext, ".png") == 0 ||
                         strcasecmp(ext, ".epdgz") == 0)) {
@@ -3127,11 +3179,24 @@ static esp_err_t album_images_handler(httpd_req_t *req)
                 if (include_thumbnails) {
                     int base_len = (int) (ext - entry->d_name);
                     bool has_thumb = false;
-                    for (size_t i = 0; i < thumb_count; i++) {
-                        if ((int) strlen(thumb_bases[i]) == base_len &&
-                            strncmp(thumb_bases[i], entry->d_name, base_len) == 0) {
-                            has_thumb = true;
-                            break;
+                    if (paginated) {
+                        // Bounded to this one page's images (the bulk
+                        // pre-scan above is skipped entirely in this
+                        // branch) - a single targeted stat(), same as the
+                        // unpatched upstream code below does for every
+                        // image, just no longer for the whole album at once.
+                        char thumb_path[512];
+                        struct stat thumb_st;
+                        snprintf(thumb_path, sizeof(thumb_path), "%s/%.*s.jpg", album_path,
+                                 base_len, entry->d_name);
+                        has_thumb = stat(thumb_path, &thumb_st) == 0;
+                    } else {
+                        for (size_t i = 0; i < thumb_count; i++) {
+                            if ((int) strlen(thumb_bases[i]) == base_len &&
+                                strncmp(thumb_bases[i], entry->d_name, base_len) == 0) {
+                                has_thumb = true;
+                                break;
+                            }
                         }
                     }
                     if (has_thumb) {
@@ -3166,6 +3231,20 @@ static esp_err_t album_images_handler(httpd_req_t *req)
     closedir(dir);
 #if FORK_FIXES
     free(thumb_bases);
+    if (paginated) {
+        // Wrapped in an object (not the bare array the unpaginated response
+        // below is) so the caller can tell whether more images remain
+        // without needing its own, possibly expensive, full count.
+        cJSON *wrapper = cJSON_CreateObject();
+        cJSON_AddItemToObject(wrapper, "images", response);  // takes ownership of response
+        cJSON_AddBoolToObject(wrapper, "has_more", has_more);
+        char *wrapper_json = cJSON_Print(wrapper);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, wrapper_json);
+        free(wrapper_json);
+        cJSON_Delete(wrapper);
+        return ESP_OK;
+    }
 #endif
 
     char *json_str = cJSON_Print(response);

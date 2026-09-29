@@ -1,32 +1,16 @@
 <script setup>
-// #if FORK_FIXES
-import { ref, computed, watch } from "vue";
-// #else
 import { ref } from "vue";
-// #endif
 import { useAppStore } from "../stores";
 
 const appStore = useAppStore();
 
 // #if FORK_FIXES
-// Rendering every image in a large album at once (each with its own
-// thumbnail fetch once "Show thumbnails" is on) can pile up enough
-// concurrent requests to overwhelm the device's own HTTP server - it only
-// allows a handful of concurrent connections, so a big burst leaves the
-// whole Web UI unresponsive for a while. Rendering a bounded batch first,
-// with a button to reveal more, keeps that burst small regardless of album
-// size.
-const GALLERY_BATCH_SIZE = 60;
-const visibleCount = ref(GALLERY_BATCH_SIZE);
-watch(
-  () => appStore.selectedAlbum,
-  () => {
-    visibleCount.value = GALLERY_BATCH_SIZE;
-  }
-);
-const visibleImages = computed(() => appStore.currentAlbumImages.slice(0, visibleCount.value));
+// "Load more" fetches the next page from the device instead of just
+// revealing more of an already-fully-loaded array - see stores/app.js's
+// loadImages()/GALLERY_PAGE_SIZE doc comment for why the device is never
+// asked to list a whole (possibly huge) album in one request at all.
 function showMoreImages() {
-  visibleCount.value += GALLERY_BATCH_SIZE;
+  appStore.loadImages(appStore.selectedAlbum, { append: true });
 }
 
 // #endif
@@ -185,7 +169,14 @@ function onShowThumbnailsChange(val) {
       <template v-else>
         <v-row v-if="appStore.currentAlbumImages.length > 0">
 <!-- #if FORK_FIXES -->
-          <v-col v-for="image in visibleImages" :key="image.filename" cols="6" sm="4" md="3" lg="2">
+          <v-col
+            v-for="image in appStore.currentAlbumImages"
+            :key="image.filename"
+            cols="6"
+            sm="4"
+            md="3"
+            lg="2"
+          >
 <!-- #else -->
           <v-col
             v-for="image in appStore.currentAlbumImages"
@@ -243,12 +234,9 @@ function onShowThumbnailsChange(val) {
         </v-row>
 
 <!-- #if FORK_FIXES -->
-        <div
-          v-if="visibleCount < appStore.currentAlbumImages.length"
-          class="d-flex justify-center mt-2"
-        >
-          <v-btn variant="tonal" @click="showMoreImages">
-            Load more ({{ appStore.currentAlbumImages.length - visibleCount }} remaining)
+        <div v-if="appStore.imagesHasMore" class="d-flex justify-center mt-2">
+          <v-btn variant="tonal" :loading="appStore.loading.moreImages" @click="showMoreImages">
+            Load more
           </v-btn>
         </div>
 

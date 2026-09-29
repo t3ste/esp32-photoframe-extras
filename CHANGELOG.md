@@ -17,6 +17,18 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Gallery: listing a large album could hang indefinitely instead of just being slow.** `GET /api/images` used
+  to walk an album's entire SD card directory in one HTTP request; an album with hundreds of source photos, each
+  carrying a `.jpg` thumbnail and (with `facecrop`) a `.facecrop.json` sidecar, triples the real directory-entry
+  count over the photo count alone (confirmed live: 450 photos, 1350 entries) - occasionally one of the many SD
+  block reads that requires would fail outright (`allocate_dma_buf: not enough mem`, reproduced across two
+  different SD cards, so not a worn-card issue), after which the request made no further progress at all. The
+  endpoint now takes optional `offset`/`limit` paging, and the Web UI's gallery fetches bounded pages (60 images)
+  instead of the whole album - "Load more" now fetches the next page instead of only revealing more of an
+  already-fully-loaded list.
+
 ## [v218.0.3] - 2026-09-29
 
 ### Added
