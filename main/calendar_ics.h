@@ -128,10 +128,13 @@ esp_err_t calendar_ics_read_expanded_cache(const char *path, ics_event_list_t *o
  */
 bool calendar_ics_has_upcoming_event(const ics_event_list_t *list, time_t now);
 
-#if FEATURE_WEBCAL
-// Longest URL calendar_ics_resolve_url() can hand back (the config stores at most 256).
+#if FEATURE_WEBCAL || FEATURE_CALDAV
+// Longest URL calendar_ics_resolve_url() / caldav_resolve_url() can hand back (the config stores
+// at most 256).
 #define ICS_URL_MAX_LEN 300
+#endif
 
+#if FEATURE_WEBCAL
 /**
  * @brief Turns a webcal:// or webcals:// subscription link (what calendar apps
  * hand out for "subscribe") into the https:// URL it stands for; the scheme is

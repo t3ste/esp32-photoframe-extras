@@ -24,6 +24,11 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   401 with HTTP Basic or Digest. The address fields stay write-only and out of a normal config export; over plain `http://` the login is only
   sent when a new setting allows it, a refused login is not retried, and redirects are not followed with a login set
   ([docs/SOURCE_AUTH.md](docs/SOURCE_AUTH.md)).
+- **`caldav` build option** (`--with caldav`, needs `source-auth`): a calendar address written `caldavs://user:password@host/path` (`caldav://` for
+  plain http) is queried with a CalDAV `REPORT` instead of being downloaded whole - the server sends only the events of the coming days and
+  expands repeating events itself, so monthly/yearly repeats and exceptions (which the on-device reader skips) show up, and a large calendar no
+  longer runs into the 2 MB limit; a server that refuses the expand request is asked again without it
+  ([docs/CALDAV.md](docs/CALDAV.md)).
 - **`multi-upload` build option** (`--with multi-upload`): the Web UI's upload takes a whole selection of files (up to 200) - photos are converted with
   the current settings one after the other (cover or fit, no editor), pre-rendered `.epdgz` files (for instance from `process-cli`) - and, if ticked,
   panel-sized PNGs - go up as they are; a queue shows progress and failures. The upload endpoint accepts an image without a thumbnail

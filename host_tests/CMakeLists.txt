@@ -44,6 +44,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_WIFI_RESILIENCE
   CONFIG_FEATURE_WEBCAL
   CONFIG_FEATURE_SOURCE_AUTH
+  CONFIG_FEATURE_CALDAV
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
   CONFIG_FORK_FIXES
@@ -146,6 +147,25 @@ target_link_libraries(
 
 target_include_directories(
   source_auth_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# CalDAV calendar queries: request body and multistatus extraction (caldav feature)
+add_executable(
+  caldav_test
+  test_caldav.cpp
+  ../main/caldav.c
+)
+
+target_link_libraries(
+  caldav_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  caldav_test
   PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
@@ -322,6 +342,7 @@ add_executable(
   calendar_ics_test
   test_calendar_ics.cpp
   ../main/calendar_ics.c
+  ../main/caldav.c
   stubs/fake_http_fetch.c
   stubs/fake_image_processor_sanitize.c
 )
@@ -330,6 +351,7 @@ target_compile_definitions(
   calendar_ics_test
   PRIVATE
   ${FORK_FEATURE_DEFS}
+  CALDAV_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/caldav"
 )
 
 target_link_libraries(
@@ -353,6 +375,7 @@ add_executable(
   example_calendars_test
   test_example_calendars.cpp
   ../main/calendar_ics.c
+  ../main/caldav.c
   ../main/todo.c
   stubs/fake_http_fetch.c
   stubs/fake_image_processor_sanitize.c
@@ -384,6 +407,7 @@ gtest_discover_tests(cron_test)
 gtest_discover_tests(wake_schedule_test)
 gtest_discover_tests(http_auth_test)
 gtest_discover_tests(source_auth_test)
+gtest_discover_tests(caldav_test)
 gtest_discover_tests(network_backoff_test)
 gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)

@@ -23,6 +23,12 @@ static const char *TAG = "http_fetch";
 #define HTTP_FETCH_RETRY_COUNT 3
 #define HTTP_FETCH_RETRY_DELAY_MS 1500
 
+// A CalDAV REPORT in place of the GET (http_fetch_report(), build option caldav).
+typedef struct {
+    const char *body;  // request body (XML)
+    int status;        // out: the last HTTP status seen, 0 if the server never answered
+} http_report_t;
+
 typedef struct {
     char *buf;
     size_t len;
@@ -98,12 +104,16 @@ static esp_err_t body_capture_handler(esp_http_client_event_t *evt)
 // Shared retry/client-setup core behind both http_fetch_get() and
 // http_fetch_get_conditional() - the two differ only in whether they send
 // If-None-Match and whether a 304 is treated as success-with-no-body rather
-// than a retry-worthy failure.
+// than a retry-worthy failure. `report` is NULL for a plain GET.
 static esp_err_t do_http_fetch(const char *url, int timeout_ms, size_t max_response_bytes,
                                const char *if_none_match, char **out_body, size_t *out_len,
                                bool *out_truncated, char *out_etag, size_t out_etag_len,
-                               bool *out_not_modified, const char *user_agent)
+                               bool *out_not_modified, const char *user_agent,
+                               http_report_t *report)
 {
+#if !FEATURE_CALDAV
+    (void) report;
+#endif
     *out_body = NULL;
     if (out_len) {
         *out_len = 0;
@@ -212,10 +222,23 @@ static esp_err_t do_http_fetch(const char *url, int timeout_ms, size_t max_respo
         if (if_none_match && if_none_match[0] != '\0') {
             esp_http_client_set_header(client, "If-None-Match", if_none_match);
         }
+#if FEATURE_CALDAV
+        if (report) {
+            esp_http_client_set_method(client, HTTP_METHOD_REPORT);
+            esp_http_client_set_header(client, "Content-Type", "application/xml; charset=utf-8");
+            esp_http_client_set_header(client, "Depth", "1");
+            esp_http_client_set_post_field(client, report->body, (int) strlen(report->body));
+        }
+#endif
 
         esp_err_t err = esp_http_client_perform(client);
         int status = esp_http_client_get_status_code(client);
         esp_http_client_cleanup(client);
+#if FEATURE_CALDAV
+        if (report) {
+            report->status = status;
+        }
+#endif
 
 #if FEATURE_SOURCE_AUTH
         // Retrying cannot help here, and a wrong password must not be hammered at the server.
@@ -231,6 +254,15 @@ static esp_err_t do_http_fetch(const char *url, int timeout_ms, size_t max_respo
                      "The server redirects (HTTP %d) - not followed while a login is set, "
                      "use the final address",
                      status);
+            free(ctx.buf);
+            return ESP_FAIL;
+        }
+#endif
+#if FEATURE_CALDAV
+        // A 4xx to a REPORT will not change on a retry; the caller decides what to do about it
+        // (calendar_ics.c asks again without `expand`).
+        if (report && status >= 400 && status < 500) {
+            ESP_LOGE(TAG, "REPORT returned HTTP %d", status);
             free(ctx.buf);
             return ESP_FAIL;
         }
@@ -251,6 +283,13 @@ static esp_err_t do_http_fetch(const char *url, int timeout_ms, size_t max_respo
             }
             return ESP_OK;
         }
+
+#if FEATURE_CALDAV
+        // A CalDAV answer is 207 Multi-Status.
+        if (report && status == 207 && ctx.buf) {
+            status = 200;
+        }
+#endif
 
         if (status != 200 || !ctx.buf) {
             ESP_LOGE(TAG, "GET returned HTTP %d", status);
@@ -277,7 +316,7 @@ esp_err_t http_fetch_get(const char *url, int timeout_ms, size_t max_response_by
                          const char *user_agent)
 {
     return do_http_fetch(url, timeout_ms, max_response_bytes, NULL, out_body, out_len,
-                         out_truncated, NULL, 0, NULL, user_agent);
+                         out_truncated, NULL, 0, NULL, user_agent, NULL);
 }
 
 esp_err_t http_fetch_get_conditional(const char *url, int timeout_ms, size_t max_response_bytes,
@@ -286,5 +325,20 @@ esp_err_t http_fetch_get_conditional(const char *url, int timeout_ms, size_t max
                                      bool *out_not_modified, const char *user_agent)
 {
     return do_http_fetch(url, timeout_ms, max_response_bytes, if_none_match, out_body, out_len,
-                         out_truncated, out_etag, out_etag_len, out_not_modified, user_agent);
+                         out_truncated, out_etag, out_etag_len, out_not_modified, user_agent, NULL);
 }
+
+#if FEATURE_CALDAV
+esp_err_t http_fetch_report(const char *url, int timeout_ms, size_t max_response_bytes,
+                            const char *request_body, char **out_body, size_t *out_len,
+                            bool *out_truncated, int *out_status)
+{
+    http_report_t report = {.body = request_body, .status = 0};
+    esp_err_t err = do_http_fetch(url, timeout_ms, max_response_bytes, NULL, out_body, out_len,
+                                  out_truncated, NULL, 0, NULL, NULL, &report);
+    if (out_status) {
+        *out_status = report.status;
+    }
+    return err;
+}
+#endif

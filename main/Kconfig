@@ -200,6 +200,17 @@ menu "Photoframe optional features"
             write-only. Over plain http:// the login is only sent when a
             setting allows it. Needs the Agenda feature.
 
+    config FEATURE_CALDAV
+        bool "CalDAV calendars"
+        default n
+        depends on FEATURE_SOURCE_AUTH
+        help
+            A calendar address written caldavs://user:password@host/path (or
+            caldav:// for plain http) is queried with a CalDAV REPORT: the
+            server sends only the events of the coming days and expands
+            repeating events itself, instead of the frame downloading the whole
+            calendar. Needs the source-auth feature (and through it Agenda).
+
     config FEATURE_MULTI_UPLOAD
         bool "Upload several images at once"
         default n

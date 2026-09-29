@@ -1,0 +1,73 @@
+<?xml version='1.0' encoding='utf-8'?>
+<multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><response><href>/tester/frame/byday.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VEVENT
+UID:byday
+DTSTART:20260924T090000Z
+DTEND:20260924T100000Z
+DTSTAMP:20260101T000000Z
+RRULE:FREQ=WEEKLY;BYDAY=MO,TH
+SUMMARY:Two days a week
+END:VEVENT
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/frame/exdate.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VEVENT
+UID:exdate
+DTSTART:20260928T090000Z
+DTEND:20260928T100000Z
+DTSTAMP:20260101T000000Z
+EXDATE:20261002T090000Z
+RRULE:FREQ=DAILY
+SUMMARY:Daily except tomorrow
+END:VEVENT
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/frame/monthly.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VEVENT
+UID:monthly
+DTSTART:20260802T100000Z
+DTEND:20260802T110000Z
+DTSTAMP:20260101T000000Z
+RRULE:FREQ=MONTHLY;BYMONTHDAY=3
+SUMMARY:Monthly bins
+END:VEVENT
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/frame/multiday.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VEVENT
+UID:multi
+DTSTART:20261003T080000Z
+DTEND:20261003T090000Z
+DTSTAMP:20260101T000000Z
+SUMMARY:Umlaute äöü €
+END:VEVENT
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/frame/one.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VEVENT
+UID:one
+DTSTART:20261002T090000Z
+DTEND:20261002T100000Z
+DTSTAMP:20260101T000000Z
+SUMMARY:Dentist &amp; co
+END:VEVENT
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/frame/weekly.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VEVENT
+UID:weekly
+DTSTART:20260917T090000Z
+DTEND:20260917T100000Z
+DTSTAMP:20260101T000000Z
+RRULE:FREQ=WEEKLY;BYDAY=TH
+SUMMARY:Weekly team
+END:VEVENT
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response></multistatus>

@@ -112,6 +112,12 @@
 #define FEATURE_SOURCE_AUTH 0
 #endif
 
+#ifdef CONFIG_FEATURE_CALDAV
+#define FEATURE_CALDAV 1
+#else
+#define FEATURE_CALDAV 0
+#endif
+
 #ifdef CONFIG_FEATURE_MULTI_UPLOAD
 #define FEATURE_MULTI_UPLOAD 1
 #else
@@ -171,7 +177,7 @@
      FEATURE_CLIMATE || FEATURE_ALARMCLOCK || FEATURE_VOICE_STOP || FEATURE_BATTERY_HISTORY ||     \
      FEATURE_DISPLAY_HISTORY || FEATURE_HTTPS || FEATURE_OFFLINE_HOTSPOT ||                        \
      FEATURE_ERROR_BANNER || FEATURE_OTA_CHANNEL || FEATURE_WIFI_RESILIENCE || FEATURE_FACECROP || \
-     FEATURE_WEBCAL || FEATURE_SOURCE_AUTH || FEATURE_MULTI_UPLOAD)
+     FEATURE_WEBCAL || FEATURE_SOURCE_AUTH || FEATURE_CALDAV || FEATURE_MULTI_UPLOAD)
 
 // Second line of defence behind build.py and Kconfig: the Kconfig capability
 // symbols mirror the board headers, and this makes a disagreement a build error.

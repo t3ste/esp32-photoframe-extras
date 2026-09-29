@@ -1,13 +1,16 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <string>
 #include <vector>
 
 extern "C" {
 #include "calendar_ics.h"
+#include "fake_http_fetch.h"
 }
 
 namespace
@@ -780,3 +783,237 @@ TEST(CalendarIcsWebcal, TooSmallBufferIsReported)
     EXPECT_STREQ(calendar_ics_resolve_url("webcal://a.example/b", exact, sizeof(exact)),
                  "https://a.example/b");
 }
+
+#if FEATURE_CALDAV
+// CalDAV (FEATURE_CALDAV): a caldav(s):// address is answered by a REPORT - the events of the
+// window come back as a multistatus with the iCalendar text inside, repeats expanded by the
+// server. http_fetch_report() is the scriptable stub of fake_http_fetch.c.
+namespace
+{
+
+// What a Sabre-style server sends: two objects, CR written as &#13;, one summary with an entity.
+const char *kMultistatus =
+    "<?xml version=\"1.0\"?><d:multistatus xmlns:d=\"DAV:\" "
+    "xmlns:cal=\"urn:ietf:params:xml:ns:caldav\">"
+    "<d:response><d:href>/dav/a.ics</d:href><d:propstat><d:prop>"
+    "<cal:calendar-data>BEGIN:VCALENDAR&#13;\nVERSION:2.0&#13;\nBEGIN:VEVENT&#13;\n"
+    "DTSTART:20261001T090000Z&#13;\nDTEND:20261001T100000Z&#13;\nSUMMARY:Dentist &amp; co&#13;\n"
+    "END:VEVENT&#13;\nEND:VCALENDAR&#13;\n</cal:calendar-data></d:prop></d:propstat></d:response>"
+    "<d:response><d:href>/dav/b.ics</d:href><d:propstat><d:prop>"
+    "<cal:calendar-data>BEGIN:VCALENDAR&#13;\nBEGIN:VEVENT&#13;\n"
+    "DTSTART:20261002T120000Z&#13;\nDTEND:20261002T130000Z&#13;\nSUMMARY:Plumber&#13;\n"
+    "END:VEVENT&#13;\nEND:VCALENDAR&#13;\n</cal:calendar-data></d:prop></d:propstat></d:response>"
+    "</d:multistatus>";
+
+class CalendarIcsCaldav : public CalendarIcs
+{
+   protected:
+    void SetUp() override
+    {
+        CalendarIcs::SetUp();
+        fake_report_reset();
+        fake_report.response = kMultistatus;
+    }
+};
+
+}  // namespace
+
+TEST_F(CalendarIcsCaldav, QueriesTheServerAndParsesTheAnswer)
+{
+    ics_event_list_t out;
+    time_t start = make_utc(2026, 10, 1, 0, 0, 0), end = make_utc(2026, 10, 8, 0, 0, 0);
+    ASSERT_EQ(calendar_ics_fetch("caldavs://u:p@cal.example.org/dav/me/cal/", 0, start, end,
+                                 nullptr, nullptr, nullptr, 0, &out),
+              ESP_OK);
+    ASSERT_EQ(fake_report.calls, 1);
+    EXPECT_STREQ(fake_report.url[0], "https://u:p@cal.example.org/dav/me/cal/");
+    std::string body = fake_report.body[0];
+    EXPECT_NE(body.find("<c:time-range start=\"20261001T000000Z\" end=\"20261008T000000Z\"/>"),
+              std::string::npos);
+    EXPECT_NE(body.find("<c:expand "), std::string::npos);
+    ASSERT_EQ(out.count, 2);
+    EXPECT_STREQ(out.events[0].summary, "Dentist & co");
+    EXPECT_EQ(out.events[0].start, make_utc(2026, 10, 1, 9, 0, 0));
+    EXPECT_STREQ(out.events[1].summary, "Plumber");
+}
+
+TEST_F(CalendarIcsCaldav, PlainHttpSchemeIsKeptAsHttp)
+{
+    ics_event_list_t out;
+    ASSERT_EQ(
+        calendar_ics_fetch("caldav://192.168.1.5:5232/me/cal/", 0, make_utc(2026, 10, 1, 0, 0, 0),
+                           make_utc(2026, 10, 8, 0, 0, 0), nullptr, nullptr, nullptr, 0, &out),
+        ESP_OK);
+    EXPECT_STREQ(fake_report.url[0], "http://192.168.1.5:5232/me/cal/");
+}
+
+TEST_F(CalendarIcsCaldav, ServerWithoutExpandIsAskedAgainWithout)
+{
+    fake_report.status[0] = 400;  // first try (expand) refused, the second gets the default 207
+    ics_event_list_t out;
+    ASSERT_EQ(
+        calendar_ics_fetch("caldavs://cal.example.org/dav/", 0, make_utc(2026, 10, 1, 0, 0, 0),
+                           make_utc(2026, 10, 8, 0, 0, 0), nullptr, nullptr, nullptr, 0, &out),
+        ESP_OK);
+    ASSERT_EQ(fake_report.calls, 2);
+    EXPECT_NE(std::string(fake_report.body[0]).find("<c:expand "), std::string::npos);
+    EXPECT_EQ(std::string(fake_report.body[1]).find("expand"), std::string::npos);
+    EXPECT_NE(std::string(fake_report.body[1]).find("<c:time-range "), std::string::npos);
+    EXPECT_EQ(out.count, 2);
+}
+
+TEST_F(CalendarIcsCaldav, RefusedLoginIsNotTriedAgain)
+{
+    fake_report.status[0] = 401;
+    ics_event_list_t out;
+    EXPECT_NE(calendar_ics_fetch("caldavs://u:wrong@cal.example.org/dav/", 0,
+                                 make_utc(2026, 10, 1, 0, 0, 0), make_utc(2026, 10, 8, 0, 0, 0),
+                                 nullptr, nullptr, nullptr, 0, &out),
+              ESP_OK);
+    EXPECT_EQ(fake_report.calls, 1);
+    EXPECT_EQ(out.count, 0);
+}
+
+TEST_F(CalendarIcsCaldav, OtherClientErrorsAreNotRetriedEither)
+{
+    for (int status : {403, 404, 405}) {
+        fake_report_reset();
+        fake_report.response = kMultistatus;
+        fake_report.status[0] = status;
+        ics_event_list_t out;
+        EXPECT_NE(
+            calendar_ics_fetch("caldavs://cal.example.org/dav/", 0, make_utc(2026, 10, 1, 0, 0, 0),
+                               make_utc(2026, 10, 8, 0, 0, 0), nullptr, nullptr, nullptr, 0, &out),
+            ESP_OK)
+            << status;
+        EXPECT_EQ(fake_report.calls, 1) << status;
+    }
+}
+
+TEST_F(CalendarIcsCaldav, EmptyMultistatusIsAnEmptyCalendar)
+{
+    fake_report.response = "<d:multistatus xmlns:d=\"DAV:\"></d:multistatus>";
+    ics_event_list_t out;
+    ASSERT_EQ(
+        calendar_ics_fetch("caldavs://cal.example.org/dav/", 0, make_utc(2026, 10, 1, 0, 0, 0),
+                           make_utc(2026, 10, 8, 0, 0, 0), nullptr, nullptr, nullptr, 0, &out),
+        ESP_OK);
+    EXPECT_EQ(out.count, 0);
+}
+
+TEST_F(CalendarIcsCaldav, OneShotSourceIsCachedAsPlainIcs)
+{
+    const char *path = "caldav_once_test.ics";
+    std::remove(path);
+    ASSERT_EQ(calendar_ics_fetch_once("caldavs://cal.example.org/dav/holidays/", 0, path), ESP_OK);
+    ASSERT_EQ(fake_report.calls, 1);
+    // a window from last week to a year ahead: 366+7 days
+    std::string body = fake_report.body[0];
+    size_t at = body.find("<c:time-range start=\"");
+    ASSERT_NE(at, std::string::npos);
+    FILE *fp = std::fopen(path, "rb");
+    ASSERT_NE(fp, nullptr);
+    char data[4096] = {0};
+    size_t n = std::fread(data, 1, sizeof(data) - 1, fp);
+    std::fclose(fp);
+    std::remove(path);
+    std::string text(data, n);
+    EXPECT_NE(text.find("SUMMARY:Dentist & co"), std::string::npos);
+    EXPECT_NE(text.find("SUMMARY:Plumber"), std::string::npos);
+    EXPECT_EQ(text.find('<'), std::string::npos);
+}
+
+TEST_F(CalendarIcsCaldav, OneShotFailureWritesNothing)
+{
+    const char *path = "caldav_once_fail_test.ics";
+    std::remove(path);
+    fake_report.status[0] = 404;
+    EXPECT_NE(calendar_ics_fetch_once("caldavs://cal.example.org/dav/x/", 0, path), ESP_OK);
+    FILE *fp = std::fopen(path, "rb");
+    EXPECT_EQ(fp, nullptr);
+    if (fp) {
+        std::fclose(fp);
+        std::remove(path);
+    }
+}
+// The real thing: what a Radicale server answered to the frame's query (host_tests/data/caldav).
+namespace
+{
+
+std::string read_fixture(const char *name)
+{
+    std::string path = std::string(CALDAV_TEST_DATA_DIR) + "/" + name;
+    FILE *fp = std::fopen(path.c_str(), "rb");
+    if (!fp) {
+        return "";
+    }
+    std::string data;
+    char chunk[4096];
+    size_t n;
+    while ((n = std::fread(chunk, 1, sizeof(chunk), fp)) > 0) {
+        data.append(chunk, n);
+    }
+    std::fclose(fp);
+    return data;
+}
+
+std::vector<std::string> summaries(const ics_event_list_t &list)
+{
+    std::vector<std::string> names;
+    for (int i = 0; i < list.count; i++) {
+        names.push_back(list.events[i].summary);
+    }
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+}  // namespace
+
+TEST_F(CalendarIcsCaldav, RadicaleAnswerWithExpandShowsEveryOccurrence)
+{
+    std::string xml = read_fixture("radicale-report-expand.xml");
+    ASSERT_FALSE(xml.empty());
+    fake_report.response = xml.c_str();
+    ics_event_list_t out;
+    ASSERT_EQ(calendar_ics_fetch("caldavs://u:p@cal.example.org/tester/frame/", 0,
+                                 make_utc(2026, 10, 1, 0, 0, 0), make_utc(2026, 10, 4, 0, 0, 0),
+                                 nullptr, nullptr, nullptr, 0, &out),
+              ESP_OK);
+    std::vector<std::string> names = summaries(out);
+    // the daily rule with an EXDATE (2 Oct left out) gives 1 and 3 Oct; the monthly and the
+    // BYDAY=MO,TH rules - which the on-device reader cannot expand - arrive as single events
+    ASSERT_EQ(names.size(), 7u);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "Daily except tomorrow"), 2);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "Monthly bins"), 1);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "Two days a week"), 1);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "Dentist & co"), 1);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "Weekly team"), 1);
+    bool umlaut = false;
+    for (const std::string &n : names) {
+        umlaut = umlaut || n.find("Umlaute") == 0;
+    }
+    EXPECT_TRUE(umlaut);
+}
+
+TEST_F(CalendarIcsCaldav, RadicaleAnswerWithoutExpandKeepsWhatTheReaderKnows)
+{
+    // a server that refuses `expand`: the second answer holds the master events with their rules,
+    // of which the frame's reader expands the simple ones and skips the rest (fail closed)
+    std::string xml = read_fixture("radicale-report-plain.xml");
+    ASSERT_FALSE(xml.empty());
+    fake_report.response = xml.c_str();
+    fake_report.status[0] = 422;
+    ics_event_list_t out;
+    ASSERT_EQ(calendar_ics_fetch("caldavs://u:p@cal.example.org/tester/frame/", 0,
+                                 make_utc(2026, 10, 1, 0, 0, 0), make_utc(2026, 10, 4, 0, 0, 0),
+                                 nullptr, nullptr, nullptr, 0, &out),
+              ESP_OK);
+    EXPECT_EQ(fake_report.calls, 2);
+    std::vector<std::string> names = summaries(out);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "Dentist & co"), 1);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "Weekly team"), 1);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "Monthly bins"), 0);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "Two days a week"), 0);
+    EXPECT_LT(names.size(), 7u);
+}
+#endif

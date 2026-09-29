@@ -9,6 +9,11 @@
 #include "esp_log.h"
 #include "http_fetch.h"
 #include "image_processor.h"
+#if FEATURE_CALDAV
+#include <time.h>
+
+#include "caldav.h"
+#endif
 
 static const char *TAG = "calendar_ics";
 
@@ -678,6 +683,71 @@ const char *calendar_ics_resolve_url(const char *url, char *buf, size_t buf_len)
 }
 #endif
 
+#if FEATURE_CALDAV
+// The one-shot sources (Calendar C-E) have no window of their own: from last week to a year ahead.
+#define CALDAV_ONCE_PAST_S (7 * 24 * 3600)
+#define CALDAV_ONCE_AHEAD_S (366 * 24 * 3600)
+
+// Asks the CalDAV server for the events between `start` and `end` (see caldav.h) and returns
+// their iCalendar text in *out_body (free with free()). The first request asks the server to
+// expand repeating events; a server that refuses the query for that (400, 415, 422, 501) is asked
+// again without - the parser then expands what it knows itself.
+static esp_err_t caldav_query(const char *url, int timeout_ms, time_t start, time_t end,
+                              char **out_body, size_t *out_len)
+{
+    char resolved_url[ICS_URL_MAX_LEN];
+    const char *http_url = caldav_resolve_url(url, resolved_url, sizeof(resolved_url));
+    if (!http_url) {
+        ESP_LOGW(TAG, "Calendar URL is too long");
+        return ESP_ERR_INVALID_ARG;
+    }
+    for (int expand = 1; expand >= 0; expand--) {
+        char request[CALDAV_REPORT_BODY_MAX];
+        if (caldav_build_report_body(request, sizeof(request), start, end, expand) < 0) {
+            return ESP_ERR_INVALID_SIZE;
+        }
+        char *body = NULL;
+        size_t len = 0;
+        bool truncated = false;
+        int status = 0;
+        esp_err_t err =
+            http_fetch_report(http_url, timeout_ms > 0 ? timeout_ms : ICS_HTTP_TIMEOUT_MS,
+                              ICS_MAX_RESPONSE_BYTES, request, &body, &len, &truncated, &status);
+        if (err == ESP_OK) {
+            if (truncated) {
+                ESP_LOGW(TAG, "CalDAV response truncated at %d bytes - using what was captured",
+                         ICS_MAX_RESPONSE_BYTES);
+            }
+            *out_body = body;
+            *out_len = caldav_extract_calendar_data(body, len);
+            return ESP_OK;
+        }
+        bool expand_refused =
+            expand && (status == 400 || status == 415 || status == 422 || status == 501);
+        if (!expand_refused) {
+            ESP_LOGW(TAG, "CalDAV query failed: %s", esp_err_to_name(err));
+            return err;
+        }
+        ESP_LOGW(TAG,
+                 "The server did not take the query with expand (HTTP %d) - asking again without",
+                 status);
+    }
+    return ESP_FAIL;
+}
+
+static bool write_cache_file(const char *path, const char *data, size_t len)
+{
+    FILE *fp = fopen(path, "wb");
+    if (!fp) {
+        ESP_LOGW(TAG, "Could not write Calendar cache file");
+        return false;
+    }
+    fwrite(data, 1, len, fp);
+    fclose(fp);
+    return true;
+}
+#endif
+
 esp_err_t calendar_ics_fetch(const char *url, int timeout_ms, time_t window_start,
                              time_t window_end, const char *cache_path, const char *etag_in,
                              char *etag_out, size_t etag_out_len, ics_event_list_t *out)
@@ -692,6 +762,29 @@ esp_err_t calendar_ics_fetch(const char *url, int timeout_ms, time_t window_star
     if (!url || url[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
+#if FEATURE_CALDAV
+    if (caldav_is_url(url)) {
+        // No ETag with a REPORT: what comes back is the window, and it is fetched every time.
+        char *ics = NULL;
+        size_t ics_len = 0;
+        esp_err_t query_err =
+            caldav_query(url, timeout_ms, window_start, window_end, &ics, &ics_len);
+        if (query_err != ESP_OK) {
+            return query_err;
+        }
+        if (cache_path) {
+            write_cache_file(cache_path, ics, ics_len);
+        }
+        if (ics_len == 0) {
+            // A window with no events at all is a valid answer, not a parse error.
+            free(ics);
+            return ESP_OK;
+        }
+        query_err = calendar_ics_parse(ics, ics_len, window_start, window_end, out);
+        free(ics);
+        return query_err;
+    }
+#endif
 #if FEATURE_WEBCAL
     char resolved_url[ICS_URL_MAX_LEN];
     url = calendar_ics_resolve_url(url, resolved_url, sizeof(resolved_url));
@@ -757,6 +850,21 @@ esp_err_t calendar_ics_fetch_once(const char *url, int timeout_ms, const char *c
     if (!url || url[0] == '\0' || !cache_path) {
         return ESP_ERR_INVALID_ARG;
     }
+#if FEATURE_CALDAV
+    if (caldav_is_url(url)) {
+        time_t now = time(NULL);
+        char *ics = NULL;
+        size_t ics_len = 0;
+        esp_err_t query_err = caldav_query(url, timeout_ms, now - CALDAV_ONCE_PAST_S,
+                                           now + CALDAV_ONCE_AHEAD_S, &ics, &ics_len);
+        if (query_err != ESP_OK) {
+            return query_err;
+        }
+        bool written = write_cache_file(cache_path, ics, ics_len);
+        free(ics);
+        return written ? ESP_OK : ESP_FAIL;
+    }
+#endif
 #if FEATURE_WEBCAL
     char resolved_url[ICS_URL_MAX_LEN];
     url = calendar_ics_resolve_url(url, resolved_url, sizeof(resolved_url));

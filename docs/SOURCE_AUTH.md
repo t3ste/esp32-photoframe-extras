@@ -55,6 +55,7 @@ of the frame can export it - set the device password (General → Advanced netwo
 
 - Works for every field that takes a calendar or ToDo address: Calendar A-E and the ToDo list. It also applies to the
   weather or headline feeds, should one of their addresses carry a login.
-- `webcal://user:password@host/...` works as well with the `webcal` option.
+- `webcal://user:password@host/...` works as well with the `webcal` option, and with the `caldav` option a `caldavs://user:password@host/...` address
+  asks the server for the coming days only ([CALDAV.md](CALDAV.md)).
 - OAuth (Google Calendar's private CalDAV, Microsoft 365) is not supported - use the calendar's ICS "secret address"
   instead.

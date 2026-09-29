@@ -2068,6 +2068,11 @@ async function performFactoryReset() {
               - write @ as %40 and : as %3A inside the user name or password. Like the rest of the
               address it is never shown again.
 <!-- #endif -->
+<!-- #if FEATURE_CALDAV -->
+              A CalDAV calendar of your own server works as caldavs://user:password@host/path
+              (caldav:// for plain http): the frame then asks the server only for the coming days
+              and lets it expand repeating events.
+<!-- #endif -->
             </div>
 <!-- #if FEATURE_SOURCE_AUTH -->
             <v-checkbox

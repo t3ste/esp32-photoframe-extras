@@ -146,6 +146,13 @@ FEATURES = (
         "Login (user:password@) in the Agenda calendar and ToDo URLs, Basic/Digest",
     ),
     Feature(
+        "caldav",
+        "FEATURE_CALDAV",
+        (),
+        ("source-auth",),
+        "CalDAV calendars (caldavs://): the server sends only the coming days, repeats expanded",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),

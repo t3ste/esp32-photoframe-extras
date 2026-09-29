@@ -33,6 +33,7 @@ python build.py --board seeedstudio_xiao_ee02 --list-features
 | `facecrop` | Face-aware crop sidecars and Cover/Fit image variants | - | [FACE_CROP.md](FACE_CROP.md), [SCALE_MODE.md](SCALE_MODE.md) |
 | `webcal` | `webcal://` subscription links for the Agenda calendars (fetched over https) | `agenda` | |
 | `source-auth` | A login (`https://user:password@host/...`) in the Agenda calendar and ToDo addresses, answered with HTTP Basic or Digest | `agenda` | [SOURCE_AUTH.md](SOURCE_AUTH.md) |
+| `caldav` | CalDAV calendars (`caldavs://user:password@host/...`): the server sends only the coming days and expands repeating events | `source-auth` | [CALDAV.md](CALDAV.md) |
 | `multi-upload` | Web UI: upload several images at once - photos converted one after the other, pre-rendered EPDGZ/PNG files as they are | - | [MULTI_UPLOAD.md](MULTI_UPLOAD.md) |
 | `fixes` | General bug fixes and robustness improvements | - | |
 
