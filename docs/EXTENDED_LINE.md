@@ -183,7 +183,37 @@ Only the Waveshare PhotoPainter 7.3" was flashed. Not done, and how to check:
 - `git log --format=%h main..feature/ideas` is ambiguous (directory `main/`); write `refs/heads/main`.
 - Never echo a key; the firmware never logs keys or login URLs, tests check this.
 
-## 10. Keeping this page true
+## 10. How it was set up (2026-09-30) and what to check
+
+Done, in this order: `main` (with the Agenda timer fix `3298659`) pushed to the canonical fork and the mirror; the repository
+`t3ste/esp32-photoframe-extras` created (public, topics `esp32 e-paper photoframe firmware`, label `test-report`, `t3stier` added as a
+collaborator with write access and the invitation accepted); the line pushed as its `main` (commit `ee91b86` of the local `feature/ideas`);
+its first CI run passed (**CI: format, 681 host tests, tooling; Build Firmware: the 16 firmware builds, all feature compiles and the deploy - 82 jobs green,
+the release job skipped as it should**); GitHub Pages switched on (branch `gh-pages`, folder `/`) and checked: `https://t3ste.github.io/esp32-photoframe-extras/`
+serves the landing page with the extended repository's name in its links and the web flasher manifests; finally the line pushed as branch `extras` to
+the canonical fork and the mirror. **No release has been published yet** (no tag); the first one is a pre-release (section 4).
+
+Quick check that everything is still in step: `git ls-remote t3stier`, `git ls-remote origin` and `git ls-remote extras` must show the same commit for
+`refs/heads/extras` (first two) and `refs/heads/main` (the third); the base `refs/heads/main` of the first two is the base.
+
+## 11. A fresh checkout (another machine or instance)
+
+```sh
+git clone https://github.com/t3ste/esp32-photoframe-extras.git esp32-photoframe-fork && cd esp32-photoframe-fork
+git remote rename origin extras
+git remote add t3stier  https://github.com/t3stier/esp32-photoframe-rebuild.git
+git remote add origin   https://github.com/t3ste/esp32-photoframe-rebuild.git
+git remote add upstream https://github.com/aitjcize/esp32-photoframe.git
+git fetch --all --prune
+git branch main t3stier/main                   # the base project
+git switch -c extras extras/main               # the extended line; the original machine calls this branch feature/ideas
+```
+
+On such a checkout use `extras` where this page says `feature/ideas` (`git push t3stier extras:extras`, `git push extras extras:main`). Tools as in
+MAINTAINING.md (ESP-IDF 6.0, Node 20, Python with black/isort, clang-format 18, WSL or Linux for the host tests, `gh` logged in with both accounts).
+The maintainer's test frame is not reachable from another machine; hardware items in section 7 need him.
+
+## 12. Keeping this page true
 
 Update section 2 when a repository or branch moves, section 5 when counts change, section 7 when something has been verified on hardware,
 and section 3 after every upstream merge. The maintainer's private planning notes (`IDEAS.md`, git-ignored) may exist on his machine; nothing in
