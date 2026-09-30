@@ -105,25 +105,6 @@ const char *weather_screen_condition(int code, bool german)
 // ---------------------------------------------------------------------------------------------
 // Icons
 
-// A thick straight stroke, drawn with discs.
-static void thick_line(canvas_t *canvas, float x0, float y0, float x1, float y1, int radius,
-                       canvas_color_t color)
-{
-    if (radius < 1) {
-        radius = 1;
-    }
-    float length = hypotf(x1 - x0, y1 - y0);
-    int steps = (int) ceilf(length / ((float) radius * 0.5f + 0.5f));
-    if (steps < 1) {
-        steps = 1;
-    }
-    for (int i = 0; i <= steps; i++) {
-        float f = (float) i / (float) steps;
-        canvas_disc(canvas, (int) lroundf(x0 + (x1 - x0) * f), (int) lroundf(y0 + (y1 - y0) * f),
-                    radius, color);
-    }
-}
-
 // Fills a simple polygon (even-odd rule) given as x, y pairs.
 static void fill_polygon(canvas_t *canvas, const float *xy, int count, canvas_color_t color)
 {
@@ -174,8 +155,8 @@ static void sun(canvas_t *canvas, float cx, float cy, float radius, int o, bool 
         float outer = inner + radius * 0.50f;
         for (int i = 0; i < 8; i++) {
             float a = (float) i * 3.14159265f / 4.0f;
-            thick_line(canvas, cx + inner * sinf(a), cy - inner * cosf(a), cx + outer * sinf(a),
-                       cy - outer * cosf(a), o, CANVAS_BLACK);
+            canvas_line(canvas, cx + inner * sinf(a), cy - inner * cosf(a), cx + outer * sinf(a),
+                        cy - outer * cosf(a), o, CANVAS_BLACK);
         }
     }
     canvas_disc(canvas, (int) lroundf(cx), (int) lroundf(cy), (int) lroundf(radius) + o,
@@ -217,8 +198,8 @@ static void rain_lines(canvas_t *canvas, float cx, float top, float S, int count
     float x = cx - spacing * (float) (count - 1) / 2.0f;
     for (int i = 0; i < count; i++) {
         float y = top + ((i % 2) ? 0.10f * S : 0.0f);
-        thick_line(canvas, x + spacing * (float) i + 0.05f * S, y,
-                   x + spacing * (float) i - 0.02f * S, y + 0.17f * S, o, color);
+        canvas_line(canvas, x + spacing * (float) i + 0.05f * S, y,
+                    x + spacing * (float) i - 0.02f * S, y + 0.17f * S, o, color);
     }
 }
 
@@ -226,8 +207,8 @@ static void snow_flake(canvas_t *canvas, float cx, float cy, float r, int o)
 {
     for (int i = 0; i < 3; i++) {
         float a = (float) i * 3.14159265f / 3.0f;
-        thick_line(canvas, cx - r * sinf(a), cy + r * cosf(a), cx + r * sinf(a), cy - r * cosf(a),
-                   o > 1 ? o - 1 : 1, CANVAS_BLACK);
+        canvas_line(canvas, cx - r * sinf(a), cy + r * cosf(a), cx + r * sinf(a), cy - r * cosf(a),
+                    o > 1 ? o - 1 : 1, CANVAS_BLACK);
     }
 }
 
@@ -244,8 +225,8 @@ static void bolt(canvas_t *canvas, float cx, float top, float height, int o)
     fill_polygon(canvas, xy, 7, CANVAS_YELLOW);
     for (int i = 0; i < 7; i++) {
         int j = (i + 1) % 7;
-        thick_line(canvas, xy[2 * i], xy[2 * i + 1], xy[2 * j], xy[2 * j + 1], o > 2 ? o - 1 : 1,
-                   CANVAS_BLACK);
+        canvas_line(canvas, xy[2 * i], xy[2 * i + 1], xy[2 * j], xy[2 * j + 1], o > 2 ? o - 1 : 1,
+                    CANVAS_BLACK);
     }
 }
 
@@ -277,7 +258,7 @@ void weather_screen_draw_icon(canvas_t *canvas, int icx, int icy, int size, weat
         for (int i = 0; i < 3; i++) {
             float y = cy + (0.16f + 0.13f * (float) i) * S;
             float half = (i == 1 ? 0.28f : 0.34f) * S;
-            thick_line(canvas, cx - half, y, cx + half, y, o, CANVAS_BLACK);
+            canvas_line(canvas, cx - half, y, cx + half, y, o, CANVAS_BLACK);
         }
         break;
     }

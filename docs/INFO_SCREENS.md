@@ -20,7 +20,7 @@ with this option behaves as before until a page is added.
 - The schedule is active as soon as a page other than the Agenda is ticked, even if neither ToDo nor a calendar is switched on.
   An Agenda without ToDo and calendars has nothing to show and is skipped in the rotation.
 
-Over the API: `GET /api/config` reports `info_screens` (the ticked pages, by name: `agenda`, `chore-wheel`, `weather`, `fact`) and
+Over the API: `GET /api/config` reports `info_screens` (the ticked pages, by name: `agenda`, `chore-wheel`, `weather`, `fact`, `finance`) and
 `info_screens_available` (the pages this firmware contains); `PATCH /api/config` accepts `info_screens` as a list of names
 (unknown names are ignored).
 
@@ -32,6 +32,7 @@ Over the API: `GET /api/config` reports `info_screens` (the ticked pages, by nam
 | Chore wheel | `chore-wheel` | [CHORE_WHEEL.md](CHORE_WHEEL.md) |
 | Weather | `weather-screen` | [WEATHER_SCREEN.md](WEATHER_SCREEN.md) |
 | Fact of the day | `fact-of-the-day` | [FACT_OF_THE_DAY.md](FACT_OF_THE_DAY.md) |
+| Exchange rates | `finance-snapshot` | [FINANCE_SNAPSHOT.md](FINANCE_SNAPSHOT.md) |
 
 The drawing toolkit that the pages share also has big stroke digits (`main/screen_digits.c`) for numbers that should fill a
 quarter of the panel.

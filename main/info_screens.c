@@ -20,6 +20,13 @@
 #include "fact_service.h"
 #include "screen_fact.h"
 #endif
+#if FEATURE_FINANCE_SNAPSHOT
+#include <stdlib.h>
+
+#include "fx_rates.h"
+#include "http_fetch.h"
+#include "screen_finance.h"
+#endif
 #if FEATURE_WEATHER_SCREEN
 #include <math.h>
 #include <stdio.h>
@@ -31,7 +38,7 @@
 static const char *TAG = "info_screens";
 
 static const char *const SCREEN_NAMES[INFO_SCREEN_COUNT] = {"agenda", "chore-wheel", "weather",
-                                                            "fact"};
+                                                            "fact", "finance"};
 
 const char *info_screen_name(int id)
 {
@@ -59,6 +66,9 @@ uint32_t info_screens_compiled_mask(void)
 #endif
 #if FEATURE_FACT_OF_THE_DAY
     mask |= 1u << INFO_SCREEN_FACT;
+#endif
+#if FEATURE_FINANCE_SNAPSHOT
+    mask |= 1u << INFO_SCREEN_FINANCE;
 #endif
     return mask;
 }
@@ -145,6 +155,42 @@ static void load_weather(weather_screen_data_t *out, bool wifi_connected)
 }
 #endif
 
+#if FEATURE_FINANCE_SNAPSHOT
+#define FINANCE_DEFAULT_CURRENCIES "USD, GBP, CHF, JPY"
+#define FINANCE_MAX_RATE_AGE_DAYS 14  // a rate older than this is a currency the ECB dropped
+
+// The rates for the exchange-rate page - or the reason why there are none.
+static void load_finance(finance_screen_data_t *out, const info_now_t *now, bool wifi_connected)
+{
+    memset(out, 0, sizeof(*out));
+    char codes[FX_MAX_CURRENCIES][FX_CODE_LEN];
+    int code_count = fx_parse_codes(config_manager_get_fx_currencies(), codes, FX_MAX_CURRENCIES);
+    if (code_count == 0) {
+        code_count = fx_parse_codes(FINANCE_DEFAULT_CURRENCIES, codes, FX_MAX_CURRENCIES);
+    }
+    if (!wifi_connected) {
+        out->status = FINANCE_SCREEN_NO_NETWORK;
+        return;
+    }
+    char url[256];
+    char *body = NULL;
+    if (!fx_build_url(codes, code_count, FX_MAX_POINTS, url, sizeof(url)) ||
+        http_fetch_get(url, 15000, 32 * 1024, &body, NULL, NULL, NULL) != ESP_OK || !body) {
+        out->status = FINANCE_SCREEN_FETCH_FAILED;
+        free(body);
+        return;
+    }
+    int count = fx_parse_csv(body, out->series, FX_MAX_CURRENCIES);
+    free(body);
+    count = fx_order_series(out->series, count, codes, code_count);
+    count = fx_drop_stale(out->series, count, now->year, now->month, now->day,
+                          FINANCE_MAX_RATE_AGE_DAYS);
+    out->count = count;
+    out->status = count > 0 ? FINANCE_SCREEN_OK : FINANCE_SCREEN_FETCH_FAILED;
+    ESP_LOGI(TAG, "Exchange rates for %d of %d currencies", count, code_count);
+}
+#endif
+
 esp_err_t info_screens_show(int id, bool wifi_connected)
 {
     (void) wifi_connected;
@@ -190,6 +236,20 @@ esp_err_t info_screens_show(int id, bool wifi_connected)
         fact_t fact;
         fact_service_pick(now.german, fact_day_number(now.year, now.month, now.day), &fact, NULL);
         fact_screen_render(&canvas, &now, &fact);
+        err = ESP_OK;
+        break;
+    }
+#endif
+#if FEATURE_FINANCE_SNAPSHOT
+    case INFO_SCREEN_FINANCE: {
+        finance_screen_data_t *data = calloc(1, sizeof(*data));  // 1.9 KB: not on the task's stack
+        if (!data) {
+            err = ESP_ERR_NO_MEM;
+            break;
+        }
+        load_finance(data, &now, wifi_connected);
+        finance_screen_render(&canvas, &now, data);
+        free(data);
         err = ESP_OK;
         break;
     }

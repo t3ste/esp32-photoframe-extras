@@ -2697,6 +2697,9 @@ static esp_err_t config_handler(httpd_req_t *req)
             cJSON_AddStringToObject(root, "chore_members", config_manager_get_chore_members());
             cJSON_AddStringToObject(root, "chore_tasks", config_manager_get_chore_tasks());
 #endif
+#if FEATURE_FINANCE_SNAPSHOT
+            cJSON_AddStringToObject(root, "fx_currencies", config_manager_get_fx_currencies());
+#endif
         }
 #endif
 #if FEATURE_UPLOAD_DEDUP

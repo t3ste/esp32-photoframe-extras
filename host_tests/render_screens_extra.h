@@ -11,9 +11,11 @@ extern "C" {
 #include "screen_canvas.h"
 #include "screen_chore_wheel.h"
 #include "screen_fact.h"
+#include "screen_finance.h"
 #include "screen_weather.h"
 }
 
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -189,6 +191,69 @@ inline void draw_fact_long(canvas_t *canvas)
     fact_screen_render(canvas, &now, &fact);
 }
 
+// A made-up series of `count` working days ending at `last`, moving by `drift` a day with a wobble.
+inline fx_series_t fx_sample(const char *code, float last, float drift, int count = FX_MAX_POINTS)
+{
+    fx_series_t series;
+    memset(&series, 0, sizeof(series));
+    strcpy(series.code, code);
+    series.count = count;
+    for (int i = 0; i < count; i++) {
+        int back = count - 1 - i;
+        snprintf(series.dates[i], FX_DATE_LEN, "2026-09-%02d", 30 - back % 28);
+        series.values[i] = last - drift * (float) back + last * 0.004f * (float) ((i * 7) % 5 - 2);
+    }
+    return series;
+}
+
+inline finance_screen_data_t finance_sample(int count)
+{
+    finance_screen_data_t data;
+    memset(&data, 0, sizeof(data));
+    data.status = FINANCE_SCREEN_OK;
+    data.count = count;
+    data.series[0] = fx_sample("USD", 1.1355f, 0.0009f);
+    data.series[1] = fx_sample("GBP", 0.8674f, -0.0004f);
+    data.series[2] = fx_sample("CHF", 0.9402f, 0.0001f);
+    data.series[3] = fx_sample("JPY", 162.34f, 0.12f);
+    return data;
+}
+
+inline void draw_finance_english(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    finance_screen_data_t data = finance_sample(4);
+    finance_screen_render(canvas, &now, &data);
+}
+
+inline void draw_finance_german(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 3, 4, true, &now);
+    finance_screen_data_t data = finance_sample(2);
+    finance_screen_render(canvas, &now, &data);
+}
+
+inline void draw_finance_single(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    finance_screen_data_t data = finance_sample(1);
+    data.series[0] = fx_sample("JPY", 162.34f, 0.0f, 2);  // two points, no drift
+    finance_screen_render(canvas, &now, &data);
+}
+
+inline void draw_finance_offline(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, true, &now);
+    finance_screen_data_t data;
+    memset(&data, 0, sizeof(data));
+    data.status = FINANCE_SCREEN_NO_NETWORK;
+    finance_screen_render(canvas, &now, &data);
+}
+
 inline const std::vector<RenderCase> &render_cases()
 {
     static const std::vector<RenderCase> cases = {
@@ -206,6 +271,10 @@ inline const std::vector<RenderCase> &render_cases()
         {"fact-de", draw_fact_german},
         {"fact-plain", draw_fact_plain},
         {"fact-long", draw_fact_long},
+        {"finance-en", draw_finance_english},
+        {"finance-de", draw_finance_german},
+        {"finance-single", draw_finance_single},
+        {"finance-offline", draw_finance_offline},
     };
     return cases;
 }

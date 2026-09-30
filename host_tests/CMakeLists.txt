@@ -51,6 +51,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_CHORE_WHEEL
   CONFIG_FEATURE_WEATHER_SCREEN
   CONFIG_FEATURE_FACT_OF_THE_DAY
+  CONFIG_FEATURE_FINANCE_SNAPSHOT
   CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
@@ -331,6 +332,41 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# Exchange-rate parser and page of the finance-snapshot feature (real ECB answers as fixtures)
+add_executable(
+  finance_test
+  test_finance.cpp
+  ../main/fx_rates.c
+  ../main/screen_finance.c
+  ../main/screen_digits.c
+  ../main/screen_canvas.c
+  ../main/glyph_extras.c
+  ../main/info_screens_core.c
+  ../components/epaper_src/Fonts/font24.c
+)
+
+target_compile_definitions(
+  finance_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  FINANCE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/ecb"
+)
+
+target_link_libraries(
+  finance_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  finance_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
 # The pure parts of the info screens: ISO weeks, names, rotation, list parsing
 add_executable(
   info_screens_core_test
@@ -361,6 +397,8 @@ set(INFO_SCREEN_SOURCES
   ../main/screen_weather.c
   ../main/screen_fact.c
   ../main/fact_pack.c
+  ../main/screen_finance.c
+  ../main/fx_rates.c
   ../components/epaper_src/Fonts/font24.c
 )
 
@@ -641,6 +679,7 @@ gtest_discover_tests(glyph_extras_test)
 gtest_discover_tests(screen_canvas_test)
 gtest_discover_tests(screen_digits_test)
 gtest_discover_tests(fact_pack_test)
+gtest_discover_tests(finance_test)
 gtest_discover_tests(info_screens_core_test)
 gtest_discover_tests(screens_test)
 gtest_discover_tests(network_backoff_test)

@@ -260,6 +260,16 @@ menu "Photoframe optional features"
             German, or your own list (a text file in the storage, edited in
             the Web UI). Needs the information screens option.
 
+    config FEATURE_FINANCE_SNAPSHOT
+        bool "Exchange-rate screen"
+        default n
+        depends on FEATURE_INFO_SCREENS
+        help
+            A page with the ECB reference rates of up to four currencies
+            against the euro: the rate in big digits, the change against the
+            day before and a sparkline of the last 30 working days. Free
+            and without a key. Needs the information screens option.
+
     config FEATURE_UPLOAD_DEDUP
         bool "Duplicate detection at upload"
         default n

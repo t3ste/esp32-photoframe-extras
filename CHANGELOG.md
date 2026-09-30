@@ -51,6 +51,9 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 - **`fact-of-the-day` build option** (`--with fact-of-the-day`, needs `info-screens`): a full-screen page with one fact a day - a red header with the date, the topic as a blue pill, the fact in the biggest text that fits and, if it has one,
   a yellow question box. 24 built-in facts (original wording, English and German with real umlauts), or your own list: a plain text file, one fact per line as `Topic|Fact|Question`, edited in the Web UI (Settings -> Agenda -> Information
   screens) and kept on the frame's storage (`GET`/`PUT /api/facts`); the fact is picked by the day, so it stays the same all day ([docs/FACT_OF_THE_DAY.md](docs/FACT_OF_THE_DAY.md)).
+- **`finance-snapshot` build option** (`--with finance-snapshot`, needs `info-screens`): a full-screen exchange-rate page with the reference rates of the European Central Bank - up to four currencies (Settings ->
+  Agenda -> Information screens, `USD, GBP, CHF, JPY` by default), each with the price of one euro in big digits, the change against the working day before as a green or red arrow, and a line chart of the last
+  30 working days. One small request to the ECB's data portal (free, no key); checked against real answers of it ([docs/FINANCE_SNAPSHOT.md](docs/FINANCE_SNAPSHOT.md)).
 - **`upload-dedup` build option** (`--with upload-dedup`): every album keeps a small index (`.dedup`) of the MD5 of its images, and an upload the
   album already has is refused (`409`, naming the file; the Web UI offers "Upload anyway") or stored with a warning - as a setting; compared by the file's
   bytes or by the decoded pixels (an EPDGZ inside its gzip wrapper, a PNG as RGB), so the same photo converted by two browsers still counts as one. The

@@ -19,6 +19,7 @@ extern "C" {
 #include "screen_canvas.h"
 #include "screen_chore_wheel.h"
 #include "screen_fact.h"
+#include "screen_finance.h"
 #include "screen_weather.h"
 }
 

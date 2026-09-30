@@ -1,0 +1,3 @@
+# Enabled by `build.py --with finance-snapshot` (see docs/FEATURES.md).
+# Feature-specific sdkconfig lines belong in this file.
+CONFIG_FEATURE_FINANCE_SNAPSHOT=y

@@ -205,6 +205,9 @@ static uint16_t info_screens_mask = 1;  // only the agenda, until a screen is sw
 static uint16_t info_screens_rotation = 0;
 static char chore_members[INFO_LIST_MAX_LEN] = {0};
 static char chore_tasks[INFO_LIST_MAX_LEN] = {0};
+#if FEATURE_FINANCE_SNAPSHOT
+static char fx_currencies[INFO_LIST_MAX_LEN] = {0};
+#endif
 #endif
 #if FEATURE_UPLOAD_DEDUP
 static uint8_t dedup_mode = 1;  // skip
@@ -1305,6 +1308,10 @@ esp_err_t config_manager_init(void)
         nvs_get_str(nvs_handle, NVS_CHORE_MEMBERS_KEY, chore_members, &chore_members_len);
         size_t chore_tasks_len = sizeof(chore_tasks);
         nvs_get_str(nvs_handle, NVS_CHORE_TASKS_KEY, chore_tasks, &chore_tasks_len);
+#if FEATURE_FINANCE_SNAPSHOT
+        size_t fx_currencies_len = sizeof(fx_currencies);
+        nvs_get_str(nvs_handle, NVS_FX_CODES_KEY, fx_currencies, &fx_currencies_len);
+#endif
 #endif
 #if FEATURE_UPLOAD_DEDUP
         uint8_t stored_upload_dedup = 0;
@@ -3701,6 +3708,19 @@ void config_manager_set_chore_tasks(const char *text)
     copy_info_list(chore_tasks, sizeof(chore_tasks), text);
     agenda_nvs_set_str_or_erase(NVS_CHORE_TASKS_KEY, chore_tasks);
 }
+
+#if FEATURE_FINANCE_SNAPSHOT
+const char *config_manager_get_fx_currencies(void)
+{
+    return fx_currencies;
+}
+
+void config_manager_set_fx_currencies(const char *text)
+{
+    copy_info_list(fx_currencies, sizeof(fx_currencies), text);
+    agenda_nvs_set_str_or_erase(NVS_FX_CODES_KEY, fx_currencies);
+}
+#endif
 #endif
 
 #if FEATURE_UPLOAD_DEDUP

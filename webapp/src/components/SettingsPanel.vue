@@ -2731,6 +2731,30 @@ async function performFactoryReset() {
               when the page is drawn.
             </div>
 <!-- #endif -->
+<!-- #if FEATURE_FINANCE_SNAPSHOT -->
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.infoScreens"
+              value="finance"
+              label="Exchange rates"
+              density="compact"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mt-2 mb-2">
+              Exchange rates: the reference rates of the European Central Bank for up to four
+              currencies (1 euro in the currency), the change against the working day before and
+              the last 30 days as a line. Separate the three-letter codes with commas; empty means
+              USD, GBP, CHF, JPY. Needs the frame to be online when the page is drawn.
+            </div>
+            <v-text-field
+              v-model="settingsStore.deviceSettings.fxCurrencies"
+              label="Currencies"
+              placeholder="USD, GBP, CHF, JPY"
+              maxlength="159"
+              variant="outlined"
+              density="compact"
+              class="mb-2"
+            />
+<!-- #endif -->
 <!-- #if FEATURE_FACT_OF_THE_DAY -->
             <v-checkbox
               v-model="settingsStore.deviceSettings.infoScreens"

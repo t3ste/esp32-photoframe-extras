@@ -72,6 +72,14 @@ void canvas_pill(canvas_t *canvas, int x, int y, int w, int h, canvas_color_t co
 /** @brief A triangle pointing down, its tip at (tip_x, tip_y) and `size` wide and high. */
 void canvas_triangle_down(canvas_t *canvas, int tip_x, int tip_y, int size, canvas_color_t color);
 
+/** @brief A straight stroke with round ends, `radius` pixels either side of the line (at least 1).
+ */
+void canvas_line(canvas_t *canvas, float x0, float y0, float x1, float y1, int radius,
+                 canvas_color_t color);
+
+/** @brief A filled triangle, `size` wide and high, centred on (cx, cy), pointing up or down. */
+void canvas_arrow(canvas_t *canvas, int cx, int cy, int size, bool up, canvas_color_t color);
+
 /** @brief Width of a text at a scale: one 17-pixel cell per byte. */
 int canvas_text_width(const char *text, int scale);
 

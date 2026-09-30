@@ -202,6 +202,13 @@ FEATURES = (
         "Fact-of-the-day page: a built-in or your own fact, a new one every day",
     ),
     Feature(
+        "finance-snapshot",
+        "FEATURE_FINANCE_SNAPSHOT",
+        (),
+        ("info-screens",),
+        "Exchange-rate page: ECB reference rates of up to four currencies with a 30-day sparkline",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),

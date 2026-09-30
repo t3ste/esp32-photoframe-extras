@@ -313,6 +313,9 @@ export const useSettingsStore = defineStore("settings", () => {
     choreMembers: "",
     choreTasks: "",
 // #endif
+// #if FEATURE_FINANCE_SNAPSHOT
+    fxCurrencies: "",
+// #endif
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
     // Duplicate detection at upload (see docs/UPLOAD_DEDUP.md)
@@ -674,6 +677,9 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.choreMembers = data.chore_members || "";
       deviceSettings.value.choreTasks = data.chore_tasks || "";
 // #endif
+// #if FEATURE_FINANCE_SNAPSHOT
+      deviceSettings.value.fxCurrencies = data.fx_currencies || "";
+// #endif
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
       deviceSettings.value.dedupMode = data.dedup_mode ?? "skip";
@@ -926,6 +932,9 @@ export const useSettingsStore = defineStore("settings", () => {
 // #if FEATURE_CHORE_WHEEL
       chore_members: deviceSettings.value.choreMembers,
       chore_tasks: deviceSettings.value.choreTasks,
+// #endif
+// #if FEATURE_FINANCE_SNAPSHOT
+      fx_currencies: deviceSettings.value.fxCurrencies,
 // #endif
 // #endif
 // #if FEATURE_UPLOAD_DEDUP

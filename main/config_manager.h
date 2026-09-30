@@ -485,6 +485,11 @@ const char *config_manager_get_chore_members(void);
 void config_manager_set_chore_members(const char *text);
 const char *config_manager_get_chore_tasks(void);
 void config_manager_set_chore_tasks(const char *text);
+#if FEATURE_FINANCE_SNAPSHOT
+// The currencies of the exchange-rate page as typed ("USD, GBP, CHF"); empty = the default four.
+const char *config_manager_get_fx_currencies(void);
+void config_manager_set_fx_currencies(const char *text);
+#endif
 #endif
 
 #if FEATURE_UPLOAD_DEDUP

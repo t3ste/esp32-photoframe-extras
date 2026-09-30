@@ -165,6 +165,35 @@ void canvas_triangle_down(canvas_t *canvas, int tip_x, int tip_y, int size, canv
     }
 }
 
+void canvas_line(canvas_t *canvas, float x0, float y0, float x1, float y1, int radius,
+                 canvas_color_t color)
+{
+    if (radius < 1) {
+        radius = 1;
+    }
+    float length = hypotf(x1 - x0, y1 - y0);
+    int steps = (int) ceilf(length / ((float) radius * 0.5f + 0.5f));
+    if (steps < 1) {
+        steps = 1;
+    }
+    for (int i = 0; i <= steps; i++) {
+        float f = (float) i / (float) steps;
+        canvas_disc(canvas, (int) lroundf(x0 + (x1 - x0) * f), (int) lroundf(y0 + (y1 - y0) * f),
+                    radius, color);
+    }
+}
+
+void canvas_arrow(canvas_t *canvas, int cx, int cy, int size, bool up, canvas_color_t color)
+{
+    if (size < 3) {
+        size = 3;
+    }
+    for (int row = 0; row < size; row++) {
+        int half = up ? row / 2 : (size - 1 - row) / 2;
+        canvas_rect(canvas, cx - half, cy - size / 2 + row, 2 * half + 1, 1, color);
+    }
+}
+
 int canvas_text_width(const char *text, int scale)
 {
     return (int) strlen(text) * FONT_CELL_W * scale;

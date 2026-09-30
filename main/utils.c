@@ -1162,6 +1162,12 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         config_manager_set_chore_tasks(cJSON_GetStringValue(item));
     }
 #endif
+#if FEATURE_FINANCE_SNAPSHOT
+    item = cJSON_GetObjectItem(root, "fx_currencies");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_fx_currencies(cJSON_GetStringValue(item));
+    }
+#endif
 #endif
 #if FEATURE_UPLOAD_DEDUP
     item = cJSON_GetObjectItem(root, "dedup_mode");

@@ -915,6 +915,8 @@ typedef enum {
 #define NVS_INFO_ROTATION_KEY "info_rot"
 #define NVS_CHORE_MEMBERS_KEY "chore_members"
 #define NVS_CHORE_TASKS_KEY "chore_tasks"
+// finance-snapshot feature: the currencies of the exchange-rate page, as typed ("USD, GBP")
+#define NVS_FX_CODES_KEY "fx_codes"
 #define INFO_LIST_MAX_LEN 160
 #define INFO_SCREEN_OUTPUT_PATH FS_MOUNT_POINT "/.screen.png"
 // fact-of-the-day feature: the user's own facts, one per line (fact_pack.h)
