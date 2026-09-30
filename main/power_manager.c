@@ -217,8 +217,7 @@ static void rotation_timer_task(void *arg)
             // The seconds are counted from the wall clock after the render, so they are added to
             // the time after it too: `now` is from the start of this tick, before the fetches and
             // the panel's ~20 s refresh, and with it the next render came that much too early -
-            // right before the boundary, so that a second render followed at once (the Agenda
-            // twice, and two turns of the information-screen rotation for one).
+            // right before the boundary, so that a second render followed at once.
             int seconds_until_next = agenda_manager_seconds_until_next_wake();
             next_agenda_time = esp_timer_get_time() + (seconds_until_next * 1000000LL);
             ESP_LOGI(TAG, "Next agenda render scheduled in %d seconds", seconds_until_next);
