@@ -6,6 +6,8 @@ firmware**: same behaviour, same web UI, same `GET /api/config`.
 
 To see most of them working without setting up a Telegram bot, a calendar or a
 Home Assistant instance, import the ready-made [demo package](DEMO_PACKAGE.md).
+For a walkthrough of the newer options (calendar logins and CalDAV, batch upload, duplicate detection, the
+information pages and what each needs) see the [user guide to the extras](EXTRAS_USER_GUIDE.md).
 
 ```bash
 python build.py --board waveshare_photopainter_73 --with agenda,telegram

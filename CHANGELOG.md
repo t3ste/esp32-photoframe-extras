@@ -19,6 +19,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **[docs/EXTRAS_USER_GUIDE.md](docs/EXTRAS_USER_GUIDE.md)**: a user guide to the newer options - what each does, where it is switched on in the Web UI, what to enter and what you need (keys, servers,
+  a place), the notes on the information pages, how keys and passwords are kept, and a table of what to do when a page or calendar does not show up.
 - **`extras` bundle** (`--with extras`): one name for every option added after the first fork release - `webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `upload-dedup`,
   `glyphs`, `info-screens`, `chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes` - with what they need (`agenda`, `overlays`). It is not an option of its own: the
   build, the web app and the listings only see the members. `--without <member>` trims it, `--without extras` takes all of them out of `--all-features`, and a member the board cannot build is skipped with

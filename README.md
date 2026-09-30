@@ -36,7 +36,8 @@ Every row below is off by default (the firmware is then upstream's own, 1:1) and
 CalDAV, multi-upload, duplicate detection and the information pages), or `--all-features` for everything the board's hardware
 supports. This project's own releases, the web flasher, and the frame's OTA update all ship the **full** build for
 each board (every feature that board's hardware supports) - see [Installation](#installation). Full list, hardware
-needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
+needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md). How to use the newer options:
+[user guide to the extras](docs/EXTRAS_USER_GUIDE.md).
 
 | Feature (`--with ...`) | What it adds | Needs | Docs |
 | --- | --- | --- | --- |
