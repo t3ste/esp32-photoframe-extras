@@ -840,6 +840,18 @@ async function clearDebugLog() {
   }
 }
 
+// #if FEATURE_INFO_SCREENS
+// The schedule of the Agenda also drives the information screens, so it is not greyed out while
+// one of them is in the rotation.
+const agendaScheduleDisabled = computed(
+  () =>
+    !(
+      settingsStore.deviceSettings.agendaTodoEnabled ||
+      settingsStore.deviceSettings.agendaCalEnabled ||
+      settingsStore.deviceSettings.infoScreens.some((name) => name !== "agenda")
+    )
+);
+// #endif
 // #if FEATURE_UPLOAD_DEDUP
 // Duplicate images: index the images that were there before, and list what an album has twice.
 const dedupAlbum = ref(""); // "" = every album (indexing); the report needs one
@@ -2612,6 +2624,59 @@ async function performFactoryReset() {
               Independent from the Auto-Rotate schedule above - only applies while ToDo and/or
               Calendar is enabled.
             </div>
+<!-- #if FEATURE_INFO_SCREENS -->
+            <RotationSchedule
+              v-model="settingsStore.deviceSettings.agendaCron"
+              :disabled="agendaScheduleDisabled"
+            />
+
+            <v-divider class="mb-4 mt-2" />
+
+            <div class="text-subtitle-2 mb-2">Information screens</div>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Full-screen pages that take turns with the Agenda: every time the schedule above
+              fires, the next page of those ticked here is drawn. Tick only the Agenda to keep
+              things as they were.
+            </div>
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.infoScreens"
+              value="agenda"
+              label="Agenda (ToDo and Calendar)"
+              density="compact"
+              hide-details
+            />
+<!-- #if FEATURE_CHORE_WHEEL -->
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.infoScreens"
+              value="chore-wheel"
+              label="Chore wheel"
+              density="compact"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mt-2 mb-2">
+              Chore wheel: the chores go round the members by calendar week. Separate names with
+              commas; up to 5 members and 6 chores, each name up to 23 characters.
+            </div>
+            <v-text-field
+              v-model="settingsStore.deviceSettings.choreMembers"
+              label="Members"
+              placeholder="Anna, Ben, Clara"
+              maxlength="159"
+              variant="outlined"
+              density="compact"
+              class="mb-2"
+            />
+            <v-text-field
+              v-model="settingsStore.deviceSettings.choreTasks"
+              label="Chores"
+              placeholder="Bins, Dishes, Vacuum"
+              maxlength="159"
+              variant="outlined"
+              density="compact"
+              class="mb-2"
+            />
+<!-- #endif -->
+<!-- #else -->
             <RotationSchedule
               v-model="settingsStore.deviceSettings.agendaCron"
               :disabled="
@@ -2621,6 +2686,7 @@ async function performFactoryReset() {
                 )
               "
             />
+<!-- #endif -->
 
             <v-divider class="mb-4 mt-2" />
 

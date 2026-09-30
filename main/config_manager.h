@@ -473,6 +473,20 @@ const char *config_manager_get_agenda_cal_e_url(void);
 void config_manager_set_agenda_cal_e_name(const char *name);
 const char *config_manager_get_agenda_cal_e_name(void);
 
+#if FEATURE_INFO_SCREENS
+// The information screens (info_screens.h): the mask of the screens in the rotation (bit 0 = the
+// agenda; default: only the agenda), the rotation counter, and the lists of the chore wheel
+// ("Anna, Ben" and "Bins, Dishes", as typed).
+uint32_t config_manager_get_info_screens_mask(void);
+void config_manager_set_info_screens_mask(uint32_t mask);
+uint32_t config_manager_get_info_screens_rotation(void);
+void config_manager_set_info_screens_rotation(uint32_t counter);
+const char *config_manager_get_chore_members(void);
+void config_manager_set_chore_members(const char *text);
+const char *config_manager_get_chore_tasks(void);
+void config_manager_set_chore_tasks(const char *text);
+#endif
+
 #if FEATURE_UPLOAD_DEDUP
 // Duplicate detection at upload (dedup.h): mode 0 off / 1 skip / 2 warn, hash 0 stored bytes /
 // 1 decoded pixels, and whether images from before are indexed in the background.

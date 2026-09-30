@@ -200,6 +200,12 @@ static char agenda_cal_e_url[AGENDA_CAL_E_URL_MAX_LEN] = {0};
 #if FEATURE_SOURCE_AUTH
 static bool source_auth_allow_http = false;
 #endif
+#if FEATURE_INFO_SCREENS
+static uint16_t info_screens_mask = 1;  // only the agenda, until a screen is switched on
+static uint16_t info_screens_rotation = 0;
+static char chore_members[INFO_LIST_MAX_LEN] = {0};
+static char chore_tasks[INFO_LIST_MAX_LEN] = {0};
+#endif
 #if FEATURE_UPLOAD_DEDUP
 static uint8_t dedup_mode = 1;  // skip
 static uint8_t dedup_hash = 0;  // stored bytes
@@ -1287,6 +1293,19 @@ esp_err_t config_manager_init(void)
         nvs_get_str(nvs_handle, NVS_AGENDA_CAL_D_URL_KEY, agenda_cal_d_url, &agenda_cal_d_url_len);
         size_t agenda_cal_e_url_len = sizeof(agenda_cal_e_url);
         nvs_get_str(nvs_handle, NVS_AGENDA_CAL_E_URL_KEY, agenda_cal_e_url, &agenda_cal_e_url_len);
+#if FEATURE_INFO_SCREENS
+        uint16_t stored_info_u16 = 0;
+        if (nvs_get_u16(nvs_handle, NVS_INFO_SCREENS_KEY, &stored_info_u16) == ESP_OK) {
+            info_screens_mask = stored_info_u16;
+        }
+        if (nvs_get_u16(nvs_handle, NVS_INFO_ROTATION_KEY, &stored_info_u16) == ESP_OK) {
+            info_screens_rotation = stored_info_u16;
+        }
+        size_t chore_members_len = sizeof(chore_members);
+        nvs_get_str(nvs_handle, NVS_CHORE_MEMBERS_KEY, chore_members, &chore_members_len);
+        size_t chore_tasks_len = sizeof(chore_tasks);
+        nvs_get_str(nvs_handle, NVS_CHORE_TASKS_KEY, chore_tasks, &chore_tasks_len);
+#endif
 #if FEATURE_UPLOAD_DEDUP
         uint8_t stored_upload_dedup = 0;
         if (nvs_get_u8(nvs_handle, NVS_DEDUP_MODE_KEY, &stored_upload_dedup) == ESP_OK &&
@@ -3620,6 +3639,69 @@ bool config_manager_get_agenda_cal_e_enabled(void)
 {
     return agenda_cal_e_enabled;
 }
+
+#if FEATURE_INFO_SCREENS
+// Copies a list into its buffer; a text that is too long is cut at a character boundary, so a
+// name never ends in half an umlaut.
+static void copy_info_list(char *dest, size_t size, const char *text)
+{
+    size_t len = text ? strlen(text) : 0;
+    if (len > size - 1) {
+        len = size - 1;
+        while (len > 0 && ((unsigned char) text[len] & 0xC0) == 0x80) {
+            len--;
+        }
+    }
+    if (len > 0) {
+        memcpy(dest, text, len);
+    }
+    dest[len] = 0;
+}
+
+uint32_t config_manager_get_info_screens_mask(void)
+{
+    return info_screens_mask;
+}
+
+void config_manager_set_info_screens_mask(uint32_t mask)
+{
+    info_screens_mask = (uint16_t) mask;
+    agenda_nvs_set_u16(NVS_INFO_SCREENS_KEY, info_screens_mask);
+}
+
+uint32_t config_manager_get_info_screens_rotation(void)
+{
+    return info_screens_rotation;
+}
+
+void config_manager_set_info_screens_rotation(uint32_t counter)
+{
+    info_screens_rotation = (uint16_t) counter;
+    agenda_nvs_set_u16(NVS_INFO_ROTATION_KEY, info_screens_rotation);
+}
+
+const char *config_manager_get_chore_members(void)
+{
+    return chore_members;
+}
+
+void config_manager_set_chore_members(const char *text)
+{
+    copy_info_list(chore_members, sizeof(chore_members), text);
+    agenda_nvs_set_str_or_erase(NVS_CHORE_MEMBERS_KEY, chore_members);
+}
+
+const char *config_manager_get_chore_tasks(void)
+{
+    return chore_tasks;
+}
+
+void config_manager_set_chore_tasks(const char *text)
+{
+    copy_info_list(chore_tasks, sizeof(chore_tasks), text);
+    agenda_nvs_set_str_or_erase(NVS_CHORE_TASKS_KEY, chore_tasks);
+}
+#endif
 
 #if FEATURE_UPLOAD_DEDUP
 void config_manager_set_dedup_mode(int mode)

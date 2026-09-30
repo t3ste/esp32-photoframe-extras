@@ -305,6 +305,15 @@ export const useSettingsStore = defineStore("settings", () => {
 // #if FEATURE_SOURCE_AUTH
     sourceAuthAllowHttp: false,
 // #endif
+// #if FEATURE_INFO_SCREENS
+    // Information screens in the Agenda rotation (see docs/INFO_SCREENS.md)
+    infoScreens: ["agenda"],
+    infoScreensAvailable: ["agenda"],
+// #if FEATURE_CHORE_WHEEL
+    choreMembers: "",
+    choreTasks: "",
+// #endif
+// #endif
 // #if FEATURE_UPLOAD_DEDUP
     // Duplicate detection at upload (see docs/UPLOAD_DEDUP.md)
     dedupMode: "skip",
@@ -658,6 +667,14 @@ export const useSettingsStore = defineStore("settings", () => {
 // #if FEATURE_SOURCE_AUTH
       deviceSettings.value.sourceAuthAllowHttp = data.source_auth_allow_http === true;
 // #endif
+// #if FEATURE_INFO_SCREENS
+      deviceSettings.value.infoScreens = data.info_screens ?? ["agenda"];
+      deviceSettings.value.infoScreensAvailable = data.info_screens_available ?? ["agenda"];
+// #if FEATURE_CHORE_WHEEL
+      deviceSettings.value.choreMembers = data.chore_members || "";
+      deviceSettings.value.choreTasks = data.chore_tasks || "";
+// #endif
+// #endif
 // #if FEATURE_UPLOAD_DEDUP
       deviceSettings.value.dedupMode = data.dedup_mode ?? "skip";
       deviceSettings.value.dedupHash = data.dedup_hash ?? "stored";
@@ -903,6 +920,13 @@ export const useSettingsStore = defineStore("settings", () => {
 // #endif
 // #if FEATURE_SOURCE_AUTH
       source_auth_allow_http: deviceSettings.value.sourceAuthAllowHttp,
+// #endif
+// #if FEATURE_INFO_SCREENS
+      info_screens: deviceSettings.value.infoScreens,
+// #if FEATURE_CHORE_WHEEL
+      chore_members: deviceSettings.value.choreMembers,
+      chore_tasks: deviceSettings.value.choreTasks,
+// #endif
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
       dedup_mode: deviceSettings.value.dedupMode,

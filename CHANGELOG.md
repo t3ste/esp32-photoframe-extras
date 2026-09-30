@@ -37,6 +37,13 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   are dropped on the frame). Priority 1-9 becomes the A-D chips, a due date the due colour (a UTC time as the frame's local date), finished and cancelled
   to-dos are left out, a repeating one is listed once; ordered by due date, then priority. The CalDAV query code is shared with `caldav`
   ([docs/CALDAV_TODO.md](docs/CALDAV_TODO.md)).
+- **`info-screens` build option** (`--with info-screens`, needs `agenda` and `glyphs`): full-screen pages besides the Agenda that take turns with it on the Agenda's
+  schedule - ticked in Settings -> Agenda -> Information screens; each run of the schedule draws the next ticked page (the Agenda is ticked by default, so nothing changes until a page is added),
+  and the schedule also runs when only such a page is ticked. The pages are drawn by plain functions into an RGB canvas (text in the frame's font at 1x-4x, shapes), which is tested on a PC
+  for every panel size ([docs/INFO_SCREENS.md](docs/INFO_SCREENS.md)).
+- **`chore-wheel` build option** (`--with chore-wheel`, needs `info-screens`): a page for the household - a donut wheel with one coloured sector per member and one card per chore; chore `t` of ISO
+  week `w` goes to member `(t + w) mod members`, so the chores move on every Monday. Up to 5 members and 6 chores, names typed in the Web UI (umlauts included), English and German
+  ([docs/CHORE_WHEEL.md](docs/CHORE_WHEEL.md)).
 - **`upload-dedup` build option** (`--with upload-dedup`): every album keeps a small index (`.dedup`) of the MD5 of its images, and an upload the
   album already has is refused (`409`, naming the file; the Web UI offers "Upload anyway") or stored with a warning - as a setting; compared by the file's
   bytes or by the decoded pixels (an EPDGZ inside its gzip wrapper, a PNG as RGB), so the same photo converted by two browsers still counts as one. The

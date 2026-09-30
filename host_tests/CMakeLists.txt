@@ -47,6 +47,8 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_CALDAV
   CONFIG_FEATURE_CALDAV_TODO
   CONFIG_FEATURE_GLYPHS
+  CONFIG_FEATURE_INFO_SCREENS
+  CONFIG_FEATURE_CHORE_WHEEL
   CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
@@ -246,6 +248,93 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
   ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
 )
+
+# Drawing primitives of the info screens (info-screens feature); the real Font24 table and the
+# extra glyphs are linked, so text is checked against the font itself
+add_executable(
+  screen_canvas_test
+  test_screen_canvas.cpp
+  ../main/screen_canvas.c
+  ../main/glyph_extras.c
+  ../components/epaper_src/Fonts/font24.c
+)
+
+target_compile_definitions(
+  screen_canvas_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_link_libraries(
+  screen_canvas_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  screen_canvas_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
+# The pure parts of the info screens: ISO weeks, names, rotation, list parsing
+add_executable(
+  info_screens_core_test
+  test_info_screens_core.cpp
+  ../main/info_screens_core.c
+)
+
+target_link_libraries(
+  info_screens_core_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  info_screens_core_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# The screens themselves, drawn at the sizes of the boards (info-screens features). All screens
+# share the sources list below; the render harness draws the same cases as pictures.
+set(INFO_SCREEN_SOURCES
+  ../main/screen_canvas.c
+  ../main/glyph_extras.c
+  ../main/info_screens_core.c
+  ../main/screen_chore_wheel.c
+  ../components/epaper_src/Fonts/font24.c
+)
+
+add_executable(
+  screens_test
+  test_screens.cpp
+  ${INFO_SCREEN_SOURCES}
+)
+
+add_executable(
+  render_screens
+  render_screens.cpp
+  ${INFO_SCREEN_SOURCES}
+)
+
+foreach(screens_target screens_test render_screens)
+  target_compile_definitions(${screens_target} PRIVATE ${FORK_FEATURE_DEFS})
+  target_include_directories(
+    ${screens_target}
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+    ${CMAKE_CURRENT_SOURCE_DIR}/../main
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+  )
+endforeach()
+
+target_link_libraries(screens_test GTest::gtest_main m)
+target_link_libraries(render_screens PNG::PNG m)
 
 # Microphone level maths (RMS/peak in dBFS, text bar) behind the console level test
 # (voice-stop feature)
@@ -494,6 +583,9 @@ gtest_discover_tests(caldav_test)
 gtest_discover_tests(dedup_test)
 gtest_discover_tests(vtodo_test)
 gtest_discover_tests(glyph_extras_test)
+gtest_discover_tests(screen_canvas_test)
+gtest_discover_tests(info_screens_core_test)
+gtest_discover_tests(screens_test)
 gtest_discover_tests(network_backoff_test)
 gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)
@@ -628,6 +720,7 @@ add_executable(
   test_glyph_text.cpp
   ../main/image_processor.c
   ../main/glyph_extras.c
+  ../main/screen_canvas.c
   stubs/esp_stubs.c
   stubs/fake_display_manager.c
   stubs/fake_config_manager.c

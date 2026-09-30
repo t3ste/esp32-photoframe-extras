@@ -909,6 +909,15 @@ typedef enum {
 #define NVS_DEDUP_HASH_KEY "dedup_hash"
 #define NVS_DEDUP_INDEX_KEY "dedup_index"
 
+// info-screens feature: which screens take part in the rotation (a bit mask, bit 0 = the agenda),
+// how many have been shown (the rotation counter), and the lists of the chore wheel.
+#define NVS_INFO_SCREENS_KEY "info_screens"
+#define NVS_INFO_ROTATION_KEY "info_rot"
+#define NVS_CHORE_MEMBERS_KEY "chore_members"
+#define NVS_CHORE_TASKS_KEY "chore_tasks"
+#define INFO_LIST_MAX_LEN 160
+#define INFO_SCREEN_OUTPUT_PATH FS_MOUNT_POINT "/.screen.png"
+
 // User-authored Calendar-view color profiles (see agenda_color_profile.h),
 // imported via the Web UI as JSON exported by the companion browser tool
 // "profile-editor.html". Up to AGENDA_COLOR_PROFILE_SLOTS profiles can be

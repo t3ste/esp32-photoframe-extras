@@ -44,6 +44,8 @@ MODULES = {
     "caldav": ["caldav", "caldav_fetch"],
     "caldav-todo": ["vtodo"],
     "glyphs": ["glyph_extras"],
+    "info-screens": ["screen_canvas", "info_screens_core", "info_screens"],
+    "chore-wheel": ["screen_chore_wheel"],
     "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }
 ALWAYS_HELPERS = {

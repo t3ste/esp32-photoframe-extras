@@ -174,6 +174,20 @@ FEATURES = (
         "Real glyphs for the umlauts, the sharp s, the degree and the euro sign in on-display text",
     ),
     Feature(
+        "info-screens",
+        "FEATURE_INFO_SCREENS",
+        (),
+        ("agenda", "glyphs"),
+        "Full-screen information pages in the Agenda's rotation (the base of chore wheel, ...)",
+    ),
+    Feature(
+        "chore-wheel",
+        "FEATURE_CHORE_WHEEL",
+        (),
+        ("info-screens",),
+        "Chore wheel: who does which chore this week, with a donut wheel and cards",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),

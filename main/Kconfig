@@ -221,6 +221,26 @@ menu "Photoframe optional features"
             up in the ToDo column with their priority and due date. Needs
             the caldav feature.
 
+    config FEATURE_INFO_SCREENS
+        bool "Information screens in the Agenda rotation"
+        default n
+        depends on FEATURE_AGENDA && FEATURE_GLYPHS
+        help
+            Full-screen pages besides the Agenda that take turns with it on
+            the Agenda's schedule. This is only the base (drawing primitives,
+            the rotation, the settings); the pages come with their own
+            options, such as the chore wheel. Needs the Agenda and the glyphs
+            (real umlauts) options.
+
+    config FEATURE_CHORE_WHEEL
+        bool "Chore wheel screen"
+        default n
+        depends on FEATURE_INFO_SCREENS
+        help
+            A page with a donut wheel and one card per chore: who does what
+            this week, and next week. The chores go round the members by ISO
+            week. Needs the information screens option.
+
     config FEATURE_UPLOAD_DEDUP
         bool "Duplicate detection at upload"
         default n

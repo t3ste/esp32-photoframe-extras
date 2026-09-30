@@ -1,4 +1,7 @@
 #include "agenda_manager.h"
+#if FEATURE_INFO_SCREENS
+#include "info_screens.h"
+#endif
 
 #include <math.h>
 #include <stdio.h>
@@ -182,9 +185,17 @@ static bool load_extra_ics_source(bool enabled, const char *raw_cache_path,
 
 bool agenda_manager_is_enabled(void)
 {
+#if FEATURE_INFO_SCREENS
+    // an information screen in the rotation keeps the schedule going without ToDo or calendars
+    if (!config_manager_get_agenda_todo_enabled() && !config_manager_get_agenda_cal_enabled() &&
+        !info_screens_extra_enabled()) {
+        return false;
+    }
+#else
     if (!config_manager_get_agenda_todo_enabled() && !config_manager_get_agenda_cal_enabled()) {
         return false;
     }
+#endif
     return config_manager_get_agenda_cron_rule_count() > 0;
 }
 
@@ -227,6 +238,16 @@ int agenda_manager_seconds_until_next_wake(void)
 
 esp_err_t agenda_manager_run(bool wifi_connected)
 {
+#if FEATURE_INFO_SCREENS
+    // The schedule is shared with the information screens: this run draws the next screen of the
+    // rotation, which is the agenda itself unless an information screen is due.
+    bool agenda_has_content =
+        config_manager_get_agenda_todo_enabled() || config_manager_get_agenda_cal_enabled();
+    int screen = info_screens_next(agenda_has_content);
+    if (screen != INFO_SCREEN_AGENDA) {
+        return info_screens_show(screen, wifi_connected);
+    }
+#endif
     if (!wifi_connected) {
         ESP_LOGW(TAG,
                  "WiFi not connected this wake - skipping Calendar A/B, ToDo, and weather "

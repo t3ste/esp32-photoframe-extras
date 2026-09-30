@@ -22,6 +22,9 @@
 #if FEATURE_UPLOAD_DEDUP
 #include "dedup_service.h"
 #endif
+#if FEATURE_INFO_SCREENS
+#include "info_screens.h"
+#endif
 #include "cron.h"
 #include "debug_log.h"
 #include "display_flow.h"
@@ -1133,6 +1136,32 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     if (item && cJSON_IsString(item)) {
         config_manager_set_agenda_shift_start(cJSON_GetStringValue(item));
     }
+#endif
+#if FEATURE_INFO_SCREENS
+    item = cJSON_GetObjectItem(root, "info_screens");
+    if (item && cJSON_IsArray(item)) {
+        uint32_t mask = 0;
+        cJSON *entry;
+        cJSON_ArrayForEach(entry, item)
+        {
+            int id =
+                cJSON_IsString(entry) ? info_screen_id_from_name(cJSON_GetStringValue(entry)) : -1;
+            if (id >= 0) {
+                mask |= 1u << id;
+            }
+        }
+        config_manager_set_info_screens_mask(mask);
+    }
+#if FEATURE_CHORE_WHEEL
+    item = cJSON_GetObjectItem(root, "chore_members");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_chore_members(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "chore_tasks");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_chore_tasks(cJSON_GetStringValue(item));
+    }
+#endif
 #endif
 #if FEATURE_UPLOAD_DEDUP
     item = cJSON_GetObjectItem(root, "dedup_mode");

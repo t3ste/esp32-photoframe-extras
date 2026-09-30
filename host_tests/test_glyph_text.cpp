@@ -7,6 +7,7 @@
 extern "C" {
 #include "glyph_extras.h"
 #include "image_processor.h"
+#include "screen_canvas.h"
 }
 
 // The real sanitizer and text drawing of image_processor.c with the `glyphs` option on
@@ -147,4 +148,28 @@ TEST(GlyphText, BytesWithoutAGlyphDrawNothing)
     EXPECT_EQ(draw("\x89"), blank);  // one above the last code
     EXPECT_EQ(draw("\xFF"), blank);
     EXPECT_EQ(draw("\x7F"), blank);
+}
+
+// The information screens convert their UTF-8 text with canvas_text_from_utf8() instead of the
+// sanitizer of image_processor.c (which needs the whole image pipeline); the two must agree.
+TEST(GlyphText, TheScreenConverterAgreesWithTheSanitizer)
+{
+    const char *samples[] = {
+        "plain ASCII 123",
+        "GrÃ¶Ã"
+        "e Ãrger Ã"
+        "bung 20Â°"
+        "C 5â¬",
+        "cafÃ© Ã  la carte",                      // é à: no glyph, as before
+        "âquotedâ â dash â¦",  // curly quotes, dash, ...
+        "emoji ð end",
+        "broken Ã tail",
+        " codes stay",
+        "",
+    };
+    for (const char *sample : samples) {
+        char converted[256];
+        canvas_text_from_utf8(sample, converted, sizeof(converted));
+        EXPECT_EQ(std::string(converted), sanitize(sample)) << "sample: " << sample;
+    }
 }

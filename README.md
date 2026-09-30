@@ -59,6 +59,8 @@ needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
 | 🗓️ `caldav` | CalDAV calendars (Nextcloud, Baikal, Radicale): the server sends only the coming days, repeating events already expanded | - | [docs](docs/CALDAV.md) |
 | ✅ `caldav-todo` | The ToDo column can read a CalDAV task list (Nextcloud Tasks, Baikal, Radicale): open to-dos with priority and due date | - | [docs](docs/CALDAV_TODO.md) |
 | 🔤 `glyphs` | Umlauts, ß, ° and € are drawn as themselves in on-display text (overlays, Agenda, Telegram captions) instead of ae/oe/ue/ss | - | [docs](docs/GLYPHS.md) |
+| 🖼️ `info-screens` | Full-screen information pages that take turns with the Agenda on its schedule (the base for the pages below) | - | [docs](docs/INFO_SCREENS.md) |
+| 🧹 `chore-wheel` | Chore wheel page: who does which chore this week, a donut wheel and one card per chore, rotating by calendar week | - | [docs](docs/CHORE_WHEEL.md) |
 | ♊ `upload-dedup` | The same image uploaded twice is refused (or flagged): a per-album MD5 index, optionally by the decoded pixels, background indexing of earlier images and a duplicate report | - | [docs](docs/UPLOAD_DEDUP.md) |
 | 📤 `multi-upload` | Upload a whole selection of photos in the Web UI, or pre-rendered EPDGZ/PNG files (e.g. from `process-cli`) as they are | - | [docs](docs/MULTI_UPLOAD.md) |
 | 🛠️ `fixes` | General bug fixes and robustness improvements over upstream | - | [docs](docs/FIXES.md) |

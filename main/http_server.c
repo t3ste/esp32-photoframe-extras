@@ -36,6 +36,9 @@
 #if FEATURE_UPLOAD_DEDUP
 #include "dedup_service.h"
 #endif
+#if FEATURE_INFO_SCREENS
+#include "info_screens.h"
+#endif
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
@@ -2669,6 +2672,29 @@ static esp_err_t config_handler(httpd_req_t *req)
         }
         cJSON_AddItemToObject(root, "agenda_cron", agenda_cron_arr);
 
+#endif
+#if FEATURE_INFO_SCREENS
+        {
+            cJSON *screens = cJSON_CreateArray();
+            uint32_t mask = config_manager_get_info_screens_mask();
+            for (int id = 0; id < INFO_SCREEN_COUNT; id++) {
+                if (((mask >> id) & 1u) && ((info_screens_compiled_mask() >> id) & 1u)) {
+                    cJSON_AddItemToArray(screens, cJSON_CreateString(info_screen_name(id)));
+                }
+            }
+            cJSON_AddItemToObject(root, "info_screens", screens);
+            cJSON *available = cJSON_CreateArray();
+            for (int id = 0; id < INFO_SCREEN_COUNT; id++) {
+                if ((info_screens_compiled_mask() >> id) & 1u) {
+                    cJSON_AddItemToArray(available, cJSON_CreateString(info_screen_name(id)));
+                }
+            }
+            cJSON_AddItemToObject(root, "info_screens_available", available);
+#if FEATURE_CHORE_WHEEL
+            cJSON_AddStringToObject(root, "chore_members", config_manager_get_chore_members());
+            cJSON_AddStringToObject(root, "chore_tasks", config_manager_get_chore_tasks());
+#endif
+        }
 #endif
 #if FEATURE_UPLOAD_DEDUP
         {
