@@ -12,6 +12,7 @@ python build.py --board waveshare_photopainter_73 --with agenda,telegram
 python build.py --board waveshare_photopainter_73 --all-features
 python build.py --board seeedstudio_xiao_ee02 --all-features --without https
 python build.py --board seeedstudio_xiao_ee02 --list-features
+python build.py --board waveshare_photopainter_73 --with extras
 ```
 
 | Option (`--with ...`) | What it adds | Needs | Details |
@@ -47,6 +48,20 @@ python build.py --board seeedstudio_xiao_ee02 --list-features
 | `multi-upload` | Web UI: upload several images at once - photos converted one after the other, pre-rendered EPDGZ/PNG files as they are | - | [MULTI_UPLOAD.md](MULTI_UPLOAD.md) |
 | `fixes` | General bug fixes and robustness improvements | - | |
 
+## Bundles
+
+A bundle is one name for several options: `--with extras` asks for every member at once. It is not an option of its own - nothing is compiled
+for the name, the build only ever sees its members - so a build with `extras` is the same as one that lists them all.
+
+| Bundle | Members |
+| --- | --- |
+| `extras` | everything added after the first fork release: `webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `upload-dedup`, `glyphs`, `info-screens`, `chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes` |
+
+What the members need is added as usual (`extras` pulls in `agenda` and `overlays`). `--without fuel-prices` takes a member out again, and
+`--without extras` takes all of them out of `--all-features`. A member that the board cannot build is skipped with a notice instead of stopping the
+build (all members of `extras` need no special hardware, so every board builds all of them). `extras` does not include the options that were
+already in the first release (Telegram, overlays, the Agenda, chimes, alarm clock, ...) nor `fixes`; `--all-features` is still everything.
+
 Which optional hardware each board has:
 
 | Hardware | Boards |
@@ -60,6 +75,8 @@ Which optional hardware each board has:
   speaker) is an error that names the missing hardware and the boards that have it.
 - `--all-features` enables everything the board supports and prints a warning for each
   feature it skipped.
+- A bundle (`--with extras`) stands for several features; a member the board cannot run is skipped with a notice,
+  and `--without` trims a member.
 - A feature that needs another one pulls it in and says so (`--with voice-stop`
   adds `alarmclock`).
 - Kconfig (`main/Kconfig`) and a compile-time check (`main/feature_config.h`) repeat

@@ -32,7 +32,8 @@ A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently 
 ## Optional Features
 
 Every row below is off by default (the firmware is then upstream's own, 1:1) and switched on one at a time -
-`python build.py --with telegram,agenda` and so on, or `--all-features` for everything the board's hardware
+`python build.py --with telegram,agenda` and so on, `--with extras` for the whole group of newer options (webcal,
+CalDAV, multi-upload, duplicate detection and the information pages), or `--all-features` for everything the board's hardware
 supports. This project's own releases, the web flasher, and the frame's OTA update all ship the **full** build for
 each board (every feature that board's hardware supports) - see [Installation](#installation). Full list, hardware
 needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).

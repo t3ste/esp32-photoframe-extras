@@ -241,6 +241,39 @@ FEATURES = (
 
 FEATURES_BY_NAME = {f.name: f for f in FEATURES}
 
+# A bundle is one name for several features: `--with extras` asks for every member. It is not a
+# feature (no Kconfig flag, no sdkconfig overlay, no web directive): it only expands to the members
+# before anything is decided, so the build, the web app and the listings only ever see features.
+# A member the board cannot build (missing hardware) is skipped with a notice, like under
+# --all-features; the members' dependencies are added as usual; `--without <member>` trims it.
+Bundle = namedtuple("Bundle", "name members summary")
+
+BUNDLES = (
+    Bundle(
+        "extras",
+        (
+            "webcal",
+            "multi-upload",
+            "source-auth",
+            "caldav",
+            "caldav-todo",
+            "upload-dedup",
+            "glyphs",
+            "info-screens",
+            "chore-wheel",
+            "weather-screen",
+            "fact-of-the-day",
+            "finance-snapshot",
+            "fuel-prices",
+            "market-quotes",
+        ),
+        "Everything added after the first fork release: webcal, CalDAV calendars and to-dos, "
+        "multi-upload, duplicate detection, glyphs and the information pages",
+    ),
+)
+
+BUNDLES_BY_NAME = {b.name: b for b in BUNDLES}
+
 _HARDWARE_LABEL = {
     "speaker": "a speaker",
     "microphone": "a microphone",
@@ -318,6 +351,17 @@ def is_supported(name, board):
     return _unsupported(normalize(name), board, ()) is None
 
 
+def _split_bundles(names):
+    """A selection of feature and bundle names as (feature names, names the bundles stand for)."""
+    singles, members = [], []
+    for name in names:
+        if name in BUNDLES_BY_NAME:
+            members += [m for m in BUNDLES_BY_NAME[name].members if m not in members]
+        elif name not in singles:
+            singles.append(name)
+    return singles, members
+
+
 def resolve(board, requested=(), excluded=(), all_features=False):
     """Decide which features get built.
 
@@ -331,9 +375,16 @@ def resolve(board, requested=(), excluded=(), all_features=False):
     requested = [normalize(n) for n in requested]
     excluded = [normalize(n) for n in excluded]
     for name in requested + excluded:
-        if name not in FEATURES_BY_NAME:
-            valid = ", ".join(FEATURES_BY_NAME)
+        if name not in FEATURES_BY_NAME and name not in BUNDLES_BY_NAME:
+            valid = ", ".join([*FEATURES_BY_NAME, *BUNDLES_BY_NAME])
             raise FeatureError(f"unknown feature '{name}' (valid: {valid})")
+    requested, bundle_members = _split_bundles(requested)
+    excluded, excluded_members = _split_bundles(excluded)
+    excluded += [m for m in excluded_members if m not in excluded]
+    # what a bundle stands for, minus what was named on its own or trimmed with --without
+    bundle_members = [
+        m for m in bundle_members if m not in requested and m not in excluded
+    ]
     conflict = sorted(set(requested) & set(excluded))
     if conflict:
         raise FeatureError(
@@ -361,7 +412,13 @@ def resolve(board, requested=(), excluded=(), all_features=False):
             if reason:
                 raise FeatureError(f"'{name}' {reason}")
             enabled.add(name)
-        pending = list(requested)
+        for name in bundle_members:
+            reason = _unsupported(name, board, excluded)
+            if reason:
+                skipped[name] = reason
+            else:
+                enabled.add(name)
+        pending = list(requested) + [m for m in bundle_members if m in enabled]
         while pending:
             current = pending.pop()
             for dependency in FEATURES_BY_NAME[current].requires:
@@ -384,4 +441,8 @@ def describe(board):
         lines.append(f"  {feature.name:<{width}}  {status:<13}  {feature.summary}")
         if reason:
             lines.append(f"  {'':<{width}}  {'':<13}  -> {reason}")
+    for bundle in BUNDLES:
+        lines.append("")
+        lines.append(f"Bundle '{bundle.name}' (--with {bundle.name}): {bundle.summary}")
+        lines.append(f"  {', '.join(bundle.members)}")
     return "\n".join(lines)

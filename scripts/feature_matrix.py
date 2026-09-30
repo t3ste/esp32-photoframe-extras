@@ -11,7 +11,7 @@ sets run one after the other.
     python scripts/feature_matrix.py --board seeedstudio_xiao_ee02 single
 
 Set names: `off` (nothing), `all` (--all-features), a feature name (that feature,
-plus what it requires), `a+b` (a combination), `single` (every feature of the
+plus what it requires; a bundle name such as `extras` works too), `a+b` (a combination), `single` (every feature of the
 board on its own, `off` and `all` included).
 """
 

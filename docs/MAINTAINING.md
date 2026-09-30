@@ -158,7 +158,9 @@ them: no fetch, pull, checkout, commit, gc or new files there.
 
 ## 5. How the feature system works
 
-- **Registry**: `scripts/features.py` (name, Kconfig symbol, dependencies, hardware needs, sdkconfig overlay).
+- **Registry**: `scripts/features.py` (name, Kconfig symbol, dependencies, hardware needs, sdkconfig overlay), and its
+  bundles (`BUNDLES`: one name for several features, `--with extras`; expanded before anything is decided, no Kconfig
+  symbol, no overlay - a new feature of that kind is added to the bundle's members, `scripts/test_features.py` pins the list).
   Hardware capabilities: `boards/capabilities.json` (speaker, microphone, climate sensor per board); a CI check
   (`scripts/check_capabilities.py`) keeps `boards.json`, `capabilities.json` and the Kconfig tables consistent.
 - **Build**: `build.py --with ... | --all-features | --without x | --list-features | --ota-repo owner/name`.

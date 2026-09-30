@@ -19,6 +19,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **`extras` bundle** (`--with extras`): one name for every option added after the first fork release - `webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `upload-dedup`,
+  `glyphs`, `info-screens`, `chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes` - with what they need (`agenda`, `overlays`). It is not an option of its own: the
+  build, the web app and the listings only see the members. `--without <member>` trims it, `--without extras` takes all of them out of `--all-features`, and a member the board cannot build is skipped with
+  a notice. Shown by `--list-features`; built by the compile matrix (`feature_matrix.py ... extras`) and CI ([docs/FEATURES.md](docs/FEATURES.md)).
 - **`source-auth` build option** (`--with source-auth`, needs `agenda`): a calendar (A-E) or ToDo address may carry a login,
   `https://user:password@host/path` (special characters percent-encoded); the frame takes it out of the address and answers the server's
   401 with HTTP Basic or Digest. The address fields stay write-only and out of a normal config export; over plain `http://` the login is only

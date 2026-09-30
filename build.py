@@ -231,7 +231,8 @@ def main():
         metavar="FEATURES",
         help="Enable optional features (comma separated, repeatable). Nothing is "
         "enabled by default: without any feature the build is the upstream "
-        "firmware. Use --list-features for the names.",
+        "firmware. A bundle name (extras) stands for several features. Use "
+        "--list-features for the names.",
     )
     parser.add_argument(
         "--without",
