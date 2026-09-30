@@ -16,6 +16,24 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+# cJSON for the parsers that read JSON (the fuel-prices feature): the copy the firmware build fetched
+# (managed_components/ is not in the repository), else the same release from upstream.
+set(CJSON_LOCAL "${CMAKE_CURRENT_SOURCE_DIR}/../managed_components/espressif__cjson/cJSON")
+if(EXISTS "${CJSON_LOCAL}/cJSON.c")
+  set(CJSON_DIR "${CJSON_LOCAL}")
+else()
+  # only the source is used by the tests; keep cJSON's own tests and install rules out of the build
+  set(ENABLE_CJSON_TEST OFF CACHE BOOL "" FORCE)
+  set(ENABLE_CJSON_UNINSTALL OFF CACHE BOOL "" FORCE)
+  set(ENABLE_CUSTOM_COMPILER_FLAGS OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    cjson
+    URL https://github.com/DaveGamble/cJSON/archive/refs/tags/v1.7.19.tar.gz
+  )
+  FetchContent_MakeAvailable(cjson)
+  set(CJSON_DIR "${cjson_SOURCE_DIR}")
+endif()
+
 # Enable testing
 enable_testing()
 
@@ -378,7 +396,7 @@ add_executable(
   ../main/screen_canvas.c
   ../main/glyph_extras.c
   ../main/info_screens_core.c
-  ../managed_components/espressif__cjson/cJSON/cJSON.c
+  ${CJSON_DIR}/cJSON.c
   ../components/epaper_src/Fonts/font24.c
 )
 
@@ -398,7 +416,7 @@ target_link_libraries(
 target_include_directories(
   fuel_test
   PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/../managed_components/espressif__cjson/cJSON
+  ${CJSON_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/stubs
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
@@ -439,7 +457,7 @@ set(INFO_SCREEN_SOURCES
   ../main/fx_rates.c
   ../main/screen_fuel.c
   ../main/fuel_prices.c
-  ../managed_components/espressif__cjson/cJSON/cJSON.c
+  ${CJSON_DIR}/cJSON.c
   ../components/epaper_src/Fonts/font24.c
 )
 
@@ -460,7 +478,7 @@ foreach(screens_target screens_test render_screens)
   target_include_directories(
     ${screens_target}
     PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../managed_components/espressif__cjson/cJSON
+    ${CJSON_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs
     ${CMAKE_CURRENT_SOURCE_DIR}/../main
