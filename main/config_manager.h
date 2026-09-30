@@ -505,6 +505,22 @@ void config_manager_set_fuel_count(int count);
 bool config_manager_get_fuel_hide_closed(void);
 void config_manager_set_fuel_hide_closed(bool hide);
 #endif
+#if FEATURE_MARKET_QUOTES
+// The markets page (market_quotes.h): the symbols as typed ("AAPL, EUNL.DE"; empty = the built-in
+// four), whether Yahoo Finance may be asked, the two personal API keys (write-only like the fuel
+// key: never returned by the API, only by the export that includes credentials) and the per-day
+// request counter of the quota-limited sources.
+const char *config_manager_get_market_symbols(void);
+void config_manager_set_market_symbols(const char *text);
+bool config_manager_get_market_yahoo(void);
+void config_manager_set_market_yahoo(bool enabled);
+const char *config_manager_get_market_key_twelvedata(void);
+void config_manager_set_market_key_twelvedata(const char *key);
+const char *config_manager_get_market_key_alphavantage(void);
+void config_manager_set_market_key_alphavantage(const char *key);
+const char *config_manager_get_market_quota(void);
+void config_manager_set_market_quota(const char *text);
+#endif
 #endif
 
 #if FEATURE_UPLOAD_DEDUP

@@ -1,0 +1,3 @@
+# Enabled by `build.py --with market-quotes` (see docs/FEATURES.md).
+# Feature-specific sdkconfig lines belong in this file.
+CONFIG_FEATURE_MARKET_QUOTES=y

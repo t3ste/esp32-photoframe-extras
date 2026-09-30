@@ -7,6 +7,9 @@ import {
   getDefaultParams,
 } from "@aitjcize/epaper-image-convert";
 import { validateTimezone } from "../utils/timezone";
+// #if FEATURE_MARKET_QUOTES
+import { isMarketKey } from "../utils/marketKey";
+// #endif
 
 export const useSettingsStore = defineStore("settings", () => {
   const API_BASE = "";
@@ -324,6 +327,15 @@ export const useSettingsStore = defineStore("settings", () => {
     fuelRadiusKm: 5,
     fuelCount: 5,
     fuelHideClosed: true,
+// #endif
+// #if FEATURE_MARKET_QUOTES
+    marketSymbols: "",
+    marketYahoo: true,
+    // the keys are write-only: typed here, never loaded back
+    marketKeyTwelvedata: "",
+    marketKeyTwelvedataConfigured: false,
+    marketKeyAlphavantage: "",
+    marketKeyAlphavantageConfigured: false,
 // #endif
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
@@ -696,6 +708,14 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.fuelCount = data.fuel_count ?? 5;
       deviceSettings.value.fuelHideClosed = data.fuel_hide_closed !== false;
 // #endif
+// #if FEATURE_MARKET_QUOTES
+      deviceSettings.value.marketSymbols = data.market_symbols || "";
+      deviceSettings.value.marketYahoo = data.market_yahoo !== false;
+      deviceSettings.value.marketKeyTwelvedataConfigured =
+        data.market_key_twelvedata_configured === true;
+      deviceSettings.value.marketKeyAlphavantageConfigured =
+        data.market_key_alphavantage_configured === true;
+// #endif
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
       deviceSettings.value.dedupMode = data.dedup_mode ?? "skip";
@@ -959,6 +979,17 @@ export const useSettingsStore = defineStore("settings", () => {
       fuel_hide_closed: deviceSettings.value.fuelHideClosed,
       // write-only: sent only when something was typed (an empty value means "not touched")
       ...(deviceSettings.value.fuelApiKey ? { fuel_api_key: deviceSettings.value.fuelApiKey } : {}),
+// #endif
+// #if FEATURE_MARKET_QUOTES
+      market_symbols: deviceSettings.value.marketSymbols,
+      market_yahoo: deviceSettings.value.marketYahoo,
+      // write-only: sent only when something valid was typed (an empty value means "not touched")
+      ...(isMarketKey(deviceSettings.value.marketKeyTwelvedata)
+        ? { market_key_twelvedata: deviceSettings.value.marketKeyTwelvedata }
+        : {}),
+      ...(isMarketKey(deviceSettings.value.marketKeyAlphavantage)
+        ? { market_key_alphavantage: deviceSettings.value.marketKeyAlphavantage }
+        : {}),
 // #endif
 // #endif
 // #if FEATURE_UPLOAD_DEDUP

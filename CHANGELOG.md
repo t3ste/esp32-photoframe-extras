@@ -58,6 +58,15 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   third decimal small like on the pump, the cheapest marked green; fuel type, radius (1-25 km), number of stations and "hide closed" are settings. Germany only (Tankerkoenig, CC BY 4.0, attribution and time of the retrieval
   on the page); the personal API key is write-only (never returned, only in the export that includes credentials, removable) and never logged. The answer is read one station at a time, so a big one or a cut-off one
   does no harm; parsed against the service's real answers ([docs/FUEL_PRICES.md](docs/FUEL_PRICES.md)).
+- **`market-quotes` build option** (`--with market-quotes`, needs `info-screens`): a full-screen markets page with up to four symbols - stocks, ETFs, indices, futures, crypto and
+  currency pairs, written the Yahoo way (`AAPL`, `EUNL.DE`, `^GDAXI`, `GC=F`, `BTC-EUR`, `EURUSD=X`) - each with the last price in big digits, the change against the day before
+  and a line of the last 30 days. The prices come from a chain of three sources, tried in this order for each symbol: Yahoo Finance (no key, unofficial, can be switched off), Twelve Data
+  (free key, 800 requests a day) and Alpha Vantage (free key, 25 requests a day); a source is left out when it has no key, does not serve that kind of symbol (symbols are translated to
+  its notation) or its daily quota, which the frame counts, is used up. A source that refuses the key or is out of requests is not asked again in the same draw, and the answer of a source is
+  never re-requested (a new `http_fetch_get_once()` retries only when the server did not answer at all). The last good answers are kept on the storage, so a wake without network or a
+  failed fetch shows the last known prices in blue. The two keys are write-only (never returned, only in the export that includes credentials, removable, never logged). Parsed against
+  real answers of all three services ([docs/MARKET_QUOTES.md](docs/MARKET_QUOTES.md)). Shared with the fuel page: the object-by-object JSON scan (`json_scan.c`), and with the
+  exchange-rate page: the sparkline (`canvas_sparkline()`).
 - **`upload-dedup` build option** (`--with upload-dedup`): every album keeps a small index (`.dedup`) of the MD5 of its images, and an upload the
   album already has is refused (`409`, naming the file; the Web UI offers "Upload anyway") or stored with a warning - as a setting; compared by the file's
   bytes or by the decoded pixels (an EPDGZ inside its gzip wrapper, a PNG as RGB), so the same photo converted by two browsers still counts as one. The

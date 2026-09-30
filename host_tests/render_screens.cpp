@@ -21,6 +21,7 @@ extern "C" {
 #include "screen_fact.h"
 #include "screen_finance.h"
 #include "screen_fuel.h"
+#include "screen_markets.h"
 #include "screen_weather.h"
 }
 

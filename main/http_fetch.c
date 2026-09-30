@@ -328,6 +328,59 @@ esp_err_t http_fetch_get_conditional(const char *url, int timeout_ms, size_t max
                          out_truncated, out_etag, out_etag_len, out_not_modified, user_agent, NULL);
 }
 
+#if FEATURE_MARKET_QUOTES
+esp_err_t http_fetch_get_once(const char *url, int timeout_ms, size_t max_response_bytes,
+                              char **out_body, size_t *out_len, int *out_status,
+                              const char *user_agent)
+{
+    *out_body = NULL;
+    *out_status = 0;
+    if (out_len) {
+        *out_len = 0;
+    }
+    esp_err_t last_err = ESP_FAIL;
+    for (int attempt = 1; attempt <= 2; attempt++) {
+        if (attempt > 1) {
+            vTaskDelay(pdMS_TO_TICKS(HTTP_FETCH_RETRY_DELAY_MS));
+        }
+        http_body_buf_t ctx = {.max_len = max_response_bytes};
+        esp_http_client_config_t config = {
+            .url = url,
+            .timeout_ms = timeout_ms,
+            .event_handler = body_capture_handler,
+            .user_data = &ctx,
+            .buffer_size = 2048,
+            .crt_bundle_attach = esp_crt_bundle_attach,
+            .user_agent = user_agent,
+            .addr_type = HTTP_ADDR_TYPE_INET,  // see do_http_fetch()
+        };
+        esp_http_client_handle_t client = esp_http_client_init(&config);
+        if (!client) {
+            ESP_LOGE(TAG, "Failed to init HTTP client for GET");
+            free(ctx.buf);
+            continue;
+        }
+        esp_err_t err = esp_http_client_perform(client);
+        int status = esp_http_client_get_status_code(client);
+        esp_http_client_cleanup(client);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "GET failed: %s", esp_err_to_name(err));
+            free(ctx.buf);
+            last_err = err;
+            continue;  // the server did not answer: one more try
+        }
+        // the server answered: whatever it said stays its answer
+        *out_status = status;
+        *out_body = ctx.buf;
+        if (out_len) {
+            *out_len = ctx.len;
+        }
+        return ESP_OK;
+    }
+    return last_err;
+}
+#endif
+
 #if FEATURE_CALDAV
 esp_err_t http_fetch_report(const char *url, int timeout_ms, size_t max_response_bytes,
                             const char *request_body, char **out_body, size_t *out_len,

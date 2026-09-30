@@ -215,6 +215,13 @@ static uint8_t fuel_radius_km = 5;
 static uint8_t fuel_count = 5;
 static bool fuel_hide_closed = true;
 #endif
+#if FEATURE_MARKET_QUOTES
+static char market_symbols[INFO_LIST_MAX_LEN] = {0};
+static bool market_yahoo = true;
+static char market_key_td[MARKET_API_KEY_MAX_LEN] = {0};
+static char market_key_av[MARKET_API_KEY_MAX_LEN] = {0};
+static char market_quota[MARKET_QUOTA_TEXT_MAX_LEN] = {0};
+#endif
 #endif
 #if FEATURE_UPLOAD_DEDUP
 static uint8_t dedup_mode = 1;  // skip
@@ -1337,6 +1344,20 @@ esp_err_t config_manager_init(void)
         if (nvs_get_u8(nvs_handle, NVS_FUEL_HIDE_CLOSED_KEY, &stored_fuel) == ESP_OK) {
             fuel_hide_closed = (stored_fuel != 0);
         }
+#endif
+#if FEATURE_MARKET_QUOTES
+        size_t market_symbols_len = sizeof(market_symbols);
+        nvs_get_str(nvs_handle, NVS_MARKET_SYMBOLS_KEY, market_symbols, &market_symbols_len);
+        uint8_t stored_market_yahoo = 1;
+        if (nvs_get_u8(nvs_handle, NVS_MARKET_YAHOO_KEY, &stored_market_yahoo) == ESP_OK) {
+            market_yahoo = (stored_market_yahoo != 0);
+        }
+        size_t market_key_td_len = sizeof(market_key_td);
+        nvs_get_str(nvs_handle, NVS_MARKET_TD_KEY, market_key_td, &market_key_td_len);
+        size_t market_key_av_len = sizeof(market_key_av);
+        nvs_get_str(nvs_handle, NVS_MARKET_AV_KEY, market_key_av, &market_key_av_len);
+        size_t market_quota_len = sizeof(market_quota);
+        nvs_get_str(nvs_handle, NVS_MARKET_QUOTA_KEY, market_quota, &market_quota_len);
 #endif
 #endif
 #if FEATURE_UPLOAD_DEDUP
@@ -3802,6 +3823,63 @@ void config_manager_set_fuel_hide_closed(bool hide)
 {
     fuel_hide_closed = hide;
     agenda_nvs_set_u8(NVS_FUEL_HIDE_CLOSED_KEY, hide ? 1 : 0);
+}
+#endif
+
+#if FEATURE_MARKET_QUOTES
+const char *config_manager_get_market_symbols(void)
+{
+    return market_symbols;
+}
+
+void config_manager_set_market_symbols(const char *text)
+{
+    copy_info_list(market_symbols, sizeof(market_symbols), text);
+    agenda_nvs_set_str_or_erase(NVS_MARKET_SYMBOLS_KEY, market_symbols);
+}
+
+bool config_manager_get_market_yahoo(void)
+{
+    return market_yahoo;
+}
+
+void config_manager_set_market_yahoo(bool enabled)
+{
+    market_yahoo = enabled;
+    agenda_nvs_set_u8(NVS_MARKET_YAHOO_KEY, enabled ? 1 : 0);
+}
+
+const char *config_manager_get_market_key_twelvedata(void)
+{
+    return market_key_td;
+}
+
+void config_manager_set_market_key_twelvedata(const char *key)
+{
+    copy_info_list(market_key_td, sizeof(market_key_td), key);
+    agenda_nvs_set_str_or_erase(NVS_MARKET_TD_KEY, market_key_td);
+}
+
+const char *config_manager_get_market_key_alphavantage(void)
+{
+    return market_key_av;
+}
+
+void config_manager_set_market_key_alphavantage(const char *key)
+{
+    copy_info_list(market_key_av, sizeof(market_key_av), key);
+    agenda_nvs_set_str_or_erase(NVS_MARKET_AV_KEY, market_key_av);
+}
+
+const char *config_manager_get_market_quota(void)
+{
+    return market_quota;
+}
+
+void config_manager_set_market_quota(const char *text)
+{
+    copy_info_list(market_quota, sizeof(market_quota), text);
+    agenda_nvs_set_str_or_erase(NVS_MARKET_QUOTA_KEY, market_quota);
 }
 #endif
 #endif

@@ -28,6 +28,9 @@
 #if FEATURE_FUEL_PRICES
 #include "fuel_prices.h"
 #endif
+#if FEATURE_MARKET_QUOTES
+#include "market_quotes.h"
+#endif
 #include "cron.h"
 #include "debug_log.h"
 #include "display_flow.h"
@@ -1198,6 +1201,34 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     item = cJSON_GetObjectItem(root, "fuel_api_key_clear");
     if (item && cJSON_IsTrue(item)) {
         config_manager_set_fuel_api_key("");
+    }
+#endif
+#if FEATURE_MARKET_QUOTES
+    item = cJSON_GetObjectItem(root, "market_symbols");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_market_symbols(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "market_yahoo");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_market_yahoo(cJSON_IsTrue(item));
+    }
+    // The keys are write-only like the fuel key: an empty string means "not touched", a separate
+    // flag removes one; a text that cannot be a key (letters and digits, 4 to 64) is ignored.
+    item = cJSON_GetObjectItem(root, "market_key_twelvedata");
+    if (item && cJSON_IsString(item) && market_key_valid(cJSON_GetStringValue(item))) {
+        config_manager_set_market_key_twelvedata(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "market_key_twelvedata_clear");
+    if (item && cJSON_IsTrue(item)) {
+        config_manager_set_market_key_twelvedata("");
+    }
+    item = cJSON_GetObjectItem(root, "market_key_alphavantage");
+    if (item && cJSON_IsString(item) && market_key_valid(cJSON_GetStringValue(item))) {
+        config_manager_set_market_key_alphavantage(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "market_key_alphavantage_clear");
+    if (item && cJSON_IsTrue(item)) {
+        config_manager_set_market_key_alphavantage("");
     }
 #endif
 #endif

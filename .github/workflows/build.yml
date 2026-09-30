@@ -168,7 +168,7 @@ jobs:
     strategy:
       matrix:
         board: [waveshare_photopainter_73, seeedstudio_xiao_ee02]
-        feature_set: [off, telegram, overlays, agenda, battery-history, display-history, https, offline-hotspot, error-banner, ota-channel, wifi-resilience, facecrop, webcal, source-auth, caldav, caldav-todo, glyphs, info-screens, chore-wheel, weather-screen, fact-of-the-day, finance-snapshot, fuel-prices, upload-dedup, multi-upload, fixes, all]
+        feature_set: [off, telegram, overlays, agenda, battery-history, display-history, https, offline-hotspot, error-banner, ota-channel, wifi-resilience, facecrop, webcal, source-auth, caldav, caldav-todo, glyphs, info-screens, chore-wheel, weather-screen, fact-of-the-day, finance-snapshot, fuel-prices, market-quotes, upload-dedup, multi-upload, fixes, all]
         include:
           - board: waveshare_photopainter_73
             feature_set: chimes

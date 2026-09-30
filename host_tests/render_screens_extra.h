@@ -13,6 +13,7 @@ extern "C" {
 #include "screen_fact.h"
 #include "screen_finance.h"
 #include "screen_fuel.h"
+#include "screen_markets.h"
 #include "screen_weather.h"
 }
 
@@ -310,6 +311,113 @@ inline void draw_fuel_refused(canvas_t *canvas)
     fuel_screen_render(canvas, &now, &data);
 }
 
+// A made-up market series of `count` days ending 2026-09-30, moving by `drift` a day with a wobble.
+inline market_series_t market_sample(const char *symbol, const char *name, const char *currency,
+                                     float last, float drift, market_provider_t provider,
+                                     int count = MARKET_MAX_POINTS)
+{
+    market_series_t series;
+    memset(&series, 0, sizeof(series));
+    snprintf(series.symbol, sizeof(series.symbol), "%s", symbol);
+    snprintf(series.name, sizeof(series.name), "%s", name);
+    snprintf(series.currency, sizeof(series.currency), "%s", currency);
+    series.provider = provider;
+    series.count = count;
+    for (int i = 0; i < count; i++) {
+        int back = count - 1 - i;
+        snprintf(series.dates[i], MARKET_DATE_LEN, "2026-09-%02d", 30 - back % 28);
+        series.values[i] = last - drift * (float) back + last * 0.004f * (float) ((i * 7) % 5 - 2);
+    }
+    return series;
+}
+
+inline markets_screen_data_t markets_sample(int count)
+{
+    markets_screen_data_t data;
+    memset(&data, 0, sizeof(data));
+    data.status = MARKETS_SCREEN_OK;
+    data.count = count;
+    data.series[0] = market_sample("AAPL", "Apple Inc.", "USD", 329.4f, 0.6f, MARKET_YAHOO);
+    data.series[1] = market_sample("EUNL.DE", "iShares Core MSCI World UCITS ETF USD (Acc)", "EUR",
+                                   129.07f, 0.3f, MARKET_YAHOO);
+    data.series[2] = market_sample("^GDAXI", "DAX P", "EUR", 25336.0f, -21.0f, MARKET_YAHOO);
+    data.series[3] =
+        market_sample("BTC-EUR", "Bitcoin EUR", "EUR", 75066.0f, 210.0f, MARKET_TWELVEDATA);
+    return data;
+}
+
+inline void draw_markets_english(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    markets_screen_data_t data = markets_sample(4);
+    markets_screen_render(canvas, &now, &data);
+}
+
+// German, two rows: the second from the cache, and a symbol nobody could serve
+inline void draw_markets_german(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 3, 4, true, &now);
+    markets_screen_data_t data = markets_sample(3);
+    data.series[1].stale = true;
+    data.series[1].provider = MARKET_ALPHAVANTAGE;
+    data.series[2].count = 0;
+    strcpy(data.series[2].name, "");
+    markets_screen_render(canvas, &now, &data);
+}
+
+inline void draw_markets_single(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    markets_screen_data_t data = markets_sample(1);
+    data.series[0] = market_sample("GC=F", "Gold Dec 26", "USD", 4231.2f, 0.0f, MARKET_YAHOO, 2);
+    markets_screen_render(canvas, &now, &data);
+}
+
+inline void draw_markets_small_price(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, true, &now);
+    markets_screen_data_t data = markets_sample(2);
+    data.series[0] =
+        market_sample("EURUSD=X", "EUR/USD", "USD", 1.1355f, 0.0009f, MARKET_TWELVEDATA);
+    data.series[1] =
+        market_sample("DOGE-EUR", "Dogecoin EUR", "EUR", 0.1234f, 0.0002f, MARKET_TWELVEDATA);
+    markets_screen_render(canvas, &now, &data);
+}
+
+inline void draw_markets_offline(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, true, &now);
+    markets_screen_data_t data;
+    memset(&data, 0, sizeof(data));
+    data.status = MARKETS_SCREEN_NO_NETWORK;
+    markets_screen_render(canvas, &now, &data);
+}
+
+inline void draw_markets_no_source(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, true, &now);
+    markets_screen_data_t data;
+    memset(&data, 0, sizeof(data));
+    data.status = MARKETS_SCREEN_NO_SOURCE;
+    markets_screen_render(canvas, &now, &data);
+}
+
+inline void draw_markets_failed(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    markets_screen_data_t data = markets_sample(2);
+    data.series[0].count = 0;
+    data.series[1].count = 0;
+    markets_screen_render(canvas, &now, &data);  // status OK but nothing to show: the message
+}
+
 inline const std::vector<RenderCase> &render_cases()
 {
     static const std::vector<RenderCase> cases = {
@@ -334,6 +442,13 @@ inline const std::vector<RenderCase> &render_cases()
         {"fuel-en", draw_fuel_english},
         {"fuel-de", draw_fuel_german},
         {"fuel-refused", draw_fuel_refused},
+        {"markets-en", draw_markets_english},
+        {"markets-de", draw_markets_german},
+        {"markets-single", draw_markets_single},
+        {"markets-small-price", draw_markets_small_price},
+        {"markets-offline", draw_markets_offline},
+        {"markets-no-source", draw_markets_no_source},
+        {"markets-failed", draw_markets_failed},
     };
     return cases;
 }

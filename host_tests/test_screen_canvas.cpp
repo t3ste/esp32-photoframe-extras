@@ -366,3 +366,56 @@ TEST(ScreenCanvas, WrapEdgeCases)
     n = canvas_text_wrap("aaaa bbbb", 17 * 2 * 9 - 1, 2, lines, 4);
     EXPECT_EQ(n, 2);
 }
+
+TEST(ScreenCanvas, SparklineStaysInItsBoxAndEndsInAColouredDisc)
+{
+    Canvas cv(200, 120);
+    const float values[] = {1.0f, 3.0f, 2.0f, 5.0f, 4.0f, 6.0f};
+    canvas_sparkline(&cv.c, 50, 30, 100, 60, values, 6, CANVAS_GREEN);
+    int ink = 0, green = 0;
+    for (int y = 0; y < 120; y++) {
+        for (int x = 0; x < 200; x++) {
+            if (cv.ink(x, y)) {
+                ink++;
+                bool inside = x >= 50 && x < 150 && y >= 30 && y < 90;
+                EXPECT_TRUE(inside) << x << "," << y;
+                const uint8_t *p = &cv.pixels[((size_t) y * 200 + x) * 3];
+                green += (p[0] == 0 && p[1] == 255 && p[2] == 0) ? 1 : 0;
+            }
+        }
+    }
+    EXPECT_GT(ink, 100);
+    EXPECT_GT(green, 4);
+}
+
+TEST(ScreenCanvas, SparklineNeedsTwoValuesAndABox)
+{
+    Canvas cv(100, 60);
+    const float values[] = {1.0f, 2.0f};
+    canvas_sparkline(&cv.c, 0, 0, 100, 60, values, 1, CANVAS_GREEN);
+    canvas_sparkline(&cv.c, 0, 0, 100, 60, values, 0, CANVAS_GREEN);
+    canvas_sparkline(&cv.c, 0, 0, 3, 60, values, 2, CANVAS_GREEN);
+    canvas_sparkline(&cv.c, 0, 0, 100, 3, values, 2, CANVAS_GREEN);
+    EXPECT_EQ(cv.count(), 0);
+    canvas_sparkline(&cv.c, 0, 0, 100, 60, values, 2, CANVAS_GREEN);
+    EXPECT_GT(cv.count(), 10);
+}
+
+TEST(ScreenCanvas, SparklineOfEqualValuesIsAFlatLineInTheMiddle)
+{
+    Canvas cv(100, 60);
+    const float values[] = {5.0f, 5.0f, 5.0f, 5.0f};
+    canvas_sparkline(&cv.c, 0, 0, 100, 60, values, 4, CANVAS_BLACK);
+    int top = 60, bottom = 0;
+    for (int y = 0; y < 60; y++) {
+        for (int x = 0; x < 100; x++) {
+            if (cv.ink(x, y)) {
+                top = y < top ? y : top;
+                bottom = y > bottom ? y : bottom;
+            }
+        }
+    }
+    EXPECT_LT(top, 30);
+    EXPECT_GT(bottom, 28);
+    EXPECT_LT(bottom - top, 12);
+}

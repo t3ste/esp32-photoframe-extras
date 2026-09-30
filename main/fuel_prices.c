@@ -7,6 +7,7 @@
 #include <strings.h>
 
 #include "cJSON.h"
+#include "json_scan.h"
 
 const char *fuel_type_name(fuel_type_t type)
 {
@@ -110,38 +111,6 @@ static void append_text(char *out, size_t size, size_t *used, const char *text)
     out[*used] = '\0';
 }
 
-// The end of the JSON object that starts at `start` (a '{'): the address of its closing brace, or
-// NULL if the text ends first. Braces inside strings do not count.
-static const char *object_end(const char *start)
-{
-    int depth = 0;
-    bool in_string = false;
-    for (const char *p = start; *p; p++) {
-        if (in_string) {
-            if (*p == '\\' && p[1]) {
-                p++;
-            } else if (*p == '"') {
-                in_string = false;
-            }
-        } else if (*p == '"') {
-            in_string = true;
-        } else if (*p == '{') {
-            depth++;
-        } else if (*p == '}' && --depth == 0) {
-            return p;
-        }
-    }
-    return NULL;
-}
-
-static const char *skip_blanks(const char *p)
-{
-    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') {
-        p++;
-    }
-    return p;
-}
-
 // Adds one station (a parsed JSON object) to the result if it has a price.
 static void add_station(const cJSON *station, bool hide_closed, int max, fuel_result_t *out)
 {
@@ -214,7 +183,7 @@ void fuel_parse(const char *json, bool hide_closed, int max, fuel_result_t *out)
     if (max > FUEL_MAX_STATIONS) {
         max = FUEL_MAX_STATIONS;
     }
-    if (!json || skip_blanks(json)[0] != '{') {
+    if (!json || json_skip_blanks(json)[0] != '{') {
         out->status = FUEL_PARSE_BAD_JSON;
         return;
     }
@@ -226,12 +195,12 @@ void fuel_parse(const char *json, bool hide_closed, int max, fuel_result_t *out)
         parse_error_answer(json, out);
         return;
     }
-    const char *p = skip_blanks(key + strlen("\"stations\""));
+    const char *p = json_skip_blanks(key + strlen("\"stations\""));
     if (*p != ':') {
         out->status = FUEL_PARSE_BAD_JSON;
         return;
     }
-    p = skip_blanks(p + 1);
+    p = json_skip_blanks(p + 1);
     if (*p != '[') {
         out->status = FUEL_PARSE_BAD_JSON;
         return;
@@ -244,7 +213,7 @@ void fuel_parse(const char *json, bool hide_closed, int max, fuel_result_t *out)
         if (*p != '{') {
             break;  // the end of the list, or of the text
         }
-        const char *end = object_end(p);
+        const char *end = json_object_end(p);
         if (!end) {
             break;  // cut off inside a station
         }

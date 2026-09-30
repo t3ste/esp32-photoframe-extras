@@ -23,6 +23,9 @@ import {
   zoneForRule,
 } from "../utils/timezone";
 import { wideEdit } from "../utils/uiPrefs";
+// #if FEATURE_MARKET_QUOTES
+import { isMarketKey } from "../utils/marketKey";
+// #endif
 
 const settingsStore = useSettingsStore();
 const appStore = useAppStore();
@@ -864,6 +867,29 @@ async function removeFuelApiKey() {
     if (response.ok) {
       settingsStore.deviceSettings.fuelApiKeyConfigured = false;
       settingsStore.deviceSettings.fuelApiKey = "";
+    }
+  } catch {
+    /* the frame is not reachable: the key stays */
+  }
+}
+// #endif
+// #if FEATURE_MARKET_QUOTES
+// A key of Twelve Data or Alpha Vantage: letters and digits, 4 to 64 (what the frame accepts).
+const marketKeyRule = (value) =>
+  !value || isMarketKey(value) || "Letters and digits only, 4 to 64 characters";
+
+// Removes one of the two API keys from the frame (they are write-only, there is no way to read them).
+async function removeMarketKey(which) {
+  try {
+    const response = await fetch("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [`market_key_${which}_clear`]: true }),
+    });
+    if (response.ok) {
+      const name = which === "twelvedata" ? "Twelvedata" : "Alphavantage";
+      settingsStore.deviceSettings[`marketKey${name}Configured`] = false;
+      settingsStore.deviceSettings[`marketKey${name}`] = "";
     }
   } catch {
     /* the frame is not reachable: the key stays */
@@ -2852,6 +2878,99 @@ async function performFactoryReset() {
               density="compact"
               class="mb-2"
             />
+<!-- #endif -->
+<!-- #if FEATURE_MARKET_QUOTES -->
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.infoScreens"
+              value="markets"
+              label="Markets (stocks, ETFs, crypto)"
+              density="compact"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mt-2 mb-2">
+              Markets: up to four symbols with the last price, the change against the day before and
+              the last 30 days as a line. Write them the Yahoo way, separated by commas: shares
+              <code>AAPL</code>, listings with an exchange suffix <code>EUNL.DE</code>
+              <code>VOD.L</code>, indices <code>^GDAXI</code>, futures <code>GC=F</code>, crypto
+              <code>BTC-EUR</code>, currency pairs <code>EURUSD=X</code>. Empty means
+              AAPL, EUNL.DE, ^GDAXI, BTC-EUR. Needs the frame to be online when the page is drawn; a
+              price that cannot be fetched is shown from the last good answer, in blue.
+            </div>
+            <v-text-field
+              v-model="settingsStore.deviceSettings.marketSymbols"
+              label="Symbols"
+              placeholder="AAPL, EUNL.DE, ^GDAXI, BTC-EUR"
+              maxlength="159"
+              variant="outlined"
+              density="compact"
+              class="mb-2"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Sources, tried in this order for each symbol: Yahoo Finance (no key, but an unofficial
+              interface that may change or refuse), then Twelve Data (twelvedata.com, free key,
+              800 requests a day; US shares, ETFs, currency pairs, crypto), then Alpha Vantage
+              (alphavantage.co, free key, 25 requests a day; also .L .DE .TO listings). A key is
+              stored on the frame and never shown again; leave the box empty to keep the one that is
+              there.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.marketYahoo"
+              label="Use Yahoo Finance"
+              color="primary"
+              density="compact"
+              hide-details
+              class="mb-2"
+            />
+            <v-text-field
+              v-model="settingsStore.deviceSettings.marketKeyTwelvedata"
+              label="Twelve Data API key (optional)"
+              :placeholder="
+                settingsStore.deviceSettings.marketKeyTwelvedataConfigured
+                  ? 'A key is saved'
+                  : 'Paste the key'
+              "
+              :rules="[marketKeyRule]"
+              type="password"
+              autocomplete="off"
+              variant="outlined"
+              density="compact"
+              hide-details="auto"
+              class="mb-2"
+            >
+              <template
+                v-if="settingsStore.deviceSettings.marketKeyTwelvedataConfigured"
+                #append-inner
+              >
+                <v-btn size="x-small" variant="text" @click="removeMarketKey('twelvedata')">
+                  Remove
+                </v-btn>
+              </template>
+            </v-text-field>
+            <v-text-field
+              v-model="settingsStore.deviceSettings.marketKeyAlphavantage"
+              label="Alpha Vantage API key (optional)"
+              :placeholder="
+                settingsStore.deviceSettings.marketKeyAlphavantageConfigured
+                  ? 'A key is saved'
+                  : 'Paste the key'
+              "
+              :rules="[marketKeyRule]"
+              type="password"
+              autocomplete="off"
+              variant="outlined"
+              density="compact"
+              hide-details="auto"
+              class="mb-2"
+            >
+              <template
+                v-if="settingsStore.deviceSettings.marketKeyAlphavantageConfigured"
+                #append-inner
+              >
+                <v-btn size="x-small" variant="text" @click="removeMarketKey('alphavantage')">
+                  Remove
+                </v-btn>
+              </template>
+            </v-text-field>
 <!-- #endif -->
 <!-- #if FEATURE_FACT_OF_THE_DAY -->
             <v-checkbox

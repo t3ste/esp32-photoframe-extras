@@ -1,6 +1,5 @@
 #include "screen_finance.h"
 
-#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -54,36 +53,6 @@ static void date_text(const info_now_t *now, const char *iso_date, char *out, si
     snprintf(out, out_len, "%s %d%s %s", weekday, day, now->german ? "." : "", month_short);
 }
 
-static void sparkline(canvas_t *canvas, int x, int y, int w, int h, const fx_series_t *series,
-                      canvas_color_t end_color)
-{
-    if (series->count < 2 || w < 4 || h < 4) {
-        return;
-    }
-    int u = canvas_unit(canvas);
-    int radius = u / 8 < 1 ? 1 : u / 8;
-    float low = series->values[0], high = series->values[0];
-    for (int i = 1; i < series->count; i++) {
-        low = series->values[i] < low ? series->values[i] : low;
-        high = series->values[i] > high ? series->values[i] : high;
-    }
-    float span = high - low;
-    int inset = 2 * radius + 1;
-    float px = 0, py = 0;
-    for (int i = 0; i < series->count; i++) {
-        float fx = (float) i / (float) (series->count - 1);
-        float fy = span > 0.0f ? (series->values[i] - low) / span : 0.5f;
-        float cx = (float) (x + inset) + fx * (float) (w - 2 * inset);
-        float cy = (float) (y + h - inset) - fy * (float) (h - 2 * inset);
-        if (i > 0) {
-            canvas_line(canvas, px, py, cx, cy, radius, CANVAS_BLACK);
-        }
-        px = cx;
-        py = cy;
-    }
-    canvas_disc(canvas, (int) lroundf(px), (int) lroundf(py), radius * 2 + 1, end_color);
-}
-
 static void draw_row(canvas_t *canvas, int x, int y, int w, int h, const fx_series_t *series)
 {
     int u = canvas_unit(canvas);
@@ -119,7 +88,8 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, const fx_seri
 
         int spark_x = x + w - u - spark_w;
         int text_h = canvas_text_height(s);
-        sparkline(canvas, spark_x, y + pad, spark_w, h - 2 * pad - text_h - pad / 2, series, trend);
+        canvas_sparkline(canvas, spark_x, y + pad, spark_w, h - 2 * pad - text_h - pad / 2,
+                         series->values, series->count, trend);
         int text_y = y + h - pad - text_h;
         int text_w = canvas_text_width(percent, s);
         canvas_text_right(canvas, x + w - u, text_y, percent, s, trend);
@@ -138,7 +108,8 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, const fx_seri
         int bottom_y = y + top_h;
         int bottom_h = h - top_h - pad;
         int text_w = canvas_text_width(percent, s) + 3 * u;
-        sparkline(canvas, x + u, bottom_y, w - 2 * u - text_w, bottom_h, series, trend);
+        canvas_sparkline(canvas, x + u, bottom_y, w - 2 * u - text_w, bottom_h, series->values,
+                         series->count, trend);
         int text_h = canvas_text_height(s);
         int text_y = bottom_y + (bottom_h - text_h) / 2;
         canvas_text_right(canvas, x + w - u, text_y, percent, s, trend);

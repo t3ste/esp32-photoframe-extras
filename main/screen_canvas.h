@@ -80,6 +80,15 @@ void canvas_line(canvas_t *canvas, float x0, float y0, float x1, float y1, int r
 /** @brief A filled triangle, `size` wide and high, centred on (cx, cy), pointing up or down. */
 void canvas_arrow(canvas_t *canvas, int cx, int cy, int size, bool up, canvas_color_t color);
 
+/**
+ * @brief A line chart of `count` values, oldest first, in the box (x, y, w, h): a black stroke from
+ * the lowest to the highest value (the middle of the box if they are all equal) and a bigger disc
+ * in `end_color` at the newest point. Draws nothing for fewer than two values or a box under 4
+ * pixels.
+ */
+void canvas_sparkline(canvas_t *canvas, int x, int y, int w, int h, const float *values, int count,
+                      canvas_color_t end_color);
+
 /** @brief Width of a text at a scale: one 17-pixel cell per byte. */
 int canvas_text_width(const char *text, int scale);
 

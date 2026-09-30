@@ -183,6 +183,36 @@ void canvas_line(canvas_t *canvas, float x0, float y0, float x1, float y1, int r
     }
 }
 
+void canvas_sparkline(canvas_t *canvas, int x, int y, int w, int h, const float *values, int count,
+                      canvas_color_t end_color)
+{
+    if (count < 2 || w < 4 || h < 4) {
+        return;
+    }
+    int u = canvas_unit(canvas);
+    int radius = u / 8 < 1 ? 1 : u / 8;
+    float low = values[0], high = values[0];
+    for (int i = 1; i < count; i++) {
+        low = values[i] < low ? values[i] : low;
+        high = values[i] > high ? values[i] : high;
+    }
+    float span = high - low;
+    int inset = 2 * radius + 2;  // room for the end disc (radius 2r + 1) inside the box
+    float px = 0, py = 0;
+    for (int i = 0; i < count; i++) {
+        float fx = (float) i / (float) (count - 1);
+        float fy = span > 0.0f ? (values[i] - low) / span : 0.5f;
+        float cx = (float) (x + inset) + fx * (float) (w - 2 * inset);
+        float cy = (float) (y + h - inset) - fy * (float) (h - 2 * inset);
+        if (i > 0) {
+            canvas_line(canvas, px, py, cx, cy, radius, CANVAS_BLACK);
+        }
+        px = cx;
+        py = cy;
+    }
+    canvas_disc(canvas, (int) lroundf(px), (int) lroundf(py), radius * 2 + 1, end_color);
+}
+
 void canvas_arrow(canvas_t *canvas, int cx, int cy, int size, bool up, canvas_color_t color)
 {
     if (size < 3) {

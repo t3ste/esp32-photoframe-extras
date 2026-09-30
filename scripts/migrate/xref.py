@@ -49,12 +49,14 @@ MODULES = {
         "screen_digits",
         "info_screens_core",
         "info_screens",
+        "json_scan",
     ],
     "chore-wheel": ["screen_chore_wheel"],
     "weather-screen": ["screen_weather"],
     "fact-of-the-day": ["fact_pack", "fact_service", "screen_fact"],
     "finance-snapshot": ["fx_rates", "screen_finance"],
     "fuel-prices": ["fuel_prices", "screen_fuel"],
+    "market-quotes": ["market_quotes", "market_service", "screen_markets"],
     "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }
 ALWAYS_HELPERS = {

@@ -925,6 +925,18 @@ typedef enum {
 #define NVS_FUEL_COUNT_KEY "fuel_cnt"
 #define NVS_FUEL_HIDE_CLOSED_KEY "fuel_hide"
 #define FUEL_API_KEY_MAX_LEN 65
+// market-quotes feature: the symbols of the markets page as typed, whether Yahoo Finance may be
+// used (default on), the personal keys of Twelve Data and Alpha Vantage (write-only credentials),
+// and the requests made today per source ("day,yahoo,twelvedata,alphavantage"); the last good
+// answers are kept in a text file on the storage
+#define NVS_MARKET_SYMBOLS_KEY "mkt_symbols"
+#define NVS_MARKET_YAHOO_KEY "mkt_yahoo"
+#define NVS_MARKET_TD_KEY "mkt_key_td"
+#define NVS_MARKET_AV_KEY "mkt_key_av"
+#define NVS_MARKET_QUOTA_KEY "mkt_quota"
+#define MARKET_API_KEY_MAX_LEN 65
+#define MARKET_QUOTA_TEXT_MAX_LEN 48
+#define MARKET_CACHE_PATH FS_MOUNT_POINT "/.markets.txt"
 #define INFO_LIST_MAX_LEN 160
 #define INFO_SCREEN_OUTPUT_PATH FS_MOUNT_POINT "/.screen.png"
 // fact-of-the-day feature: the user's own facts, one per line (fact_pack.h)

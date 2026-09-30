@@ -35,6 +35,12 @@
 #include "http_fetch.h"
 #include "screen_finance.h"
 #endif
+#if FEATURE_MARKET_QUOTES
+#include <stdlib.h>
+
+#include "market_service.h"
+#include "screen_markets.h"
+#endif
 #if FEATURE_WEATHER_SCREEN
 #include <math.h>
 #include <stdio.h>
@@ -45,8 +51,8 @@
 
 static const char *TAG = "info_screens";
 
-static const char *const SCREEN_NAMES[INFO_SCREEN_COUNT] = {"agenda", "chore-wheel", "weather",
-                                                            "fact",   "finance",     "fuel"};
+static const char *const SCREEN_NAMES[INFO_SCREEN_COUNT] = {
+    "agenda", "chore-wheel", "weather", "fact", "finance", "fuel", "markets"};
 
 const char *info_screen_name(int id)
 {
@@ -80,6 +86,9 @@ uint32_t info_screens_compiled_mask(void)
 #endif
 #if FEATURE_FUEL_PRICES
     mask |= 1u << INFO_SCREEN_FUEL;
+#endif
+#if FEATURE_MARKET_QUOTES
+    mask |= 1u << INFO_SCREEN_MARKETS;
 #endif
     return mask;
 }
@@ -334,6 +343,20 @@ esp_err_t info_screens_show(int id, bool wifi_connected)
         }
         load_fuel(data, wifi_connected);
         fuel_screen_render(&canvas, &now, data);
+        free(data);
+        err = ESP_OK;
+        break;
+    }
+#endif
+#if FEATURE_MARKET_QUOTES
+    case INFO_SCREEN_MARKETS: {
+        markets_screen_data_t *data = calloc(1, sizeof(*data));  // 2.3 KB: not on the task's stack
+        if (!data) {
+            err = ESP_ERR_NO_MEM;
+            break;
+        }
+        market_service_load(data, wifi_connected);
+        markets_screen_render(&canvas, &now, data);
         free(data);
         err = ESP_OK;
         break;

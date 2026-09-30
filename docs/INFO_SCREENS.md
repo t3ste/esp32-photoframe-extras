@@ -20,7 +20,7 @@ with this option behaves as before until a page is added.
 - The schedule is active as soon as a page other than the Agenda is ticked, even if neither ToDo nor a calendar is switched on.
   An Agenda without ToDo and calendars has nothing to show and is skipped in the rotation.
 
-Over the API: `GET /api/config` reports `info_screens` (the ticked pages, by name: `agenda`, `chore-wheel`, `weather`, `fact`, `finance`, `fuel`) and
+Over the API: `GET /api/config` reports `info_screens` (the ticked pages, by name: `agenda`, `chore-wheel`, `weather`, `fact`, `finance`, `fuel`, `markets`) and
 `info_screens_available` (the pages this firmware contains); `PATCH /api/config` accepts `info_screens` as a list of names
 (unknown names are ignored).
 
@@ -34,6 +34,7 @@ Over the API: `GET /api/config` reports `info_screens` (the ticked pages, by nam
 | Fact of the day | `fact-of-the-day` | [FACT_OF_THE_DAY.md](FACT_OF_THE_DAY.md) |
 | Exchange rates | `finance-snapshot` | [FINANCE_SNAPSHOT.md](FINANCE_SNAPSHOT.md) |
 | Fuel prices | `fuel-prices` | [FUEL_PRICES.md](FUEL_PRICES.md) |
+| Markets (stocks, ETFs, crypto) | `market-quotes` | [MARKET_QUOTES.md](MARKET_QUOTES.md) |
 
 The drawing toolkit that the pages share also has big stroke digits (`main/screen_digits.c`) for numbers that should fill a
 quarter of the panel.
@@ -62,7 +63,7 @@ not renumber) and `info_screens.c`, its own build option that requires `info-scr
 `main/screen_chore_wheel.c` for a complete one.
 `main/screen_weather.c` shows the pattern for a page with data from the internet: the drawing takes a plain data struct with a status
 (ok / no network / no answer / ...), the fetch lives in `info_screens.c`, and both are tested on the PC (`host_tests/test_screens.cpp`,
-`test_finance.cpp`, `test_fuel.cpp`) with real recorded answers as fixtures.
+`test_finance.cpp`, `test_fuel.cpp`, `test_market.cpp`) with real recorded answers as fixtures.
 
 ## Limits
 
@@ -70,5 +71,6 @@ not renumber) and `info_screens.c`, its own build option that requires `info-scr
 - One turn of the schedule draws one page, and it stays until the next turn. Drawing takes the panel about 20 s plus the fetch of a page with data from the
   internet, and a colour panel should not be refreshed more often than its maker allows (Waveshare: not more often than every 3 minutes) - so the schedule
   wants an interval of 3 minutes or more; with `*/3 * *` and six pages each page is on the panel for 3 minutes out of 18.
-- Pages with data from the internet (weather, exchange rates, fuel prices) fetch it when they are drawn - one request each - and show a message that says why
-  when the frame has no network on that wake or the service does not answer; the next turn of the rotation tries again. Nothing is cached between turns.
+- Pages with data from the internet (weather, exchange rates, fuel prices, markets) fetch it when they are drawn - one request each (the markets page one per symbol) - and show a message that says why
+  when the frame has no network on that wake or the service does not answer; the next turn of the rotation tries again. Nothing is cached between turns, except that the markets page keeps its last good
+  answers on the storage and shows them (in blue) when it cannot fetch new ones.

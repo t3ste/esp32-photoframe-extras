@@ -45,6 +45,9 @@
 #if FEATURE_FUEL_PRICES
 #include "fuel_prices.h"
 #endif
+#if FEATURE_MARKET_QUOTES
+#include "market_quotes.h"
+#endif
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
@@ -2713,6 +2716,15 @@ static esp_err_t config_handler(httpd_req_t *req)
             cJSON_AddBoolToObject(root, "fuel_api_key_configured",
                                   config_manager_get_fuel_api_key()[0] != '\0');
 #endif
+#if FEATURE_MARKET_QUOTES
+            cJSON_AddStringToObject(root, "market_symbols", config_manager_get_market_symbols());
+            cJSON_AddBoolToObject(root, "market_yahoo", config_manager_get_market_yahoo());
+            // the keys are write-only: only whether there is one
+            cJSON_AddBoolToObject(root, "market_key_twelvedata_configured",
+                                  config_manager_get_market_key_twelvedata()[0] != '\0');
+            cJSON_AddBoolToObject(root, "market_key_alphavantage_configured",
+                                  config_manager_get_market_key_alphavantage()[0] != '\0');
+#endif
         }
 #endif
 #if FEATURE_UPLOAD_DEDUP
@@ -2927,6 +2939,12 @@ static esp_err_t config_urls_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "agenda_cal_e_url", config_manager_get_agenda_cal_e_url());
 #if FEATURE_FUEL_PRICES
     cJSON_AddStringToObject(root, "fuel_api_key", config_manager_get_fuel_api_key());
+#endif
+#if FEATURE_MARKET_QUOTES
+    cJSON_AddStringToObject(root, "market_key_twelvedata",
+                            config_manager_get_market_key_twelvedata());
+    cJSON_AddStringToObject(root, "market_key_alphavantage",
+                            config_manager_get_market_key_alphavantage());
 #endif
 
     char *json_str = cJSON_Print(root);

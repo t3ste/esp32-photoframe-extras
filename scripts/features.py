@@ -216,6 +216,14 @@ FEATURES = (
         "Fuel-price page: the cheapest petrol stations around a place (Germany, Tankerkoenig key)",
     ),
     Feature(
+        "market-quotes",
+        "FEATURE_MARKET_QUOTES",
+        (),
+        ("info-screens",),
+        "Markets page: stocks, ETFs, indices, crypto and currency pairs with a 30-day line (Yahoo, "
+        "Twelve Data, Alpha Vantage as fallbacks)",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),
