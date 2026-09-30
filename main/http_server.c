@@ -42,6 +42,9 @@
 #if FEATURE_FACT_OF_THE_DAY
 #include "fact_service.h"
 #endif
+#if FEATURE_FUEL_PRICES
+#include "fuel_prices.h"
+#endif
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
@@ -2700,6 +2703,16 @@ static esp_err_t config_handler(httpd_req_t *req)
 #if FEATURE_FINANCE_SNAPSHOT
             cJSON_AddStringToObject(root, "fx_currencies", config_manager_get_fx_currencies());
 #endif
+#if FEATURE_FUEL_PRICES
+            cJSON_AddStringToObject(root, "fuel_type",
+                                    fuel_type_name((fuel_type_t) config_manager_get_fuel_type()));
+            cJSON_AddNumberToObject(root, "fuel_radius_km", config_manager_get_fuel_radius_km());
+            cJSON_AddNumberToObject(root, "fuel_count", config_manager_get_fuel_count());
+            cJSON_AddBoolToObject(root, "fuel_hide_closed", config_manager_get_fuel_hide_closed());
+            // the key itself is write-only: only whether there is one
+            cJSON_AddBoolToObject(root, "fuel_api_key_configured",
+                                  config_manager_get_fuel_api_key()[0] != '\0');
+#endif
         }
 #endif
 #if FEATURE_UPLOAD_DEDUP
@@ -2912,6 +2925,9 @@ static esp_err_t config_urls_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "agenda_cal_c_url", config_manager_get_agenda_cal_c_url());
     cJSON_AddStringToObject(root, "agenda_cal_d_url", config_manager_get_agenda_cal_d_url());
     cJSON_AddStringToObject(root, "agenda_cal_e_url", config_manager_get_agenda_cal_e_url());
+#if FEATURE_FUEL_PRICES
+    cJSON_AddStringToObject(root, "fuel_api_key", config_manager_get_fuel_api_key());
+#endif
 
     char *json_str = cJSON_Print(root);
     httpd_resp_set_type(req, "application/json");

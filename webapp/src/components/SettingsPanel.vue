@@ -852,6 +852,24 @@ const agendaScheduleDisabled = computed(
     )
 );
 // #endif
+// #if FEATURE_FUEL_PRICES
+// Removes the API key of the fuel page from the frame (the key is write-only, there is no way to read it).
+async function removeFuelApiKey() {
+  try {
+    const response = await fetch("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fuel_api_key_clear: true }),
+    });
+    if (response.ok) {
+      settingsStore.deviceSettings.fuelApiKeyConfigured = false;
+      settingsStore.deviceSettings.fuelApiKey = "";
+    }
+  } catch {
+    /* the frame is not reachable: the key stays */
+  }
+}
+// #endif
 // #if FEATURE_FACT_OF_THE_DAY
 // The user's own facts (docs/FACT_OF_THE_DAY.md): one text file on the frame, not part of the settings.
 const factsText = ref("");
@@ -2730,6 +2748,86 @@ async function performFactoryReset() {
               place and the weather service of the Overlays tab, and needs the frame to be online
               when the page is drawn.
             </div>
+<!-- #endif -->
+<!-- #if FEATURE_FUEL_PRICES -->
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.infoScreens"
+              value="fuel"
+              label="Fuel prices"
+              density="compact"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mt-2 mb-2">
+              Fuel prices: the cheapest petrol stations around the weather place (Overlays tab) -
+              Germany only, from tankerkoenig.de. It needs your own free API key from
+              creativecommons.tankerkoenig.de. The key is stored on the frame and never shown again;
+              leave the box empty to keep the one that is there.
+            </div>
+            <v-text-field
+              v-model="settingsStore.deviceSettings.fuelApiKey"
+              label="Tankerkoenig API key"
+              :placeholder="
+                settingsStore.deviceSettings.fuelApiKeyConfigured ? 'A key is saved' : 'Paste the key'
+              "
+              type="password"
+              autocomplete="off"
+              variant="outlined"
+              density="compact"
+              hide-details="auto"
+              class="mb-2"
+            >
+              <template v-if="settingsStore.deviceSettings.fuelApiKeyConfigured" #append-inner>
+                <v-btn size="x-small" variant="text" @click="removeFuelApiKey"> Remove </v-btn>
+              </template>
+            </v-text-field>
+            <v-row dense>
+              <v-col cols="12" sm="4">
+                <v-select
+                  v-model="settingsStore.deviceSettings.fuelType"
+                  :items="[
+                    { title: 'Super E5', value: 'e5' },
+                    { title: 'Super E10', value: 'e10' },
+                    { title: 'Diesel', value: 'diesel' },
+                  ]"
+                  label="Fuel"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="6" sm="4">
+                <v-text-field
+                  v-model.number="settingsStore.deviceSettings.fuelRadiusKm"
+                  label="Radius (km, 1-25)"
+                  type="number"
+                  min="1"
+                  max="25"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="6" sm="4">
+                <v-text-field
+                  v-model.number="settingsStore.deviceSettings.fuelCount"
+                  label="Stations (1-5)"
+                  type="number"
+                  min="1"
+                  max="5"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+            </v-row>
+            <v-switch
+              v-model="settingsStore.deviceSettings.fuelHideClosed"
+              label="Leave out stations that are closed"
+              color="primary"
+              density="compact"
+              hide-details
+              class="mb-2"
+            />
 <!-- #endif -->
 <!-- #if FEATURE_FINANCE_SNAPSHOT -->
             <v-checkbox

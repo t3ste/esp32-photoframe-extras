@@ -490,6 +490,21 @@ void config_manager_set_chore_tasks(const char *text);
 const char *config_manager_get_fx_currencies(void);
 void config_manager_set_fx_currencies(const char *text);
 #endif
+#if FEATURE_FUEL_PRICES
+// The fuel page (fuel_prices.h): the personal API key is write-only (never returned by the API,
+// only by the export that includes credentials), fuel type 0 E5 / 1 E10 / 2 diesel, radius 1-25 km,
+// 1-5 stations, and whether stations that are closed right now are left out.
+const char *config_manager_get_fuel_api_key(void);
+void config_manager_set_fuel_api_key(const char *key);
+int config_manager_get_fuel_type(void);
+void config_manager_set_fuel_type(int type);
+int config_manager_get_fuel_radius_km(void);
+void config_manager_set_fuel_radius_km(int km);
+int config_manager_get_fuel_count(void);
+void config_manager_set_fuel_count(int count);
+bool config_manager_get_fuel_hide_closed(void);
+void config_manager_set_fuel_hide_closed(bool hide);
+#endif
 #endif
 
 #if FEATURE_UPLOAD_DEDUP

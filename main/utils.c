@@ -25,6 +25,9 @@
 #if FEATURE_INFO_SCREENS
 #include "info_screens.h"
 #endif
+#if FEATURE_FUEL_PRICES
+#include "fuel_prices.h"
+#endif
 #include "cron.h"
 #include "debug_log.h"
 #include "display_flow.h"
@@ -1166,6 +1169,35 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     item = cJSON_GetObjectItem(root, "fx_currencies");
     if (item && cJSON_IsString(item)) {
         config_manager_set_fx_currencies(cJSON_GetStringValue(item));
+    }
+#endif
+#if FEATURE_FUEL_PRICES
+    item = cJSON_GetObjectItem(root, "fuel_type");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_fuel_type(
+            (int) fuel_type_from_name(cJSON_GetStringValue(item), FUEL_E10));
+    }
+    item = cJSON_GetObjectItem(root, "fuel_radius_km");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_fuel_radius_km(item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "fuel_count");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_fuel_count(item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "fuel_hide_closed");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_fuel_hide_closed(cJSON_IsTrue(item));
+    }
+    // Write-only, like the calendar URLs: an empty string means "not touched", and a separate flag
+    // removes the key.
+    item = cJSON_GetObjectItem(root, "fuel_api_key");
+    if (item && cJSON_IsString(item) && strlen(cJSON_GetStringValue(item)) > 0) {
+        config_manager_set_fuel_api_key(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "fuel_api_key_clear");
+    if (item && cJSON_IsTrue(item)) {
+        config_manager_set_fuel_api_key("");
     }
 #endif
 #endif

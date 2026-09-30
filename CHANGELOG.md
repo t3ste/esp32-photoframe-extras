@@ -54,6 +54,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 - **`finance-snapshot` build option** (`--with finance-snapshot`, needs `info-screens`): a full-screen exchange-rate page with the reference rates of the European Central Bank - up to four currencies (Settings ->
   Agenda -> Information screens, `USD, GBP, CHF, JPY` by default), each with the price of one euro in big digits, the change against the working day before as a green or red arrow, and a line chart of the last
   30 working days. One small request to the ECB's data portal (free, no key); checked against real answers of it ([docs/FINANCE_SNAPSHOT.md](docs/FINANCE_SNAPSHOT.md)).
+- **`fuel-prices` build option** (`--with fuel-prices`, needs `info-screens` and `overlays`): a full-screen page with the cheapest petrol stations around the weather place - brand, street, distance and the price in big digits with the
+  third decimal small like on the pump, the cheapest marked green; fuel type, radius (1-25 km), number of stations and "hide closed" are settings. Germany only (Tankerkoenig, CC BY 4.0, attribution and time of the retrieval
+  on the page); the personal API key is write-only (never returned, only in the export that includes credentials, removable) and never logged. The answer is read one station at a time, so a big one or a cut-off one
+  does no harm; parsed against the service's real answers ([docs/FUEL_PRICES.md](docs/FUEL_PRICES.md)).
 - **`upload-dedup` build option** (`--with upload-dedup`): every album keeps a small index (`.dedup`) of the MD5 of its images, and an upload the
   album already has is refused (`409`, naming the file; the Web UI offers "Upload anyway") or stored with a warning - as a setting; compared by the file's
   bytes or by the decoded pixels (an EPDGZ inside its gzip wrapper, a PNG as RGB), so the same photo converted by two browsers still counts as one. The

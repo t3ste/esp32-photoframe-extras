@@ -917,6 +917,14 @@ typedef enum {
 #define NVS_CHORE_TASKS_KEY "chore_tasks"
 // finance-snapshot feature: the currencies of the exchange-rate page, as typed ("USD, GBP")
 #define NVS_FX_CODES_KEY "fx_codes"
+// fuel-prices feature: the personal API key (write-only, a credential), fuel type (0 E5, 1 E10,
+// 2 diesel), search radius in km, number of stations and whether closed ones are left out
+#define NVS_FUEL_API_KEY "fuel_key"
+#define NVS_FUEL_TYPE_KEY "fuel_type"
+#define NVS_FUEL_RADIUS_KEY "fuel_rad"
+#define NVS_FUEL_COUNT_KEY "fuel_cnt"
+#define NVS_FUEL_HIDE_CLOSED_KEY "fuel_hide"
+#define FUEL_API_KEY_MAX_LEN 65
 #define INFO_LIST_MAX_LEN 160
 #define INFO_SCREEN_OUTPUT_PATH FS_MOUNT_POINT "/.screen.png"
 // fact-of-the-day feature: the user's own facts, one per line (fact_pack.h)

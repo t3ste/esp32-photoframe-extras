@@ -316,6 +316,15 @@ export const useSettingsStore = defineStore("settings", () => {
 // #if FEATURE_FINANCE_SNAPSHOT
     fxCurrencies: "",
 // #endif
+// #if FEATURE_FUEL_PRICES
+    // the key is write-only: typed here, never loaded back
+    fuelApiKey: "",
+    fuelApiKeyConfigured: false,
+    fuelType: "e10",
+    fuelRadiusKm: 5,
+    fuelCount: 5,
+    fuelHideClosed: true,
+// #endif
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
     // Duplicate detection at upload (see docs/UPLOAD_DEDUP.md)
@@ -680,6 +689,13 @@ export const useSettingsStore = defineStore("settings", () => {
 // #if FEATURE_FINANCE_SNAPSHOT
       deviceSettings.value.fxCurrencies = data.fx_currencies || "";
 // #endif
+// #if FEATURE_FUEL_PRICES
+      deviceSettings.value.fuelApiKeyConfigured = data.fuel_api_key_configured === true;
+      deviceSettings.value.fuelType = data.fuel_type || "e10";
+      deviceSettings.value.fuelRadiusKm = data.fuel_radius_km ?? 5;
+      deviceSettings.value.fuelCount = data.fuel_count ?? 5;
+      deviceSettings.value.fuelHideClosed = data.fuel_hide_closed !== false;
+// #endif
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
       deviceSettings.value.dedupMode = data.dedup_mode ?? "skip";
@@ -935,6 +951,14 @@ export const useSettingsStore = defineStore("settings", () => {
 // #endif
 // #if FEATURE_FINANCE_SNAPSHOT
       fx_currencies: deviceSettings.value.fxCurrencies,
+// #endif
+// #if FEATURE_FUEL_PRICES
+      fuel_type: deviceSettings.value.fuelType,
+      fuel_radius_km: deviceSettings.value.fuelRadiusKm,
+      fuel_count: deviceSettings.value.fuelCount,
+      fuel_hide_closed: deviceSettings.value.fuelHideClosed,
+      // write-only: sent only when something was typed (an empty value means "not touched")
+      ...(deviceSettings.value.fuelApiKey ? { fuel_api_key: deviceSettings.value.fuelApiKey } : {}),
 // #endif
 // #endif
 // #if FEATURE_UPLOAD_DEDUP

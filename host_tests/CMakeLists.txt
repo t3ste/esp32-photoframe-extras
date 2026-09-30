@@ -52,6 +52,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_WEATHER_SCREEN
   CONFIG_FEATURE_FACT_OF_THE_DAY
   CONFIG_FEATURE_FINANCE_SNAPSHOT
+  CONFIG_FEATURE_FUEL_PRICES
   CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
@@ -367,6 +368,43 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
 )
 
+# Answer parser and page of the fuel-prices feature (Tankerkoenig answers as fixtures, the real cJSON)
+add_executable(
+  fuel_test
+  test_fuel.cpp
+  ../main/fuel_prices.c
+  ../main/screen_fuel.c
+  ../main/screen_digits.c
+  ../main/screen_canvas.c
+  ../main/glyph_extras.c
+  ../main/info_screens_core.c
+  ../managed_components/espressif__cjson/cJSON/cJSON.c
+  ../components/epaper_src/Fonts/font24.c
+)
+
+target_compile_definitions(
+  fuel_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  FUEL_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/tankerkoenig"
+)
+
+target_link_libraries(
+  fuel_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  fuel_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../managed_components/espressif__cjson/cJSON
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
 # The pure parts of the info screens: ISO weeks, names, rotation, list parsing
 add_executable(
   info_screens_core_test
@@ -399,6 +437,9 @@ set(INFO_SCREEN_SOURCES
   ../main/fact_pack.c
   ../main/screen_finance.c
   ../main/fx_rates.c
+  ../main/screen_fuel.c
+  ../main/fuel_prices.c
+  ../managed_components/espressif__cjson/cJSON/cJSON.c
   ../components/epaper_src/Fonts/font24.c
 )
 
@@ -419,6 +460,7 @@ foreach(screens_target screens_test render_screens)
   target_include_directories(
     ${screens_target}
     PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../managed_components/espressif__cjson/cJSON
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs
     ${CMAKE_CURRENT_SOURCE_DIR}/../main
@@ -680,6 +722,7 @@ gtest_discover_tests(screen_canvas_test)
 gtest_discover_tests(screen_digits_test)
 gtest_discover_tests(fact_pack_test)
 gtest_discover_tests(finance_test)
+gtest_discover_tests(fuel_test)
 gtest_discover_tests(info_screens_core_test)
 gtest_discover_tests(screens_test)
 gtest_discover_tests(network_backoff_test)

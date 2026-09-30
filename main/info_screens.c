@@ -20,6 +20,14 @@
 #include "fact_service.h"
 #include "screen_fact.h"
 #endif
+#if FEATURE_FUEL_PRICES
+#include <stdlib.h>
+
+#include "fuel_prices.h"
+#include "http_fetch.h"
+#include "screen_fuel.h"
+#include "weather.h"
+#endif
 #if FEATURE_FINANCE_SNAPSHOT
 #include <stdlib.h>
 
@@ -38,7 +46,7 @@
 static const char *TAG = "info_screens";
 
 static const char *const SCREEN_NAMES[INFO_SCREEN_COUNT] = {"agenda", "chore-wheel", "weather",
-                                                            "fact", "finance"};
+                                                            "fact",   "finance",     "fuel"};
 
 const char *info_screen_name(int id)
 {
@@ -69,6 +77,9 @@ uint32_t info_screens_compiled_mask(void)
 #endif
 #if FEATURE_FINANCE_SNAPSHOT
     mask |= 1u << INFO_SCREEN_FINANCE;
+#endif
+#if FEATURE_FUEL_PRICES
+    mask |= 1u << INFO_SCREEN_FUEL;
 #endif
     return mask;
 }
@@ -191,6 +202,66 @@ static void load_finance(finance_screen_data_t *out, const info_now_t *now, bool
 }
 #endif
 
+#if FEATURE_FUEL_PRICES
+// The prices for the fuel page - or the reason why there are none. The request holds the API key:
+// it is never logged.
+static void load_fuel(fuel_screen_data_t *out, bool wifi_connected)
+{
+    memset(out, 0, sizeof(*out));
+    out->type = (fuel_type_t) config_manager_get_fuel_type();
+    out->radius_km = config_manager_get_fuel_radius_km();
+    const char *key = config_manager_get_fuel_api_key();
+    if (key[0] == '\0') {
+        out->status = FUEL_SCREEN_NO_KEY;
+        return;
+    }
+    if (!wifi_connected) {
+        out->status = FUEL_SCREEN_NO_NETWORK;
+        return;
+    }
+    // the place is the weather's: coordinates, or a name that the weather module looks up once
+    const char *lat = config_manager_get_weather_lat();
+    const char *lon = config_manager_get_weather_lon();
+    if ((!lat[0] || !lon[0]) && config_manager_get_weather_location_name()[0] != '\0') {
+        weather_forecast_t forecast;
+        memset(&forecast, 0, sizeof(forecast));
+        weather_fetch_forecast(&forecast, 1);  // the lookup stores the coordinates
+        lat = config_manager_get_weather_lat();
+        lon = config_manager_get_weather_lon();
+    }
+    if (!lat[0] || !lon[0]) {
+        out->status = FUEL_SCREEN_NO_LOCATION;
+        return;
+    }
+    char url[320];
+    char *body = NULL;
+    if (!fuel_build_url(url, sizeof(url), lat, lon, out->radius_km, out->type, key) ||
+        http_fetch_get(url, 15000, 96 * 1024, &body, NULL, NULL, NULL) != ESP_OK || !body) {
+        out->status = FUEL_SCREEN_FETCH_FAILED;
+        free(body);
+        return;
+    }
+    fuel_parse(body, config_manager_get_fuel_hide_closed(), config_manager_get_fuel_count(),
+               &out->result);
+    free(body);
+    switch (out->result.status) {
+    case FUEL_PARSE_OK:
+        out->status = FUEL_SCREEN_OK;
+        break;
+    case FUEL_PARSE_API_ERROR:
+        out->status = FUEL_SCREEN_KEY_REFUSED;
+        break;
+    case FUEL_PARSE_EMPTY:
+        out->status = FUEL_SCREEN_NONE_FOUND;
+        break;
+    default:
+        out->status = FUEL_SCREEN_FETCH_FAILED;
+        break;
+    }
+    ESP_LOGI(TAG, "Fuel prices: %d station(s)", out->result.count);
+}
+#endif
+
 esp_err_t info_screens_show(int id, bool wifi_connected)
 {
     (void) wifi_connected;
@@ -249,6 +320,20 @@ esp_err_t info_screens_show(int id, bool wifi_connected)
         }
         load_finance(data, &now, wifi_connected);
         finance_screen_render(&canvas, &now, data);
+        free(data);
+        err = ESP_OK;
+        break;
+    }
+#endif
+#if FEATURE_FUEL_PRICES
+    case INFO_SCREEN_FUEL: {
+        fuel_screen_data_t *data = calloc(1, sizeof(*data));  // about 0.6 KB
+        if (!data) {
+            err = ESP_ERR_NO_MEM;
+            break;
+        }
+        load_fuel(data, wifi_connected);
+        fuel_screen_render(&canvas, &now, data);
         free(data);
         err = ESP_OK;
         break;

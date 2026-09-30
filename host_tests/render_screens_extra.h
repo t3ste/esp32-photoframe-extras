@@ -12,6 +12,7 @@ extern "C" {
 #include "screen_chore_wheel.h"
 #include "screen_fact.h"
 #include "screen_finance.h"
+#include "screen_fuel.h"
 #include "screen_weather.h"
 }
 
@@ -254,6 +255,61 @@ inline void draw_finance_offline(canvas_t *canvas)
     finance_screen_render(canvas, &now, &data);
 }
 
+// A fuel page with `count` made-up stations, the cheapest first.
+inline fuel_screen_data_t fuel_sample(int count, fuel_type_t type, int radius)
+{
+    static const char *const names[] = {"Aral", "Shell", "JET", "Esso", "Freie Tankstelle"};
+    static const char *const streets[] = {"Hauptstr.", "Ringstrasse", "Am Markt", "Bahnhofstr.",
+                                          "Industrieweg"};
+    fuel_screen_data_t data;
+    memset(&data, 0, sizeof(data));
+    data.status = FUEL_SCREEN_OK;
+    data.type = type;
+    data.radius_km = radius;
+    data.result.status = FUEL_PARSE_OK;
+    data.result.count = count;
+    for (int i = 0; i < count; i++) {
+        fuel_station_t &station = data.result.stations[i];
+        strcpy(station.name, names[i]);
+        snprintf(station.place, sizeof(station.place), "%s, Musterstadt", streets[i]);
+        station.dist_km = 0.8f + 1.3f * (float) i;
+        station.price = 1.719f + 0.020f * (float) i;
+    }
+    return data;
+}
+
+inline void draw_fuel_english(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    now.hour = 14;
+    now.minute = 35;
+    fuel_screen_data_t data = fuel_sample(5, FUEL_DIESEL, 5);
+    fuel_screen_render(canvas, &now, &data);
+}
+
+inline void draw_fuel_german(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, true, &now);
+    now.hour = 7;
+    now.minute = 5;
+    fuel_screen_data_t data = fuel_sample(3, FUEL_E10, 12);
+    strcpy(data.result.stations[0].name, "B\xC3\xA4ren-Tankstelle");
+    fuel_screen_render(canvas, &now, &data);
+}
+
+inline void draw_fuel_refused(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, true, &now);
+    fuel_screen_data_t data;
+    memset(&data, 0, sizeof(data));
+    data.status = FUEL_SCREEN_KEY_REFUSED;
+    strcpy(data.result.message, "apikey nicht angegeben, falsch, oder im falschen Format");
+    fuel_screen_render(canvas, &now, &data);
+}
+
 inline const std::vector<RenderCase> &render_cases()
 {
     static const std::vector<RenderCase> cases = {
@@ -275,6 +331,9 @@ inline const std::vector<RenderCase> &render_cases()
         {"finance-de", draw_finance_german},
         {"finance-single", draw_finance_single},
         {"finance-offline", draw_finance_offline},
+        {"fuel-en", draw_fuel_english},
+        {"fuel-de", draw_fuel_german},
+        {"fuel-refused", draw_fuel_refused},
     };
     return cases;
 }

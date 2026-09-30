@@ -54,6 +54,7 @@ MODULES = {
     "weather-screen": ["screen_weather"],
     "fact-of-the-day": ["fact_pack", "fact_service", "screen_fact"],
     "finance-snapshot": ["fx_rates", "screen_finance"],
+    "fuel-prices": ["fuel_prices", "screen_fuel"],
     "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }
 ALWAYS_HELPERS = {

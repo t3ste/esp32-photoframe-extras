@@ -209,6 +209,13 @@ FEATURES = (
         "Exchange-rate page: ECB reference rates of up to four currencies with a 30-day sparkline",
     ),
     Feature(
+        "fuel-prices",
+        "FEATURE_FUEL_PRICES",
+        (),
+        ("info-screens", "overlays"),
+        "Fuel-price page: the cheapest petrol stations around a place (Germany, Tankerkoenig key)",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),

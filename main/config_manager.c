@@ -208,6 +208,13 @@ static char chore_tasks[INFO_LIST_MAX_LEN] = {0};
 #if FEATURE_FINANCE_SNAPSHOT
 static char fx_currencies[INFO_LIST_MAX_LEN] = {0};
 #endif
+#if FEATURE_FUEL_PRICES
+static char fuel_api_key[FUEL_API_KEY_MAX_LEN] = {0};
+static uint8_t fuel_type = 1;  // E10
+static uint8_t fuel_radius_km = 5;
+static uint8_t fuel_count = 5;
+static bool fuel_hide_closed = true;
+#endif
 #endif
 #if FEATURE_UPLOAD_DEDUP
 static uint8_t dedup_mode = 1;  // skip
@@ -1311,6 +1318,25 @@ esp_err_t config_manager_init(void)
 #if FEATURE_FINANCE_SNAPSHOT
         size_t fx_currencies_len = sizeof(fx_currencies);
         nvs_get_str(nvs_handle, NVS_FX_CODES_KEY, fx_currencies, &fx_currencies_len);
+#endif
+#if FEATURE_FUEL_PRICES
+        size_t fuel_api_key_len = sizeof(fuel_api_key);
+        nvs_get_str(nvs_handle, NVS_FUEL_API_KEY, fuel_api_key, &fuel_api_key_len);
+        uint8_t stored_fuel = 0;
+        if (nvs_get_u8(nvs_handle, NVS_FUEL_TYPE_KEY, &stored_fuel) == ESP_OK && stored_fuel <= 2) {
+            fuel_type = stored_fuel;
+        }
+        if (nvs_get_u8(nvs_handle, NVS_FUEL_RADIUS_KEY, &stored_fuel) == ESP_OK &&
+            stored_fuel >= 1 && stored_fuel <= 25) {
+            fuel_radius_km = stored_fuel;
+        }
+        if (nvs_get_u8(nvs_handle, NVS_FUEL_COUNT_KEY, &stored_fuel) == ESP_OK &&
+            stored_fuel >= 1 && stored_fuel <= 5) {
+            fuel_count = stored_fuel;
+        }
+        if (nvs_get_u8(nvs_handle, NVS_FUEL_HIDE_CLOSED_KEY, &stored_fuel) == ESP_OK) {
+            fuel_hide_closed = (stored_fuel != 0);
+        }
 #endif
 #endif
 #if FEATURE_UPLOAD_DEDUP
@@ -3719,6 +3745,63 @@ void config_manager_set_fx_currencies(const char *text)
 {
     copy_info_list(fx_currencies, sizeof(fx_currencies), text);
     agenda_nvs_set_str_or_erase(NVS_FX_CODES_KEY, fx_currencies);
+}
+#endif
+
+#if FEATURE_FUEL_PRICES
+const char *config_manager_get_fuel_api_key(void)
+{
+    return fuel_api_key;
+}
+
+void config_manager_set_fuel_api_key(const char *key)
+{
+    copy_info_list(fuel_api_key, sizeof(fuel_api_key), key);
+    agenda_nvs_set_str_or_erase(NVS_FUEL_API_KEY, fuel_api_key);
+}
+
+int config_manager_get_fuel_type(void)
+{
+    return fuel_type;
+}
+
+void config_manager_set_fuel_type(int type)
+{
+    fuel_type = (type >= 0 && type <= 2) ? (uint8_t) type : 1;
+    agenda_nvs_set_u8(NVS_FUEL_TYPE_KEY, fuel_type);
+}
+
+int config_manager_get_fuel_radius_km(void)
+{
+    return fuel_radius_km;
+}
+
+void config_manager_set_fuel_radius_km(int km)
+{
+    fuel_radius_km = (uint8_t) (km < 1 ? 1 : (km > 25 ? 25 : km));
+    agenda_nvs_set_u8(NVS_FUEL_RADIUS_KEY, fuel_radius_km);
+}
+
+int config_manager_get_fuel_count(void)
+{
+    return fuel_count;
+}
+
+void config_manager_set_fuel_count(int count)
+{
+    fuel_count = (uint8_t) (count < 1 ? 1 : (count > 5 ? 5 : count));
+    agenda_nvs_set_u8(NVS_FUEL_COUNT_KEY, fuel_count);
+}
+
+bool config_manager_get_fuel_hide_closed(void)
+{
+    return fuel_hide_closed;
+}
+
+void config_manager_set_fuel_hide_closed(bool hide)
+{
+    fuel_hide_closed = hide;
+    agenda_nvs_set_u8(NVS_FUEL_HIDE_CLOSED_KEY, hide ? 1 : 0);
 }
 #endif
 #endif

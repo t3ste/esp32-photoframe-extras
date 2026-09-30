@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "license": "CC BY 4.0 -  https:\/\/creativecommons.tankerkoenig.de",
+  "data": "MTS-K",
+  "status": "ok",
+  "stations": [
+    {"id": "a1", "name": "Sonnen Tankstelle Bäckerstraße", "brand": "", "street": "Bäckerstraße", "place": "Musterstadt", "lat": 50.0, "lng": 8.0, "dist": 0.8, "price": 1.759, "isOpen": true, "houseNumber": "12", "postCode": 12345},
+    {"id": "a2", "name": "Nord Energie", "brand": "NORD", "street": "Hafenweg", "place": "Musterstadt", "lat": 50.0, "lng": 8.0, "dist": 1.2, "price": 1.719, "isOpen": true, "houseNumber": "1", "postCode": 12345},
+    {"id": "a3", "name": "Closed one", "brand": "CLOSED", "street": "Nachtgasse", "place": "Musterstadt", "lat": 50.0, "lng": 8.0, "dist": 2.0, "price": 1.699, "isOpen": false, "houseNumber": "3", "postCode": 12345},
+    {"id": "a4", "name": "No price", "brand": "NOPRICE", "street": "X", "place": "Y", "lat": 50.0, "lng": 8.0, "dist": 2.5, "price": null, "isOpen": true, "houseNumber": "", "postCode": 12345},
+    {"id": "a5", "name": "Zero", "brand": "ZERO", "street": "X", "place": "Y", "lat": 50.0, "lng": 8.0, "dist": 2.6, "price": 0, "isOpen": true, "houseNumber": "", "postCode": 12345},
+    {"id": "a6", "name": "Mid", "brand": "MID", "street": "Ring", "place": "Musterstadt", "lat": 50.0, "lng": 8.0, "dist": 3.1, "price": 1.789, "isOpen": true, "houseNumber": "5", "postCode": 12345},
+    {"id": "a7", "name": "Also cheap", "brand": "CHEAP", "street": "Allee", "place": "Musterstadt", "lat": 50.0, "lng": 8.0, "dist": 3.3, "price": 1.719, "isOpen": true, "houseNumber": "7", "postCode": 12345},
+    {"id": "a8", "name": "Expensive", "brand": "EXP", "street": "Markt", "place": "Musterstadt", "lat": 50.0, "lng": 8.0, "dist": 3.9, "price": 1.999, "isOpen": true, "houseNumber": "9", "postCode": 12345},
+    {"id": "a9", "name": "Very long name of a fuel company with very many words in it", "brand": "", "street": "Sehr-lange-Strassen-Bezeichnung-Weg", "place": "Ort mit einem ziemlich langen Namen", "lat": 50.0, "lng": 8.0, "dist": 4.4, "price": 1.849, "isOpen": true, "houseNumber": "11", "postCode": 12345}
+  ]
+}
