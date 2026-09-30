@@ -63,7 +63,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   and a line of the last 30 days. The prices come from a chain of three sources, tried in this order for each symbol: Yahoo Finance (no key, unofficial, can be switched off), Twelve Data
   (free key, 800 requests a day) and Alpha Vantage (free key, 25 requests a day); a source is left out when it has no key, does not serve that kind of symbol (symbols are translated to
   its notation) or its daily quota, which the frame counts, is used up. A source that refuses the key or is out of requests is not asked again in the same draw, and the answer of a source is
-  never re-requested (a new `http_fetch_get_once()` retries only when the server did not answer at all). The last good answers are kept on the storage, so a wake without network or a
+  never re-requested (a new `http_fetch_get_once()` retries only when the server did not answer at all; an HTTP error status - the 401 of a wrong key, which the ESP-IDF client reports as an error of the
+  request - counts as an answer). The last good answers are kept on the storage, so a wake without network or a
   failed fetch shows the last known prices in blue. The two keys are write-only (never returned, only in the export that includes credentials, removable, never logged). Parsed against
   real answers of all three services ([docs/MARKET_QUOTES.md](docs/MARKET_QUOTES.md)). Shared with the fuel page: the object-by-object JSON scan (`json_scan.c`), and with the
   exchange-rate page: the sparkline (`canvas_sparkline()`).

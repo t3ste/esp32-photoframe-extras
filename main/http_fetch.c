@@ -363,7 +363,11 @@ esp_err_t http_fetch_get_once(const char *url, int timeout_ms, size_t max_respon
         esp_err_t err = esp_http_client_perform(client);
         int status = esp_http_client_get_status_code(client);
         esp_http_client_cleanup(client);
-        if (err != ESP_OK) {
+        // A 401 without a WWW-Authenticate header (what a wrong API key gets) makes the client
+        // return ESP_ERR_NOT_SUPPORTED although the server answered: an HTTP error status is an
+        // answer, whatever the client says about the request (seen on a frame with a wrong key).
+        bool answered = err == ESP_OK || status >= 400;
+        if (!answered) {
             ESP_LOGE(TAG, "GET failed: %s", esp_err_to_name(err));
             free(ctx.buf);
             last_err = err;

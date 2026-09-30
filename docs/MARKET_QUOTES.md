@@ -50,7 +50,7 @@ own requests to the two quota-limited sources per day (UTC) and stops asking whe
 
 A source that refuses the key, says "too many requests" or does not answer is left out for the rest of that draw; a symbol it does not know is only
 skipped for that symbol. A wrong key never gets a second try in the same draw, and an answer is never asked for again (the shared HTTP helper retries
-three times - this feature uses its own, which asks again only when the server did not answer at all).
+three times - this feature uses its own, which asks again only when the server did not answer at all; an HTTP error status such as the 401 of a wrong key counts as an answer).
 
 ## What the page shows
 

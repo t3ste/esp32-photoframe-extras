@@ -90,7 +90,7 @@ static void draw_change(canvas_t *canvas, int right_x, int y, float change, canv
 // The width of the column that holds the symbol and the name of a row of `w` by `h` pixels.
 static int title_width(int w, int h)
 {
-    return w >= 4 * h ? w * 30 / 100 : w * 42 / 100;
+    return w >= 4 * h ? w * 34 / 100 : w * 42 / 100;
 }
 
 // The symbol (at `sym_scale`) with the name under it, in a column `col_w` wide; the name is left
