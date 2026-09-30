@@ -284,6 +284,12 @@ time of writing: 557/557.
 of quotes/backticks in shell-tool heredocs are unreliable (write patch scripts to a file and run them); `which`
 may dump a huge PATH; `H` is a PowerShell alias (do not name a function `H`); pipe `git archive | tar` in Bash,
 not PowerShell.
+A full firmware build recompiles every object whenever the commit hash changes (it is a `-D` define of the whole
+build), and the xtensa GCC 15.2 crashes now and then with `internal compiler error: Segmentation fault` in
+`esp_lcd_panel_rgb.c` (an IDF file, nothing of ours; it compiles on its own): run the build again. The feature matrix
+overwrites `main/webapp` with the bundle of its last set - regenerate it (`--step webapp --step splash`, outside the IDF
+shell) before a firmware-only build. A `-Werror=format-truncation` that the host compiler does not show turns up in the
+device build: give `snprintf` buffers for `%d` at least 12 bytes.
 
 ## 8. Continuous integration
 

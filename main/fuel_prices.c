@@ -191,6 +191,8 @@ static void add_station(const cJSON *station, bool hide_closed, int max, fuel_re
     }
 }
 
+#define FUEL_STATION_JSON_MAX 1536
+
 // A small answer without a station list: an error message ("ok": false) or nonsense.
 static void parse_error_answer(const char *json, fuel_result_t *out)
 {
@@ -246,12 +248,11 @@ void fuel_parse(const char *json, bool hide_closed, int max, fuel_result_t *out)
         if (!end) {
             break;  // cut off inside a station
         }
+        // one station at a time, parsed in place (a station is about 350 bytes; a huge one is
+        // skipped)
         size_t length = (size_t) (end - p) + 1;
-        if (length <= 1536) {
-            char station_text[1537];
-            memcpy(station_text, p, length);
-            station_text[length] = '\0';
-            cJSON *station = cJSON_Parse(station_text);
+        if (length <= FUEL_STATION_JSON_MAX) {
+            cJSON *station = cJSON_ParseWithLength(p, length);
             if (cJSON_IsObject(station)) {
                 add_station(station, hide_closed, max, out);
             }
