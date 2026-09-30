@@ -16,7 +16,7 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-# cJSON for the parsers that read JSON (the fuel-prices feature): the copy the firmware build fetched
+# cJSON for the parsers that read JSON (the fuel-prices and market-quotes features): the copy the firmware build fetched
 # (managed_components/ is not in the repository), else the same release from upstream.
 set(CJSON_LOCAL "${CMAKE_CURRENT_SOURCE_DIR}/../managed_components/espressif__cjson/cJSON")
 if(EXISTS "${CJSON_LOCAL}/cJSON.c")
@@ -466,6 +466,40 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
 )
 
+# The device side of the markets page (main/market_service.c) with the settings and the HTTP helper faked,
+# real answers as fixtures, and the cache as a real file in a temporary directory
+add_executable(
+  market_service_test
+  test_market_service.cpp
+  ../main/market_service.c
+  ../main/market_quotes.c
+  ../main/json_scan.c
+  ${CJSON_DIR}/cJSON.c
+)
+
+target_compile_definitions(
+  market_service_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  MARKET_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/market"
+  FS_MOUNT_POINT="/tmp/pf_market_service_test"
+)
+
+target_link_libraries(
+  market_service_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  market_service_test
+  PRIVATE
+  ${CJSON_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # The pure parts of the info screens: ISO weeks, names, rotation, list parsing
 add_executable(
   info_screens_core_test
@@ -788,6 +822,7 @@ gtest_discover_tests(fact_pack_test)
 gtest_discover_tests(finance_test)
 gtest_discover_tests(fuel_test)
 gtest_discover_tests(market_test)
+gtest_discover_tests(market_service_test)
 gtest_discover_tests(info_screens_core_test)
 gtest_discover_tests(screens_test)
 gtest_discover_tests(network_backoff_test)

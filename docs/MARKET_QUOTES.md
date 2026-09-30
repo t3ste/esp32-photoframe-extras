@@ -78,5 +78,5 @@ If there is nothing to show the page says why: no network on this wake (and noth
 ## For developers
 
 `main/market_quotes.c` (pure: symbol parsing, requests, the three parsers, quota, plan, cache; host tests in `host_tests/test_market.cpp` with real answers of all three
-sources in `host_tests/data/market/`), `main/market_service.c` (the requests and the cache file on the device), `main/screen_markets.c` (the page, pure drawing;
+sources in `host_tests/data/market/`), `main/market_service.c` (the requests and the cache file on the device; `host_tests/test_market_service.cpp` runs it on the PC with the settings and the HTTP helper faked: fallback order, blocked sources, quota, cache), `main/screen_markets.c` (the page, pure drawing;
 `host_tests/test_market_screen.cpp`), and the shared `json_scan.c` and `canvas_sparkline()`.
