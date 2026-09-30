@@ -142,6 +142,12 @@
 #define FEATURE_WEATHER_SCREEN 0
 #endif
 
+#ifdef CONFIG_FEATURE_FACT_OF_THE_DAY
+#define FEATURE_FACT_OF_THE_DAY 1
+#else
+#define FEATURE_FACT_OF_THE_DAY 0
+#endif
+
 #ifdef CONFIG_FEATURE_UPLOAD_DEDUP
 #define FEATURE_UPLOAD_DEDUP 1
 #else
@@ -215,7 +221,7 @@
      FEATURE_ERROR_BANNER || FEATURE_OTA_CHANNEL || FEATURE_WIFI_RESILIENCE || FEATURE_FACECROP || \
      FEATURE_WEBCAL || FEATURE_SOURCE_AUTH || FEATURE_CALDAV || FEATURE_CALDAV_TODO ||             \
      FEATURE_UPLOAD_DEDUP || FEATURE_GLYPHS || FEATURE_INFO_SCREENS || FEATURE_CHORE_WHEEL ||      \
-     FEATURE_WEATHER_SCREEN || FEATURE_MULTI_UPLOAD)
+     FEATURE_WEATHER_SCREEN || FEATURE_FACT_OF_THE_DAY || FEATURE_MULTI_UPLOAD)
 
 // Second line of defence behind build.py and Kconfig: the Kconfig capability
 // symbols mirror the board headers, and this makes a disagreement a build error.

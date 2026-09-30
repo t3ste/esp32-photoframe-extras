@@ -917,6 +917,8 @@ typedef enum {
 #define NVS_CHORE_TASKS_KEY "chore_tasks"
 #define INFO_LIST_MAX_LEN 160
 #define INFO_SCREEN_OUTPUT_PATH FS_MOUNT_POINT "/.screen.png"
+// fact-of-the-day feature: the user's own facts, one per line (fact_pack.h)
+#define FACT_PACK_PATH FS_MOUNT_POINT "/facts.txt"
 
 // User-authored Calendar-view color profiles (see agenda_color_profile.h),
 // imported via the Web UI as JSON exported by the companion browser tool

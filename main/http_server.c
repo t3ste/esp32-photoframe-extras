@@ -39,6 +39,9 @@
 #if FEATURE_INFO_SCREENS
 #include "info_screens.h"
 #endif
+#if FEATURE_FACT_OF_THE_DAY
+#include "fact_service.h"
+#endif
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
@@ -2917,6 +2920,77 @@ static esp_err_t config_urls_handler(httpd_req_t *req)
 }
 
 #endif
+#if FEATURE_FACT_OF_THE_DAY
+// The user's own facts (fact_service.h): the pack as plain text, read and replaced by the Web UI.
+static esp_err_t facts_get_handler(httpd_req_t *req)
+{
+    char *text = NULL;
+    size_t len = 0;
+    esp_err_t err = fact_service_load(&text, &len);
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    httpd_resp_send(req, err == ESP_OK ? text : "", err == ESP_OK ? (ssize_t) len : 0);
+    free(text);
+    return ESP_OK;
+}
+
+static esp_err_t facts_put_handler(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return ESP_FAIL;
+    }
+    if (!storage_has_persistent_storage()) {
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Storage not found");
+        return ESP_FAIL;
+    }
+    if (req->content_len > FACT_PACK_MAX_BYTES) {
+        httpd_resp_set_status(req, "413 Payload Too Large");
+        httpd_resp_sendstr(req, "The fact list is too long (16 KB at most)");
+        return ESP_FAIL;
+    }
+    size_t total = req->content_len;
+    char *body = malloc(total + 1);
+    fact_t *facts = heap_caps_malloc(sizeof(fact_t) * FACT_MAX, MALLOC_CAP_SPIRAM);
+    if (!body || !facts) {
+        free(body);
+        heap_caps_free(facts);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    size_t got = 0;
+    while (got < total) {
+        int n = httpd_req_recv(req, body + got, total - got);
+        if (n <= 0) {
+            free(body);
+            heap_caps_free(facts);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Could not read the request");
+            return ESP_FAIL;
+        }
+        got += (size_t) n;
+    }
+    body[got] = '\0';
+    int skipped = 0;
+    int count = fact_pack_parse(body, facts, FACT_MAX, &skipped);
+    heap_caps_free(facts);
+    if (got > 0 && count == 0) {
+        free(body);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No usable line (one fact per line)");
+        return ESP_FAIL;
+    }
+    esp_err_t err = fact_service_store(body, got);
+    free(body);
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Could not save the facts");
+        return ESP_FAIL;
+    }
+    char reply[64];
+    snprintf(reply, sizeof(reply), "{\"facts\":%d,\"skipped\":%d}", count, skipped);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, reply);
+    return ESP_OK;
+}
+#endif
 #if FEATURE_UPLOAD_DEDUP
 // Duplicate detection (dedup_service.h): the duplicates of an album, and the background indexing of
 // the images that were there before.
@@ -4545,6 +4619,10 @@ static void register_all_handlers(httpd_handle_t handle)
     register_uri(handle, "/api/dedup/duplicates", HTTP_GET, dedup_duplicates_handler);
     register_uri(handle, "/api/dedup/scan", HTTP_POST, dedup_scan_handler);
     register_uri(handle, "/api/dedup/status", HTTP_GET, dedup_status_handler);
+#endif
+#if FEATURE_FACT_OF_THE_DAY
+    register_uri(handle, "/api/facts", HTTP_GET, facts_get_handler);
+    register_uri(handle, "/api/facts", HTTP_PUT, facts_put_handler);
 #endif
 #if FEATURE_AGENDA
     register_uri(handle, "/api/agenda/extra-ics", HTTP_POST, agenda_extra_ics_upload_handler);

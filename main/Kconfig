@@ -251,6 +251,15 @@ menu "Photoframe optional features"
             provider of the overlays option. Needs the information screens
             option and the overlays option.
 
+    config FEATURE_FACT_OF_THE_DAY
+        bool "Fact-of-the-day screen"
+        default n
+        depends on FEATURE_INFO_SCREENS
+        help
+            A page with one fact a day: 24 built-in facts in English and
+            German, or your own list (a text file in the storage, edited in
+            the Web UI). Needs the information screens option.
+
     config FEATURE_UPLOAD_DEDUP
         bool "Duplicate detection at upload"
         default n

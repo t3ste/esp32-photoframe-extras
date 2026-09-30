@@ -852,6 +852,47 @@ const agendaScheduleDisabled = computed(
     )
 );
 // #endif
+// #if FEATURE_FACT_OF_THE_DAY
+// The user's own facts (docs/FACT_OF_THE_DAY.md): one text file on the frame, not part of the settings.
+const factsText = ref("");
+const factsBusy = ref(false);
+const factsMessage = ref("");
+
+async function loadFacts() {
+  try {
+    const response = await fetch("/api/facts");
+    if (response.ok) factsText.value = await response.text();
+  } catch {
+    /* the frame is not reachable: leave the box empty */
+  }
+}
+
+async function saveFacts() {
+  factsBusy.value = true;
+  factsMessage.value = "";
+  try {
+    const response = await fetch("/api/facts", {
+      method: "PUT",
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      body: factsText.value,
+    });
+    if (response.ok) {
+      const result = await response.json();
+      factsMessage.value = result.facts
+        ? `Saved ${result.facts} fact(s)` +
+          (result.skipped ? `, ${result.skipped} line(s) skipped` : "")
+        : "Removed - the built-in facts are used";
+    } else {
+      factsMessage.value = (await response.text()) || "Could not save the facts";
+    }
+  } catch {
+    factsMessage.value = "Could not reach the frame";
+  } finally {
+    factsBusy.value = false;
+  }
+}
+onMounted(loadFacts);
+// #endif
 // #if FEATURE_UPLOAD_DEDUP
 // Duplicate images: index the images that were there before, and list what an album has twice.
 const dedupAlbum = ref(""); // "" = every album (indexing); the report needs one
@@ -2688,6 +2729,39 @@ async function performFactoryReset() {
               Weather: today as a big icon and temperature, and the next four days. It uses the
               place and the weather service of the Overlays tab, and needs the frame to be online
               when the page is drawn.
+            </div>
+<!-- #endif -->
+<!-- #if FEATURE_FACT_OF_THE_DAY -->
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.infoScreens"
+              value="fact"
+              label="Fact of the day"
+              density="compact"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mt-2 mb-2">
+              Fact of the day: one fact a day from the frame's built-in list, or from your own list
+              below (one fact per line, as <code>Topic|Fact|Question</code> - topic and question
+              are optional). Your list is saved on its own with the button under the box, not with
+              Save Settings.
+            </div>
+            <v-textarea
+              v-model="factsText"
+              label="Your own facts (optional)"
+              placeholder="Space|A day on Venus is longer than its year.|Which way does Venus spin?"
+              rows="4"
+              auto-grow
+              counter
+              variant="outlined"
+              density="compact"
+              hide-details="auto"
+              class="mb-2"
+            />
+            <div class="d-flex align-center mb-2" style="gap: 12px">
+              <v-btn size="small" variant="tonal" :loading="factsBusy" @click="saveFacts">
+                Save facts
+              </v-btn>
+              <span class="text-caption text-medium-emphasis">{{ factsMessage }}</span>
             </div>
 <!-- #endif -->
 <!-- #else -->

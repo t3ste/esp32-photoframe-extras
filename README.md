@@ -62,6 +62,7 @@ needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
 | 🖼️ `info-screens` | Full-screen information pages that take turns with the Agenda on its schedule (the base for the pages below) | - | [docs](docs/INFO_SCREENS.md) |
 | 🧹 `chore-wheel` | Chore wheel page: who does which chore this week, a donut wheel and one card per chore, rotating by calendar week | - | [docs](docs/CHORE_WHEEL.md) |
 | ⛅ `weather-screen` | A full-screen weather page: today as a big icon and temperature, and the next four days | - | [docs](docs/WEATHER_SCREEN.md) |
+| 💡 `fact-of-the-day` | One fact a day on a full-screen page - built-in facts (English and German) or your own list, with an optional question to think about | - | [docs](docs/FACT_OF_THE_DAY.md) |
 | ♊ `upload-dedup` | The same image uploaded twice is refused (or flagged): a per-album MD5 index, optionally by the decoded pixels, background indexing of earlier images and a duplicate report | - | [docs](docs/UPLOAD_DEDUP.md) |
 | 📤 `multi-upload` | Upload a whole selection of photos in the Web UI, or pre-rendered EPDGZ/PNG files (e.g. from `process-cli`) as they are | - | [docs](docs/MULTI_UPLOAD.md) |
 | 🛠️ `fixes` | General bug fixes and robustness improvements over upstream | - | [docs](docs/FIXES.md) |

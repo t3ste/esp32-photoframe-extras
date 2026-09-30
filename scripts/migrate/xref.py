@@ -52,6 +52,7 @@ MODULES = {
     ],
     "chore-wheel": ["screen_chore_wheel"],
     "weather-screen": ["screen_weather"],
+    "fact-of-the-day": ["fact_pack", "fact_service", "screen_fact"],
     "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }
 ALWAYS_HELPERS = {

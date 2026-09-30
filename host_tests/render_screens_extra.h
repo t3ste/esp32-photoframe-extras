@@ -10,10 +10,12 @@ extern "C" {
 #include "info_screens_core.h"
 #include "screen_canvas.h"
 #include "screen_chore_wheel.h"
+#include "screen_fact.h"
 #include "screen_weather.h"
 }
 
 #include <cstring>
+#include <string>
 
 struct RenderCase {
     const char *name;
@@ -144,6 +146,49 @@ inline void draw_weather_no_place(canvas_t *canvas)
     weather_screen_render(canvas, &now, &data);
 }
 
+inline void draw_fact_english(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    fact_screen_render(canvas, &now, fact_builtin(2, false));
+}
+
+inline void draw_fact_german(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, true, &now);
+    fact_screen_render(canvas, &now, fact_builtin(14, true));
+}
+
+inline void draw_fact_plain(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 12, 24, false, &now);
+    fact_t fact;
+    memset(&fact, 0, sizeof(fact));
+    strcpy(fact.text, "A short fact.");
+    fact_screen_render(canvas, &now, &fact);
+}
+
+inline void draw_fact_long(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 3, 1, true, &now);
+    fact_t fact;
+    memset(&fact, 0, sizeof(fact));
+    strcpy(fact.title, "A rather long topic that does not fit its pill on a small panel");
+    std::string text, question;
+    while (text.size() < FACT_TEXT_MAX - 14) {
+        text += "Ein langes Wort. ";
+    }
+    while (question.size() < FACT_QUESTION_MAX - 12) {
+        question += "Frage dazu? ";
+    }
+    strncpy(fact.text, text.c_str(), FACT_TEXT_MAX - 1);
+    strncpy(fact.question, question.c_str(), FACT_QUESTION_MAX - 1);
+    fact_screen_render(canvas, &now, &fact);
+}
+
 inline const std::vector<RenderCase> &render_cases()
 {
     static const std::vector<RenderCase> cases = {
@@ -157,6 +202,10 @@ inline const std::vector<RenderCase> &render_cases()
         {"weather-short", draw_weather_short},
         {"weather-offline", draw_weather_offline},
         {"weather-no-place", draw_weather_no_place},
+        {"fact-en", draw_fact_english},
+        {"fact-de", draw_fact_german},
+        {"fact-plain", draw_fact_plain},
+        {"fact-long", draw_fact_long},
     };
     return cases;
 }

@@ -457,3 +457,171 @@ TEST(WeatherScreen, ExtremeValuesAndLongPlacesFitEveryPanel)
         }
     }
 }
+
+// ---- fact of the day --------------------------------------------------------------------------
+
+namespace
+{
+
+// The code points of a UTF-8 string.
+std::vector<unsigned> code_points(const std::string &utf8)
+{
+    std::vector<unsigned> out;
+    for (size_t i = 0; i < utf8.size();) {
+        unsigned char c = utf8[i];
+        int extra = c < 0x80 ? 0 : (c >> 5) == 6 ? 1 : (c >> 4) == 14 ? 2 : 3;
+        unsigned cp = extra == 0 ? c : c & (0x3F >> extra);
+        for (int k = 1; k <= extra && i + k < utf8.size(); k++) {
+            cp = cp << 6 | (utf8[i + k] & 0x3F);
+        }
+        out.push_back(cp);
+        i += 1 + extra;
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST(FactScreen, EveryBuiltInFactDrawsOnEveryPanelInBothLanguages)
+{
+    for (const auto &size : kBoardSizes) {
+        for (int i = 0; i < fact_builtin_count(); i++) {
+            for (bool german : {false, true}) {
+                GuardedCanvas cv(size[0], size[1]);
+                info_now_t now;
+                info_now_from_date(2026, 9, 30, german, &now);
+                fact_screen_render(&cv.canvas, &now, fact_builtin(i, german));
+                ASSERT_TRUE(cv.guards_intact()) << i << " " << german << " " << size[0];
+                EXPECT_GT(cv.painted(), (size_t) 2000) << i << " " << german;
+                if (size[0] * size[1] > 960 * 540 && i % 8 != 0) {
+                    continue;  // the palette check is slow on the big panels: a few facts there
+                }
+                for (uint32_t rgb : cv.colours()) {
+                    for (int shift : {16, 8, 0}) {
+                        uint32_t v = (rgb >> shift) & 0xFF;
+                        ASSERT_TRUE(v == 0 || v == 255) << std::hex << rgb;
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST(FactScreen, BuiltInFactsOnlyUseCharactersTheFrameCanDraw)
+{
+    // ä ö ü Ä Ö Ü ß ° € are the non-ASCII characters of the display font (glyphs option)
+    const std::set<unsigned> drawable = {0xE4, 0xF6, 0xFC, 0xC4, 0xD6, 0xDC, 0xDF, 0xB0, 0x20AC};
+    for (int i = 0; i < fact_builtin_count(); i++) {
+        for (bool german : {false, true}) {
+            const fact_t *f = fact_builtin(i, german);
+            for (const char *field : {f->title, f->text, f->question}) {
+                for (unsigned cp : code_points(field)) {
+                    EXPECT_TRUE(cp < 0x80 || drawable.count(cp))
+                        << "fact " << i << (german ? " de" : " en") << ": U+" << std::hex << cp;
+                    EXPECT_FALSE(cp < 0x20) << "control character in fact " << i;
+                }
+                // nothing is lost when the text is made display text
+                char shown[FACT_TEXT_MAX * 2];
+                canvas_text_from_utf8(field, shown, sizeof(shown));
+                EXPECT_EQ(strlen(shown), code_points(field).size())
+                    << "fact " << i << ": " << field;
+            }
+        }
+    }
+}
+
+TEST(FactScreen, TopicAndQuestionAreDrawnOnlyWhenTheFactHasThem)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    fact_t fact;
+    memset(&fact, 0, sizeof(fact));
+    strcpy(fact.text, "Just the fact.");
+    GuardedCanvas plain(800, 480);
+    fact_screen_render(&plain.canvas, &now, &fact);
+    EXPECT_FALSE(plain.colours().count(0x0000FF));  // no blue topic pill
+    EXPECT_FALSE(plain.colours().count(0xFFFF00));  // no yellow question box
+    EXPECT_TRUE(plain.colours().count(0xFF0000));   // the red header is always there
+
+    strcpy(fact.title, "Topic");
+    GuardedCanvas with_title(800, 480);
+    fact_screen_render(&with_title.canvas, &now, &fact);
+    EXPECT_TRUE(with_title.colours().count(0x0000FF));
+    EXPECT_FALSE(with_title.colours().count(0xFFFF00));
+
+    strcpy(fact.question, "And a question?");
+    GuardedCanvas with_question(800, 480);
+    fact_screen_render(&with_question.canvas, &now, &fact);
+    EXPECT_TRUE(with_question.colours().count(0xFFFF00));
+}
+
+TEST(FactScreen, TheHeaderFollowsLanguageAndDate)
+{
+    GuardedCanvas en(800, 480), de(800, 480), later(800, 480);
+    fact_t fact;
+    memset(&fact, 0, sizeof(fact));
+    strcpy(fact.text, "Same fact.");
+    info_now_t english, german, next_day;
+    info_now_from_date(2026, 9, 30, false, &english);
+    info_now_from_date(2026, 9, 30, true, &german);
+    info_now_from_date(2026, 10, 1, false, &next_day);
+    fact_screen_render(&en.canvas, &english, &fact);
+    fact_screen_render(&de.canvas, &german, &fact);
+    fact_screen_render(&later.canvas, &next_day, &fact);
+    EXPECT_NE(memcmp(en.canvas.rgb, de.canvas.rgb, (size_t) 800 * 480 * 3), 0);
+    EXPECT_NE(memcmp(en.canvas.rgb, later.canvas.rgb, (size_t) 800 * 480 * 3), 0);
+}
+
+TEST(FactScreen, ShortFactsAreDrawnBigLongOnesSmaller)
+{
+    auto ink_height = [](const std::string &text) {
+        GuardedCanvas cv(800, 480);
+        info_now_t now;
+        info_now_from_date(2026, 9, 30, false, &now);
+        fact_t fact;
+        memset(&fact, 0, sizeof(fact));
+        strncpy(fact.text, text.c_str(), sizeof(fact.text) - 1);
+        fact_screen_render(&cv.canvas, &now, &fact);
+        // the tallest run of black pixels in one column of the body (below the 48 px header)
+        int tallest = 0;
+        for (int x = 0; x < 800; x++) {
+            int run = 0;
+            for (int y = 60; y < 470; y++) {
+                const uint8_t *p = cv.canvas.rgb + ((size_t) y * 800 + x) * 3;
+                run = (p[0] == 0 && p[1] == 0 && p[2] == 0) ? run + 1 : 0;
+                tallest = std::max(tallest, run);
+            }
+        }
+        return tallest;
+    };
+    int short_height = ink_height("Tiny fact.");
+    int long_height = ink_height(std::string(200, 'x') + " and more words to make it long");
+    EXPECT_GT(short_height, long_height);
+    EXPECT_GE(short_height, 40);  // at least twice the body text (a letter stem is 24 px per step)
+}
+
+TEST(FactScreen, TheLongestPossibleFactStaysInsideItsMargins)
+{
+    for (const auto &size : kBoardSizes) {
+        GuardedCanvas cv(size[0], size[1]);
+        draw_fact_long(&cv.canvas);
+        EXPECT_TRUE(cv.guards_intact());
+        int u = canvas_unit(&cv.canvas);
+        int body_top = canvas_text_height(canvas_text_scale(&cv.canvas, 1)) + 2 * u;
+        for (int y = body_top; y < size[1]; y++) {
+            for (int x = size[0] - 2 * u; x < size[0]; x++) {
+                const uint8_t *p = cv.canvas.rgb + ((size_t) y * size[0] + x) * 3;
+                ASSERT_TRUE(p[0] == 255 && p[1] == 255 && p[2] == 255)
+                    << size[0] << "x" << size[1] << " at " << x << "," << y;
+            }
+        }
+        // and the bottom margin
+        for (int y = size[1] - 2 * u; y < size[1]; y++) {
+            for (int x = 0; x < size[0]; x++) {
+                const uint8_t *p = cv.canvas.rgb + ((size_t) y * size[0] + x) * 3;
+                ASSERT_TRUE(p[0] == 255 && p[1] == 255 && p[2] == 255)
+                    << size[0] << "x" << size[1] << " at " << x << "," << y;
+            }
+        }
+    }
+}

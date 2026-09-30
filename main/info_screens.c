@@ -16,6 +16,10 @@
 #if FEATURE_CHORE_WHEEL
 #include "screen_chore_wheel.h"
 #endif
+#if FEATURE_FACT_OF_THE_DAY
+#include "fact_service.h"
+#include "screen_fact.h"
+#endif
 #if FEATURE_WEATHER_SCREEN
 #include <math.h>
 #include <stdio.h>
@@ -26,7 +30,8 @@
 
 static const char *TAG = "info_screens";
 
-static const char *const SCREEN_NAMES[INFO_SCREEN_COUNT] = {"agenda", "chore-wheel", "weather"};
+static const char *const SCREEN_NAMES[INFO_SCREEN_COUNT] = {"agenda", "chore-wheel", "weather",
+                                                            "fact"};
 
 const char *info_screen_name(int id)
 {
@@ -51,6 +56,9 @@ uint32_t info_screens_compiled_mask(void)
 #endif
 #if FEATURE_WEATHER_SCREEN
     mask |= 1u << INFO_SCREEN_WEATHER;
+#endif
+#if FEATURE_FACT_OF_THE_DAY
+    mask |= 1u << INFO_SCREEN_FACT;
 #endif
     return mask;
 }
@@ -173,6 +181,15 @@ esp_err_t info_screens_show(int id, bool wifi_connected)
         weather_screen_data_t data;
         load_weather(&data, wifi_connected);
         weather_screen_render(&canvas, &now, &data);
+        err = ESP_OK;
+        break;
+    }
+#endif
+#if FEATURE_FACT_OF_THE_DAY
+    case INFO_SCREEN_FACT: {
+        fact_t fact;
+        fact_service_pick(now.german, fact_day_number(now.year, now.month, now.day), &fact, NULL);
+        fact_screen_render(&canvas, &now, &fact);
         err = ESP_OK;
         break;
     }

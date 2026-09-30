@@ -50,6 +50,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_INFO_SCREENS
   CONFIG_FEATURE_CHORE_WHEEL
   CONFIG_FEATURE_WEATHER_SCREEN
+  CONFIG_FEATURE_FACT_OF_THE_DAY
   CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
@@ -312,6 +313,24 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
 )
 
+# Facts of the fact-of-the-day page: pack format, pick of the day, built-in facts
+add_executable(
+  fact_pack_test
+  test_fact_pack.cpp
+  ../main/fact_pack.c
+)
+
+target_link_libraries(
+  fact_pack_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  fact_pack_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # The pure parts of the info screens: ISO weeks, names, rotation, list parsing
 add_executable(
   info_screens_core_test
@@ -340,6 +359,8 @@ set(INFO_SCREEN_SOURCES
   ../main/screen_chore_wheel.c
   ../main/screen_digits.c
   ../main/screen_weather.c
+  ../main/screen_fact.c
+  ../main/fact_pack.c
   ../components/epaper_src/Fonts/font24.c
 )
 
@@ -619,6 +640,7 @@ gtest_discover_tests(vtodo_test)
 gtest_discover_tests(glyph_extras_test)
 gtest_discover_tests(screen_canvas_test)
 gtest_discover_tests(screen_digits_test)
+gtest_discover_tests(fact_pack_test)
 gtest_discover_tests(info_screens_core_test)
 gtest_discover_tests(screens_test)
 gtest_discover_tests(network_backoff_test)

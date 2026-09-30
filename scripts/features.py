@@ -195,6 +195,13 @@ FEATURES = (
         "Weather page: today with a big icon and temperature, and the next four days",
     ),
     Feature(
+        "fact-of-the-day",
+        "FEATURE_FACT_OF_THE_DAY",
+        (),
+        ("info-screens",),
+        "Fact-of-the-day page: a built-in or your own fact, a new one every day",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),

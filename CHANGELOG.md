@@ -48,6 +48,9 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   from shapes: a yellow sun, outlined clouds, blue rain, a yellow bolt) with a very large temperature, the low under it, and the next four days as rows with weekday, icon, high and low. The numbers are
   drawn with thick round strokes at any size; the place, service and language are the ones of the Overlays tab; the condition texts are whole words in English and German for every WMO code
   ([docs/WEATHER_SCREEN.md](docs/WEATHER_SCREEN.md)).
+- **`fact-of-the-day` build option** (`--with fact-of-the-day`, needs `info-screens`): a full-screen page with one fact a day - a red header with the date, the topic as a blue pill, the fact in the biggest text that fits and, if it has one,
+  a yellow question box. 24 built-in facts (original wording, English and German with real umlauts), or your own list: a plain text file, one fact per line as `Topic|Fact|Question`, edited in the Web UI (Settings -> Agenda -> Information
+  screens) and kept on the frame's storage (`GET`/`PUT /api/facts`); the fact is picked by the day, so it stays the same all day ([docs/FACT_OF_THE_DAY.md](docs/FACT_OF_THE_DAY.md)).
 - **`upload-dedup` build option** (`--with upload-dedup`): every album keeps a small index (`.dedup`) of the MD5 of its images, and an upload the
   album already has is refused (`409`, naming the file; the Web UI offers "Upload anyway") or stored with a warning - as a setting; compared by the file's
   bytes or by the decoded pixels (an EPDGZ inside its gzip wrapper, a PNG as RGB), so the same photo converted by two browsers still counts as one. The
