@@ -53,7 +53,8 @@ static void date_text(const info_now_t *now, const char *iso_date, char *out, si
     snprintf(out, out_len, "%s %d%s %s", weekday, day, now->german ? "." : "", month_short);
 }
 
-static void draw_row(canvas_t *canvas, int x, int y, int w, int h, const fx_series_t *series)
+static void draw_row(canvas_t *canvas, int x, int y, int w, int h, bool german,
+                     const fx_series_t *series)
 {
     int u = canvas_unit(canvas);
     int s = canvas_text_scale(canvas, 1);
@@ -72,6 +73,9 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, const fx_seri
     char caption[CANVAS_WRAP_LINE_MAX];
     canvas_text_from_utf8("1 EUR =", caption, sizeof(caption));
     bool wide = w >= 4 * h;
+    char span[16];  // the time the line covers: "42 d"
+    info_format_span(info_days_between(series->dates[0], series->dates[series->count - 1]), german,
+                     span, sizeof(span));
 
     if (wide) {
         int code_h = canvas_text_height(code_scale) + canvas_text_height(s);
@@ -92,6 +96,7 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, const fx_seri
                          series->values, series->count, trend);
         int text_y = y + h - pad - text_h;
         int text_w = canvas_text_width(percent, s);
+        canvas_text(canvas, spark_x, text_y, span, s, CANVAS_BLACK);
         canvas_text_right(canvas, x + w - u, text_y, percent, s, trend);
         if (up || down) {
             canvas_arrow(canvas, x + w - u - text_w - u, text_y + text_h / 2, text_h * 6 / 10, up,
@@ -108,9 +113,10 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, const fx_seri
         int bottom_y = y + top_h;
         int bottom_h = h - top_h - pad;
         int text_w = canvas_text_width(percent, s) + 3 * u;
-        canvas_sparkline(canvas, x + u, bottom_y, w - 2 * u - text_w, bottom_h, series->values,
-                         series->count, trend);
         int text_h = canvas_text_height(s);
+        canvas_sparkline(canvas, x + u, bottom_y, w - 2 * u - text_w, bottom_h - text_h,
+                         series->values, series->count, trend);
+        canvas_text(canvas, x + u, bottom_y + bottom_h - text_h, span, s, CANVAS_BLACK);
         int text_y = bottom_y + (bottom_h - text_h) / 2;
         canvas_text_right(canvas, x + w - u, text_y, percent, s, trend);
         if (up || down) {
@@ -149,13 +155,23 @@ void finance_screen_render(canvas_t *canvas, const info_now_t *now,
     canvas_text(canvas, 2 * u, u, fitted, s, CANVAS_WHITE);
     canvas_text_right(canvas, canvas->width - 2 * u, u, date, s, CANVAS_WHITE);
 
-    // the footer
-    char footer[CANVAS_WRAP_LINE_MAX], footer_fitted[CANVAS_WRAP_LINE_MAX];
+    // the footer: the source and, under it, when the rates were fetched
+    char footer[CANVAS_WRAP_LINE_MAX], footer_fitted[CANVAS_WRAP_LINE_MAX], stamp[40];
+    bool has_stamp = info_format_stamp_now(now, stamp, sizeof(stamp));
     canvas_text_from_utf8(now->german ? "Quelle: EZB-Referenzkurse" : "Source: ECB reference rates",
                           footer, sizeof(footer));
+    if (canvas_text_width(footer, s) > canvas->width - 4 * u) {  // a narrow panel: no "Source:"
+        canvas_text_from_utf8(now->german ? "EZB-Referenzkurse" : "ECB reference rates", footer,
+                              sizeof(footer));
+    }
     canvas_text_fit(footer, canvas->width - 4 * u, s, footer_fitted, sizeof(footer_fitted));
-    int footer_y = canvas->height - u - line;
+    int footer_y = canvas->height - u - (has_stamp ? 2 : 1) * line;
     canvas_text_centered(canvas, canvas->width / 2, footer_y, footer_fitted, s, CANVAS_BLACK);
+    if (has_stamp) {
+        canvas_text_fit(stamp, canvas->width - 4 * u, s, footer_fitted, sizeof(footer_fitted));
+        canvas_text_centered(canvas, canvas->width / 2, footer_y + line, footer_fitted, s,
+                             CANVAS_BLACK);
+    }
 
     // the rows, centred in the room between the band and the footer
     int area_y = band_h + u;
@@ -166,7 +182,7 @@ void finance_screen_render(canvas_t *canvas, const info_now_t *now,
     int block_h = data->count * row_h + gap * (data->count - 1);
     int top = area_y + (area_h - block_h) / 2;
     for (int i = 0; i < data->count; i++) {
-        draw_row(canvas, 2 * u, top + i * (row_h + gap), canvas->width - 4 * u, row_h,
+        draw_row(canvas, 2 * u, top + i * (row_h + gap), canvas->width - 4 * u, row_h, now->german,
                  &data->series[i]);
     }
 }

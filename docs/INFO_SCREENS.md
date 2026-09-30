@@ -65,6 +65,14 @@ not renumber) and `info_screens.c`, its own build option that requires `info-scr
 (ok / no network / no answer / ...), the fetch lives in `info_screens.c`, and both are tested on the PC (`host_tests/test_screens.cpp`,
 `test_finance.cpp`, `test_fuel.cpp`, `test_market.cpp`) with real recorded answers as fixtures.
 
+## Notes on the pages
+
+Pages whose data come from the internet (weather, exchange rates, fuel prices, markets) end with a small note that says **when the data were fetched**:
+`Updated 30 Sep 14:35` (English) or `Stand 30.09. 14:35` (German), in the frame's local time. The markets page shows the time of its newest fetch, so a page
+drawn from the kept prices (blue) tells how old they are. A frame whose clock was never set draws no note: a wrong time is worse than none.
+The pages with a line chart (exchange rates, markets) write **how long the line runs** under it, in calendar days from its first to its last point:
+`41 d` (German `41 T`).
+
 ## Limits
 
 - The pages only redraw when the schedule fires; there is no live clock.

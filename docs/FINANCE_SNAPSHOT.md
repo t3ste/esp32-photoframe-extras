@@ -24,7 +24,7 @@ arrow down) and a line chart of the last 30 working days.
 | --- | --- |
 | Header | a blue band with the heading and the date of the newest rate |
 | Row | the currency code and `1 EUR =`, the rate in big digits (4, 3 or 2 decimals, by size), the change in percent against the working day before with a coloured arrow, a line chart of the last 30 working days ending in a coloured dot |
-| Footer | the source |
+| Footer | the source and, under it, when the rates were fetched (`Updated 30 Sep 14:35`); under each line chart how long it runs (`41 d`) |
 
 The ECB publishes once a working day in the afternoon (the rates are fixed at 14:15 Central European Time); on weekends and bank holidays the newest rate is that of the
 last working day. The colour shows the *direction of the rate*, not good or bad: a green arrow means the euro bought more of that currency

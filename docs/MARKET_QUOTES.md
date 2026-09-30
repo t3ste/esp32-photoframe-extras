@@ -59,7 +59,8 @@ three times - this feature uses its own, which asks again only when the server d
   currency, the change in percent with an arrow, and the line of up to 30 days (the newest point is a dot in the colour of the trend). All symbols use the same
   symbol size, the biggest at which the longest one fits.
 - A symbol nobody could serve gets a row with `n/a`.
-- A footer naming the sources the shown prices came from.
+- A footer naming the sources the shown prices came from and, under it, when they were fetched (`Updated 30 Sep 14:35`; for a page drawn from the kept prices the time of the newest fetch).
+- Under each line the time it covers in calendar days (`41 d`).
 - **Blue prices** are the last known ones: the fetch failed (or there was no network on this wake), so the price is taken from the last good answer that the frame kept
   on its storage (a text file, `.markets.txt`; answers older than 14 days are dropped). The footer then says `Blue = last known`.
 

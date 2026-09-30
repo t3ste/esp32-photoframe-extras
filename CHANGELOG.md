@@ -95,6 +95,11 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Changed
 
+- **The information pages with data from the internet say when the data were fetched, and the charts say how long they run.** Weather, exchange rates, fuel prices and markets end with a small
+  note, `Updated 30 Sep 14:35` (`Stand 30.09. 14:35`) - the local time of the fetch; the markets page shows the time of its newest fetch, so a page drawn from the kept prices says how old they are.
+  Without a clock that was ever set there is no note (a wrong time is worse than none). The fuel page's footer, which had the time only, has the same note now. The exchange-rate and markets
+  rows show the span of the line under it (`41 d`, `41 T`: calendar days from the first to the last point). New pure helpers in `info_screens_core`: `info_days_between()`, `info_format_stamp()`,
+  `info_format_span()`.
 - Upstream `495e0b6` is merged (two commits, both in `main/main.c`): waking a frame with its CLEAR button no longer
   re-runs `board_hal_init()`/`display_manager_init()` (the second `spi_bus_initialize()` aborted, so the frame
   panicked and rebooted instead of clearing the screen - every ESP32-S3 board was affected; the climate reading

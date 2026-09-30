@@ -503,19 +503,31 @@ void weather_screen_render(canvas_t *canvas, const info_now_t *now,
         return;
     }
     int u = canvas_unit(canvas);
+    int s = canvas_text_scale(canvas, 1);
+    int line = canvas_text_height(s);
     canvas_fill(canvas, CANVAS_WHITE);
     bool landscape = canvas->width >= canvas->height;
+
+    // the note at the foot of the page, when the forecast was fetched; the content ends above it
+    char stamp[40], fitted[CANVAS_WRAP_LINE_MAX];
+    bool has_stamp = info_format_stamp_now(now, stamp, sizeof(stamp));
+    int bottom = has_stamp ? 2 * u + line : 2 * u;  // the space under the content
+    if (has_stamp) {
+        canvas_text_fit(stamp, canvas->width - 4 * u, s, fitted, sizeof(fitted));
+        canvas_text_centered(canvas, canvas->width / 2, canvas->height - u - line, fitted, s,
+                             CANVAS_BLACK);
+    }
 
     int hero_x, hero_y, hero_w, hero_h, rows_x, rows_y, rows_w, rows_h;
     if (landscape) {
         hero_x = 2 * u;
         hero_y = 2 * u;
         hero_w = canvas->width * 42 / 100 - 2 * u;
-        hero_h = canvas->height - 4 * u;
+        hero_h = canvas->height - 2 * u - bottom;
         rows_x = hero_x + hero_w + 2 * u;
         rows_y = 2 * u;
         rows_w = canvas->width - rows_x - 2 * u;
-        rows_h = canvas->height - 4 * u;
+        rows_h = canvas->height - 2 * u - bottom;
     } else {
         hero_x = 2 * u;
         hero_y = 2 * u;
@@ -524,7 +536,7 @@ void weather_screen_render(canvas_t *canvas, const info_now_t *now,
         rows_x = 2 * u;
         rows_y = hero_y + hero_h + u;
         rows_w = canvas->width - 4 * u;
-        rows_h = canvas->height - rows_y - 2 * u;
+        rows_h = canvas->height - rows_y - bottom;
     }
     draw_hero(canvas, hero_x, hero_y, hero_w, hero_h, now, data);
 

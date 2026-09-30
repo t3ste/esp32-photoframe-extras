@@ -218,6 +218,25 @@ void market_service_load(markets_screen_data_t *out, bool wifi_connected)
         out->status = wifi_connected ? MARKETS_SCREEN_FETCH_FAILED : MARKETS_SCREEN_NO_NETWORK;
     }
 
+    // when the newest price was fetched, in local time, for the note at the foot of the page
+    // (nothing if the clock was never set: then no row has a time either)
+    long newest = 0;
+    for (int i = 0; i < symbol_count; i++) {
+        if (out->series[i].count > 0 && out->series[i].fetched > newest) {
+            newest = out->series[i].fetched;
+        }
+    }
+    if (newest > MARKET_CLOCK_VALID_AFTER) {
+        time_t moment = (time_t) newest;
+        struct tm local;
+        localtime_r(&moment, &local);
+        out->updated_year = local.tm_year + 1900;
+        out->updated_month = local.tm_mon + 1;
+        out->updated_day = local.tm_mday;
+        out->updated_hour = local.tm_hour;
+        out->updated_minute = local.tm_min;
+    }
+
     if (any_fresh) {  // remember what was good: the rows that have data, in the order shown
         market_series_t *keep =
             heap_caps_calloc(MARKET_MAX_SYMBOLS, sizeof(*keep), MALLOC_CAP_SPIRAM);

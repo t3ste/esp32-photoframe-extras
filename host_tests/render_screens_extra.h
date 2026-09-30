@@ -19,6 +19,7 @@ extern "C" {
 
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <string>
 
 struct RenderCase {
@@ -193,6 +194,18 @@ inline void draw_fact_long(canvas_t *canvas)
     fact_screen_render(canvas, &now, &fact);
 }
 
+// The ISO date `days_back` calendar days before 2026-09-30, for made-up series.
+inline void sample_date(int days_back, char *out, size_t out_len)
+{
+    struct tm tm = {};
+    tm.tm_year = 2026 - 1900;
+    tm.tm_mon = 8;
+    tm.tm_mday = 30 - days_back;
+    tm.tm_hour = 12;
+    mktime(&tm);
+    snprintf(out, out_len, "%04d-%02d-%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+}
+
 // A made-up series of `count` working days ending at `last`, moving by `drift` a day with a wobble.
 inline fx_series_t fx_sample(const char *code, float last, float drift, int count = FX_MAX_POINTS)
 {
@@ -202,7 +215,7 @@ inline fx_series_t fx_sample(const char *code, float last, float drift, int coun
     series.count = count;
     for (int i = 0; i < count; i++) {
         int back = count - 1 - i;
-        snprintf(series.dates[i], FX_DATE_LEN, "2026-09-%02d", 30 - back % 28);
+        sample_date(back * 10 / 7, series.dates[i], FX_DATE_LEN);  // working days -> calendar days
         series.values[i] = last - drift * (float) back + last * 0.004f * (float) ((i * 7) % 5 - 2);
     }
     return series;
@@ -325,7 +338,7 @@ inline market_series_t market_sample(const char *symbol, const char *name, const
     series.count = count;
     for (int i = 0; i < count; i++) {
         int back = count - 1 - i;
-        snprintf(series.dates[i], MARKET_DATE_LEN, "2026-09-%02d", 30 - back % 28);
+        sample_date(back * 10 / 7, series.dates[i], MARKET_DATE_LEN);
         series.values[i] = last - drift * (float) back + last * 0.004f * (float) ((i * 7) % 5 - 2);
     }
     return series;
@@ -346,11 +359,22 @@ inline markets_screen_data_t markets_sample(int count)
     return data;
 }
 
+// The note at the foot of a markets page: fetched on 2026-09-30 at 14:35.
+inline void markets_stamped(markets_screen_data_t *data)
+{
+    data->updated_year = 2026;
+    data->updated_month = 9;
+    data->updated_day = 30;
+    data->updated_hour = 14;
+    data->updated_minute = 35;
+}
+
 inline void draw_markets_english(canvas_t *canvas)
 {
     info_now_t now;
     info_now_from_date(2026, 9, 30, false, &now);
     markets_screen_data_t data = markets_sample(4);
+    markets_stamped(&data);
     markets_screen_render(canvas, &now, &data);
 }
 
@@ -360,6 +384,7 @@ inline void draw_markets_german(canvas_t *canvas)
     info_now_t now;
     info_now_from_date(2026, 3, 4, true, &now);
     markets_screen_data_t data = markets_sample(3);
+    markets_stamped(&data);
     data.series[1].stale = true;
     data.series[1].provider = MARKET_ALPHAVANTAGE;
     data.series[2].count = 0;

@@ -527,3 +527,55 @@ TEST_F(MarketService, IfTheCacheCannotBeWrittenThePricesAreStillShown)
     EXPECT_GT(data.series[0].count, 0);
     mkdir(FS_MOUNT_POINT, 0777);
 }
+
+TEST_F(MarketService, TheNoteAtTheFootIsTheTimeOfTheNewestFetch)
+{
+    yahoo_defaults();
+    time_t before = time(nullptr);
+    markets_screen_data_t data = load();
+    time_t after = time(nullptr);
+    struct tm local;
+    time_t moment = before;
+    localtime_r(&moment, &local);
+    // a fresh fetch: "now" in local time (the test may straddle a minute)
+    EXPECT_EQ(data.updated_year, local.tm_year + 1900);
+    EXPECT_EQ(data.updated_month, local.tm_mon + 1);
+    EXPECT_EQ(data.updated_day, local.tm_mday);
+    EXPECT_TRUE(data.updated_minute == local.tm_min || after > before);
+}
+
+TEST_F(MarketService, FromTheCacheTheNoteIsTheTimeOfThatFetch)
+{
+    // fetched on 2026-09-28 at 10:00 UTC, kept on the storage; no network now
+    struct tm utc = {};
+    utc.tm_year = 2026 - 1900;
+    utc.tm_mon = 8;
+    utc.tm_mday = 28;
+    utc.tm_hour = 10;
+    time_t fetched = timegm(&utc);
+    char text[256];
+    snprintf(text, sizeof(text),
+             "PF-MARKETS 1\nS|AAPL|Apple Inc.|USD|0|%ld|2\n2026-09-25 100\n2026-09-28 101\n",
+             (long) fetched);
+    write_cache(text);
+    g_symbols = "AAPL";
+    // too old for the 14-day limit when run much later than the date above: then there is no cache,
+    // so only check the moment when the cache was used
+    markets_screen_data_t data = load(false);
+    if (data.status == MARKETS_SCREEN_OK) {
+        struct tm local;
+        localtime_r(&fetched, &local);
+        EXPECT_EQ(data.updated_day, local.tm_mday);
+        EXPECT_EQ(data.updated_hour, local.tm_hour);
+        EXPECT_EQ(data.updated_minute, local.tm_min);
+    } else {
+        EXPECT_EQ(data.updated_year, 0);
+    }
+}
+
+TEST_F(MarketService, WithoutAnyDataThereIsNoNote)
+{
+    markets_screen_data_t data = load();  // nobody answers
+    EXPECT_EQ(data.updated_year, 0);
+    EXPECT_EQ(data.updated_hour, 0);
+}

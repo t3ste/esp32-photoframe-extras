@@ -44,6 +44,32 @@ const char *info_weekday_short(int wday, bool german);
 const char *info_month_name(int month, bool german);
 
 /**
+ * @brief Whole days from one ISO date ("YYYY-MM-DD"; only the first ten characters count) to
+ * another: the time span a line chart covers. -1 if a date cannot be read or the second one is
+ * earlier.
+ */
+int info_days_between(const char *from_iso, const char *to_iso);
+
+/**
+ * @brief The small note at the foot of a page with data from the internet, saying when the data
+ * were fetched: "Updated 30 Sep 14:35", in German "Stand 30.09. 14:35". Plain ASCII. Returns false
+ * (and an empty string) if the clock was never set (a year before 2024), as a wrong time is worse
+ * than none.
+ */
+bool info_format_stamp(bool german, int year, int month, int day, int hour, int minute, char *out,
+                       size_t out_len);
+
+/** @brief info_format_stamp() for the moment of `now` (what pages whose data were fetched just now
+ * use). */
+bool info_format_stamp_now(const info_now_t *now, char *out, size_t out_len);
+
+/**
+ * @brief The span of a line chart as a short note: "42 d", in German "42 T" (Tage). An empty string
+ * for fewer than one day.
+ */
+void info_format_span(int days, bool german, char *out, size_t out_len);
+
+/**
  * @brief The `counter`-th (counting from 0, wrapping) set bit of `mask`, looking at the lowest
  * `bit_count` bits: which screen is next when the screens of the rotation are shown one after the
  * other. -1 if no bit is set.

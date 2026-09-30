@@ -1,5 +1,6 @@
 #include "info_screens_core.h"
 
+#include <stdio.h>
 #include <string.h>
 
 static bool is_leap(int y)
@@ -16,6 +17,55 @@ static long days_from_civil(int y, int m, int d)
     unsigned doy = (unsigned) ((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);
     unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     return era * 146097 + (long) doe - 719468;
+}
+
+int info_days_between(const char *from_iso, const char *to_iso)
+{
+    int y1, m1, d1, y2, m2, d2;
+    if (!from_iso || !to_iso || sscanf(from_iso, "%4d-%2d-%2d", &y1, &m1, &d1) != 3 ||
+        sscanf(to_iso, "%4d-%2d-%2d", &y2, &m2, &d2) != 3 || m1 < 1 || m1 > 12 || m2 < 1 ||
+        m2 > 12 || d1 < 1 || d1 > 31 || d2 < 1 || d2 > 31) {
+        return -1;
+    }
+    long days = days_from_civil(y2, m2, d2) - days_from_civil(y1, m1, d1);
+    return (days < 0 || days > 100000) ? -1 : (int) days;
+}
+
+bool info_format_stamp(bool german, int year, int month, int day, int hour, int minute, char *out,
+                       size_t out_len)
+{
+    if (out_len == 0) {
+        return false;
+    }
+    out[0] = '\0';
+    if (year < 2024 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 ||
+        hour > 23 || minute < 0 || minute > 59) {
+        return false;
+    }
+    if (german) {
+        snprintf(out, out_len, "Stand %02d.%02d. %02d:%02d", day, month, hour, minute);
+    } else {
+        snprintf(out, out_len, "Updated %d %.3s %02d:%02d", day, info_month_name(month, false),
+                 hour, minute);
+    }
+    return true;
+}
+
+bool info_format_stamp_now(const info_now_t *now, char *out, size_t out_len)
+{
+    return info_format_stamp(now->german, now->year, now->month, now->day, now->hour, now->minute,
+                             out, out_len);
+}
+
+void info_format_span(int days, bool german, char *out, size_t out_len)
+{
+    if (out_len == 0) {
+        return;
+    }
+    out[0] = '\0';
+    if (days >= 1) {
+        snprintf(out, out_len, "%d %s", days > 9999 ? 9999 : days, german ? "T" : "d");
+    }
 }
 
 int info_weekday(int year, int month, int day)

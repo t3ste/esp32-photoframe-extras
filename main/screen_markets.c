@@ -136,7 +136,7 @@ static void draw_price(canvas_t *canvas, int x, int y, int h, int max_w, int max
     }
 }
 
-static void draw_row(canvas_t *canvas, int x, int y, int w, int h, int sym_scale,
+static void draw_row(canvas_t *canvas, int x, int y, int w, int h, int sym_scale, bool german,
                      const market_series_t *series)
 {
     int u = canvas_unit(canvas);
@@ -159,6 +159,9 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, int sym_scale
     float change = market_change_percent(series);
     bool up, down;
     canvas_color_t trend = trend_color(change, &up, &down);
+    char span[16];  // the time the line covers: "42 d"
+    info_format_span(info_days_between(series->dates[0], series->dates[series->count - 1]), german,
+                     span, sizeof(span));
     canvas_color_t price_color = series->stale ? CANVAS_BLUE : CANVAS_BLACK;
 
     if (wide) {
@@ -173,6 +176,7 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, int sym_scale
         int spark_x = x + w - u - spark_w;
         canvas_sparkline(canvas, spark_x, y + pad, spark_w, h - 2 * pad - text_h - pad / 2,
                          series->values, series->count, trend);
+        canvas_text(canvas, spark_x, y + h - pad - text_h, span, s, CANVAS_BLACK);
         draw_change(canvas, x + w - u, y + h - pad - text_h, change, trend, up, down);
     } else {
         int top_h = h * 52 / 100;
@@ -187,8 +191,9 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, int sym_scale
         char percent[16];
         snprintf(percent, sizeof(percent), "%+.2f%%", (double) change);
         int text_w = canvas_text_width(percent, s) + 3 * u;
-        canvas_sparkline(canvas, x + u, bottom_y, w - 2 * u - text_w, bottom_h, series->values,
-                         series->count, trend);
+        canvas_sparkline(canvas, x + u, bottom_y, w - 2 * u - text_w, bottom_h - text_h,
+                         series->values, series->count, trend);
+        canvas_text(canvas, x + u, bottom_y + bottom_h - text_h, span, s, CANVAS_BLACK);
         draw_change(canvas, x + w - u, bottom_y + (bottom_h - text_h) / 2, change, trend, up, down);
     }
 }
@@ -223,6 +228,12 @@ static int footer_lines(const info_now_t *now, const markets_screen_data_t *data
         canvas_text_from_utf8(now->german ? "Blau = zuletzt bekannt" : "Blue = last known", display,
                               sizeof(display));
         canvas_text_fit(display, max_width, scale, lines[count], CANVAS_WRAP_LINE_MAX);
+        count++;
+    }
+    char stamp[40];
+    if (info_format_stamp(now->german, data->updated_year, data->updated_month, data->updated_day,
+                          data->updated_hour, data->updated_minute, stamp, sizeof(stamp))) {
+        canvas_text_fit(stamp, max_width, scale, lines[count], CANVAS_WRAP_LINE_MAX);
         count++;
     }
     return count;
@@ -269,7 +280,7 @@ void markets_screen_render(canvas_t *canvas, const info_now_t *now,
     canvas_text_right(canvas, canvas->width - 2 * u, u, date, s, CANVAS_WHITE);
 
     // the footer
-    char footer[3][CANVAS_WRAP_LINE_MAX];
+    char footer[4][CANVAS_WRAP_LINE_MAX];
     int footer_n = footer_lines(now, data, rows, canvas->width - 4 * u, s, footer);
     int footer_y = canvas->height - u - footer_n * line;
     for (int i = 0; i < footer_n; i++) {
@@ -298,6 +309,7 @@ void markets_screen_render(canvas_t *canvas, const info_now_t *now,
     sym_scale = sym_scale < s ? s : sym_scale;
 
     for (int i = 0; i < rows; i++) {
-        draw_row(canvas, 2 * u, top + i * (row_h + gap), row_w, row_h, sym_scale, &data->series[i]);
+        draw_row(canvas, 2 * u, top + i * (row_h + gap), row_w, row_h, sym_scale, now->german,
+                 &data->series[i]);
     }
 }

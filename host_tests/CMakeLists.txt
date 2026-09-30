@@ -544,6 +544,7 @@ set(INFO_SCREEN_SOURCES
 add_executable(
   screens_test
   test_screens.cpp
+  test_info_notes.cpp
   ${INFO_SCREEN_SOURCES}
 )
 

@@ -27,6 +27,9 @@ typedef struct {
     markets_screen_status_t status;
     int count;  // rows, 0..MARKET_MAX_SYMBOLS; a series with count 0 is a symbol without data
     market_series_t series[MARKET_MAX_SYMBOLS];
+    // Local time of the newest fetch among the rows, for the note at the foot of the page ("Updated
+    // 30 Sep 14:35"); all zero (no clock, or nothing fetched) leaves the note out.
+    int updated_year, updated_month, updated_day, updated_hour, updated_minute;
 } markets_screen_data_t;
 
 /** @brief Draws the page (or a message when the data say there is nothing to show). */

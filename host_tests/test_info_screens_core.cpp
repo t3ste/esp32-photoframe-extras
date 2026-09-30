@@ -200,3 +200,99 @@ TEST(InfoCore, ListParsingLimits)
     EXPECT_EQ(info_parse_list(nullptr, buf, 8, 2), 0);
     EXPECT_EQ(info_parse_list("a", buf, 8, 0), 0);
 }
+
+TEST(InfoCore, DaysBetweenDates)
+{
+    EXPECT_EQ(info_days_between("2026-09-01", "2026-09-30"), 29);
+    EXPECT_EQ(info_days_between("2026-09-30", "2026-09-30"), 0);
+    EXPECT_EQ(info_days_between("2026-08-18", "2026-09-29"), 42);
+    EXPECT_EQ(info_days_between("2025-12-31", "2026-01-01"), 1);  // over a year end
+    EXPECT_EQ(info_days_between("2024-02-28", "2024-03-01"), 2);  // a leap year
+    EXPECT_EQ(info_days_between("2025-02-28", "2025-03-01"), 1);
+    EXPECT_EQ(info_days_between("2026-09-30", "2026-09-01"), -1);  // backwards
+    EXPECT_EQ(info_days_between("2026-09-01T10:00:00", "2026-09-05 12:00"),
+              4);  // only the date counts
+    EXPECT_EQ(info_days_between("", "2026-09-01"), -1);
+    EXPECT_EQ(info_days_between("junk", "2026-09-01"), -1);
+    EXPECT_EQ(info_days_between("2026-13-01", "2026-09-01"), -1);
+    EXPECT_EQ(info_days_between("2026-09-00", "2026-09-01"), -1);
+    EXPECT_EQ(info_days_between(nullptr, "2026-09-01"), -1);
+    EXPECT_EQ(info_days_between("2026-09-01", nullptr), -1);
+}
+
+TEST(InfoCore, StampInBothLanguages)
+{
+    char text[40];
+    ASSERT_TRUE(info_format_stamp(false, 2026, 9, 30, 14, 35, text, sizeof(text)));
+    EXPECT_STREQ(text, "Updated 30 Sep 14:35");
+    ASSERT_TRUE(info_format_stamp(true, 2026, 9, 30, 14, 35, text, sizeof(text)));
+    EXPECT_STREQ(text, "Stand 30.09. 14:35");
+    ASSERT_TRUE(info_format_stamp(false, 2026, 3, 4, 7, 5, text, sizeof(text)));
+    EXPECT_STREQ(text,
+                 "Updated 4 Mar 07:05");  // no leading zero on the day, two digits on the time
+    ASSERT_TRUE(info_format_stamp(true, 2026, 3, 4, 7, 5, text, sizeof(text)));
+    EXPECT_STREQ(text, "Stand 04.03. 07:05");
+    ASSERT_TRUE(info_format_stamp(true, 2027, 12, 31, 23, 59, text, sizeof(text)));
+    EXPECT_STREQ(text, "Stand 31.12. 23:59");
+    ASSERT_TRUE(info_format_stamp(false, 2026, 1, 1, 0, 0, text, sizeof(text)));
+    EXPECT_STREQ(text, "Updated 1 Jan 00:00");
+}
+
+TEST(InfoCore, NoStampWithoutAClockOrWithNonsense)
+{
+    char text[40] = "x";
+    EXPECT_FALSE(
+        info_format_stamp(false, 1970, 1, 1, 0, 0, text, sizeof(text)));  // clock never set
+    EXPECT_STREQ(text, "");
+    EXPECT_FALSE(info_format_stamp(false, 2023, 12, 31, 12, 0, text, sizeof(text)));
+    EXPECT_FALSE(info_format_stamp(false, 2026, 0, 1, 12, 0, text, sizeof(text)));
+    EXPECT_FALSE(info_format_stamp(false, 2026, 13, 1, 12, 0, text, sizeof(text)));
+    EXPECT_FALSE(info_format_stamp(false, 2026, 9, 32, 12, 0, text, sizeof(text)));
+    EXPECT_FALSE(info_format_stamp(false, 2026, 9, 30, 24, 0, text, sizeof(text)));
+    EXPECT_FALSE(info_format_stamp(false, 2026, 9, 30, 12, 60, text, sizeof(text)));
+    EXPECT_FALSE(info_format_stamp(false, 2026, 9, 30, -1, 0, text, sizeof(text)));
+    EXPECT_FALSE(info_format_stamp(false, 2026, 9, 30, 12, 0, text, 0));  // no room, no crash
+}
+
+TEST(InfoCore, StampIsCutNotOverflowed)
+{
+    char text[8];
+    info_format_stamp(false, 2026, 9, 30, 14, 35, text, sizeof(text));
+    EXPECT_EQ(strlen(text), 7u);
+    char guard[4 + 24];
+    memset(guard, 'G', sizeof(guard));
+    info_format_stamp(true, 2026, 9, 30, 14, 35, guard, 4);
+    EXPECT_EQ(guard[4], 'G');  // nothing written behind the size
+}
+
+TEST(InfoCore, StampOfNow)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    now.hour = 14;
+    now.minute = 35;
+    char text[40];
+    ASSERT_TRUE(info_format_stamp_now(&now, text, sizeof(text)));
+    EXPECT_STREQ(text, "Updated 30 Sep 14:35");
+    now.german = true;
+    ASSERT_TRUE(info_format_stamp_now(&now, text, sizeof(text)));
+    EXPECT_STREQ(text, "Stand 30.09. 14:35");
+}
+
+TEST(InfoCore, SpanNote)
+{
+    char text[16];
+    info_format_span(42, false, text, sizeof(text));
+    EXPECT_STREQ(text, "42 d");
+    info_format_span(42, true, text, sizeof(text));
+    EXPECT_STREQ(text, "42 T");
+    info_format_span(1, false, text, sizeof(text));
+    EXPECT_STREQ(text, "1 d");
+    info_format_span(0, false, text, sizeof(text));
+    EXPECT_STREQ(text, "");
+    info_format_span(-1, true, text, sizeof(text));
+    EXPECT_STREQ(text, "");
+    info_format_span(1000000, false, text, sizeof(text));
+    EXPECT_STREQ(text, "9999 d");
+    info_format_span(5, false, text, 0);  // no room, no crash
+}

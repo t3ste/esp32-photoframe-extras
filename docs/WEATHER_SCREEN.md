@@ -22,6 +22,7 @@ its turn comes in the rotation.
 | Header | the place, `TODAY` (`HEUTE`) in red when the forecast starts today, and the date |
 | Hero | a big icon, today's high in very large digits, today's low in blue under it, the condition in words |
 | Rows | up to four further days: weekday, a small icon, the high in black and the low in blue |
+| Footer | when the forecast was fetched (`Updated 30 Sep 14:35`) |
 
 The temperatures are rounded degrees Celsius. The icons are drawn from shapes at any size (a yellow sun, a white outlined cloud,
 blue rain, black snow flakes, a yellow lightning bolt); the numbers are drawn with thick round strokes, so they stay smooth at any size.
