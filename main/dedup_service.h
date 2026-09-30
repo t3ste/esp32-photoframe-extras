@@ -24,8 +24,11 @@ dedup_hash_t dedup_service_kind(void);
 /**
  * @brief Digest of an image file as the settings say. A file the pixel comparison cannot decode
  * (a `.bmp`, an interlaced PNG) is compared by its bytes instead.
+ *
+ * @param name The name the file has (or will have): an upload is still in a temporary file whose
+ * name says nothing about its type. NULL: the type of `path`.
  */
-esp_err_t dedup_service_hash(const char *path, dedup_digest_t *out);
+esp_err_t dedup_service_hash(const char *path, const char *name, dedup_digest_t *out);
 
 /** @brief The name of an image already in the album with this digest (not `ignore_name`), if any.
  */

@@ -135,9 +135,9 @@ done:
     return result;
 }
 
-esp_err_t dedup_payload_md5(const char *path, dedup_digest_t *out)
+esp_err_t dedup_payload_md5(const char *path, const char *name, dedup_digest_t *out)
 {
-    const char *ext = strrchr(path, '.');
+    const char *ext = strrchr(name ? name : path, '.');
     bool is_epdgz = ext && strcasecmp(ext, ".epdgz") == 0;
     bool is_png = ext && strcasecmp(ext, ".png") == 0;
     if (!is_epdgz && !is_png) {

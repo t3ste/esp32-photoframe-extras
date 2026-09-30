@@ -14,10 +14,13 @@
  *
  * The file is read in small pieces, nothing image-sized is held in memory.
  *
+ * @param name The file's real name, whose extension says how to read it - for a file that still
+ * has a temporary name (an upload in `temp_full.png` may be an EPDGZ). NULL: use `path`.
+ *
  * @return ESP_OK, ESP_ERR_NOT_FOUND for a missing file, ESP_ERR_NOT_SUPPORTED for a type this does
  * not decode (a `.bmp`, an interlaced PNG - the caller then compares the stored bytes instead),
  * ESP_FAIL for a file that is not what its name says (corrupt gzip or PNG).
  */
-esp_err_t dedup_payload_md5(const char *path, dedup_digest_t *out);
+esp_err_t dedup_payload_md5(const char *path, const char *name, dedup_digest_t *out);
 
 #endif

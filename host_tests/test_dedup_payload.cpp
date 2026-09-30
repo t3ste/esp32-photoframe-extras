@@ -92,7 +92,7 @@ class DedupPayload : public ::testing::Test
     std::string hash(const std::string &name, esp_err_t expect = ESP_OK)
     {
         dedup_digest_t d;
-        esp_err_t err = dedup_payload_md5(path(name).c_str(), &d);
+        esp_err_t err = dedup_payload_md5(path(name).c_str(), nullptr, &d);
         EXPECT_EQ(err, expect) << name;
         if (err != ESP_OK) {
             return "";
@@ -303,4 +303,24 @@ TEST_F(DedupPayload, OtherTypesAndMissingFiles)
     hash("x.jpg", ESP_ERR_NOT_SUPPORTED);
     hash("missing.png", ESP_ERR_NOT_FOUND);
     hash("missing.epdgz", ESP_ERR_NOT_FOUND);
+}
+
+TEST_F(DedupPayload, AnUploadInATemporaryFileIsReadByItsRealName)
+{
+    // the upload handler hashes "temp_full.png" before it knows where the file ends up; an
+    // EPDGZ (or a PNG) is then told by its final name
+    Bytes payload(30000);
+    for (size_t i = 0; i < payload.size(); i++) {
+        payload[i] = (uint8_t) ((i * 13) % 251);
+    }
+    write_gzip("real.epdgz", payload, 6);
+    ASSERT_EQ(rename(path("real.epdgz").c_str(), path("temp_full.png").c_str()), 0);
+    dedup_digest_t as_epdgz, as_png;
+    EXPECT_EQ(dedup_payload_md5(path("temp_full.png").c_str(), "photo.epdgz", &as_epdgz), ESP_OK);
+    EXPECT_EQ(dedup_payload_md5(path("temp_full.png").c_str(), nullptr, &as_png),
+              ESP_FAIL);  // a gzip is no PNG
+    write_gzip("again.epdgz", payload, 1);
+    dedup_digest_t direct;
+    ASSERT_EQ(dedup_payload_md5(path("again.epdgz").c_str(), nullptr, &direct), ESP_OK);
+    EXPECT_TRUE(dedup_digest_equal(&as_epdgz, &direct));
 }

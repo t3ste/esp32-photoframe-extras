@@ -68,10 +68,10 @@ dedup_hash_t dedup_service_kind(void)
     return config_manager_get_dedup_hash() == 1 ? DEDUP_HASH_PAYLOAD : DEDUP_HASH_STORED;
 }
 
-esp_err_t dedup_service_hash(const char *path, dedup_digest_t *out)
+esp_err_t dedup_service_hash(const char *path, const char *name, dedup_digest_t *out)
 {
     if (dedup_service_kind() == DEDUP_HASH_PAYLOAD) {
-        esp_err_t err = dedup_payload_md5(path, out);
+        esp_err_t err = dedup_payload_md5(path, name, out);
         if (err != ESP_ERR_NOT_SUPPORTED) {
             return err;
         }
@@ -172,12 +172,13 @@ static void index_album(const char *album_name)
             // replaced it - the entry the upload recorded is the right one, so this one is dropped
             struct stat before, after;
             dedup_digest_t digest;
-            bool ok = stat(path, &before) == 0 && dedup_service_hash(path, &digest) == ESP_OK &&
+            bool ok = stat(path, &before) == 0 &&
+                      dedup_service_hash(path, name, &digest) == ESP_OK &&
                       stat(path, &after) == 0 && before.st_mtime == after.st_mtime &&
                       before.st_size == after.st_size;
             if (ok) {
                 lock_index();
-                esp_err_t err = dedup_index_set(album_dir, kind, &digest, name);
+                esp_err_t err = dedup_index_add(album_dir, kind, &digest, name);
                 unlock_index();
                 ok = (err == ESP_OK);
             }

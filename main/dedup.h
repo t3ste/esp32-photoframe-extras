@@ -67,9 +67,16 @@ bool dedup_index_find(const char *album_dir, dedup_hash_t kind, const dedup_dige
 
 /**
  * @brief Records `name` with its digest, replacing every earlier entry of that file name (of any
- * kind - the file may have been replaced by other content).
+ * kind - the file was just stored or replaced, so what the other kind said is stale).
  */
 esp_err_t dedup_index_set(const char *album_dir, dedup_hash_t kind, const dedup_digest_t *d,
+                          const char *name);
+
+/**
+ * @brief Adds the entry of `kind` for a file that is already in the album, replacing only an
+ * earlier entry of that kind - the indexing of old images must keep what the other kind knows.
+ */
+esp_err_t dedup_index_add(const char *album_dir, dedup_hash_t kind, const dedup_digest_t *d,
                           const char *name);
 
 /** @brief Drops every entry of a file name (the file was deleted or replaced). */

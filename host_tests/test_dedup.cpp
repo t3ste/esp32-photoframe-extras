@@ -203,6 +203,29 @@ TEST_F(Dedup, ReplacingDropsTheOtherKindToo)
         dedup_index_has(dir.c_str(), DEDUP_HASH_PAYLOAD, "a.png"));  // stale after a replace
 }
 
+TEST_F(Dedup, AddingOneKindKeepsTheOther)
+{
+    // indexing the old images for the pixel comparison must not lose the file comparison
+    write("a.png", "x");
+    dedup_digest_t bytes_d = digest("900150983cd24fb0d6963f7d28e17f72");
+    dedup_digest_t pixels_d = digest("d41d8cd98f00b204e9800998ecf8427e");
+    ASSERT_EQ(dedup_index_set(dir.c_str(), DEDUP_HASH_STORED, &bytes_d, "a.png"), ESP_OK);
+    ASSERT_EQ(dedup_index_add(dir.c_str(), DEDUP_HASH_PAYLOAD, &pixels_d, "a.png"), ESP_OK);
+    EXPECT_TRUE(dedup_index_find(dir.c_str(), DEDUP_HASH_STORED, &bytes_d, nullptr, nullptr, 0));
+    EXPECT_TRUE(dedup_index_find(dir.c_str(), DEDUP_HASH_PAYLOAD, &pixels_d, nullptr, nullptr, 0));
+    // adding the same kind again replaces just that line
+    dedup_digest_t newer = digest("9e107d9d372bb6826bd81d3542a419d6");
+    ASSERT_EQ(dedup_index_add(dir.c_str(), DEDUP_HASH_PAYLOAD, &newer, "a.png"), ESP_OK);
+    EXPECT_FALSE(dedup_index_find(dir.c_str(), DEDUP_HASH_PAYLOAD, &pixels_d, nullptr, nullptr, 0));
+    EXPECT_TRUE(dedup_index_find(dir.c_str(), DEDUP_HASH_PAYLOAD, &newer, nullptr, nullptr, 0));
+    EXPECT_TRUE(dedup_index_find(dir.c_str(), DEDUP_HASH_STORED, &bytes_d, nullptr, nullptr, 0));
+    // while a replaced file (set) drops both
+    ASSERT_EQ(dedup_index_set(dir.c_str(), DEDUP_HASH_STORED, &pixels_d, "a.png"), ESP_OK);
+    EXPECT_TRUE(dedup_index_has(dir.c_str(), DEDUP_HASH_STORED, "a.png"));
+    EXPECT_FALSE(dedup_index_has(dir.c_str(), DEDUP_HASH_PAYLOAD, "a.png"));
+    EXPECT_EQ(slurp(DEDUP_INDEX_NAME), "s d41d8cd98f00b204e9800998ecf8427e a.png\n");
+}
+
 TEST_F(Dedup, RemoveKeepsTheOthers)
 {
     dedup_digest_t a = digest("900150983cd24fb0d6963f7d28e17f72");

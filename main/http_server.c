@@ -978,7 +978,8 @@ static esp_err_t upload_image_handler(httpd_req_t *req)
     bool is_duplicate = false;
     char duplicate_of[256] = "";
     if (dedup_service_mode() != DEDUP_MODE_OFF) {
-        have_digest = dedup_service_hash(result.image_path, &upload_digest) == ESP_OK;
+        have_digest =
+            dedup_service_hash(result.image_path, dest_filename, &upload_digest) == ESP_OK;
         if (have_digest) {
             is_duplicate = dedup_service_find(album_path, &upload_digest, dest_filename,
                                               duplicate_of, sizeof(duplicate_of));

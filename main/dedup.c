@@ -195,8 +195,16 @@ bool dedup_index_has(const char *album_dir, dedup_hash_t kind, const char *name)
     return has;
 }
 
-// True if the index has an entry of any kind for the file name.
-static bool name_in_index(const char *path, const char *name)
+// Which entries of a file name a rewrite drops: those of one kind, or of every kind.
+#define ANY_KIND (-1)
+
+static bool drops_entry(const index_entry_t *e, const char *name, int only_kind)
+{
+    return strcmp(e->name, name) == 0 && (only_kind == ANY_KIND || (int) e->kind == only_kind);
+}
+
+// True if the index has an entry that a rewrite for the file name would drop.
+static bool name_in_index(const char *path, const char *name, int only_kind)
 {
     FILE *fp = fopen(path, "r");
     if (!fp) {
@@ -206,20 +214,20 @@ static bool name_in_index(const char *path, const char *name)
     bool has = false;
     while (!has && next_line(fp, line, sizeof(line))) {
         index_entry_t e;
-        has = parse_line(line, &e) && strcmp(e.name, name) == 0;
+        has = parse_line(line, &e) && drops_entry(&e, name, only_kind);
     }
     fclose(fp);
     return has;
 }
 
-// Copies the index without the entries of `name` (only if it has any). The new file goes to
-// `.dedup.tmp` and replaces the index at the end.
-static esp_err_t rewrite_without(const char *album_dir, const char *name)
+// Copies the index without the entries of `name` (of `only_kind`, or of every kind), if it has
+// any. The new file goes to `.dedup.tmp` and replaces the index at the end.
+static esp_err_t rewrite_without(const char *album_dir, const char *name, int only_kind)
 {
     char path[DEDUP_PATH_MAX], tmp[DEDUP_PATH_MAX + 8];
     index_path(album_dir, path, sizeof(path));
     snprintf(tmp, sizeof(tmp), "%s.tmp", path);
-    if (!name_in_index(path, name)) {
+    if (!name_in_index(path, name, only_kind)) {
         return ESP_OK;  // nothing to drop
     }
     FILE *in = fopen(path, "r");
@@ -237,7 +245,7 @@ static esp_err_t rewrite_without(const char *album_dir, const char *name)
     while (next_line(in, line, sizeof(line))) {
         index_entry_t e;
         if (parse_line(line, &e)) {
-            if (strcmp(e.name, name) == 0) {
+            if (drops_entry(&e, name, only_kind)) {
                 continue;
             }
             char hex[DEDUP_HEX_LEN + 1];
@@ -258,16 +266,17 @@ static esp_err_t rewrite_without(const char *album_dir, const char *name)
 
 esp_err_t dedup_index_remove(const char *album_dir, const char *name)
 {
-    return rewrite_without(album_dir, name);
+    return rewrite_without(album_dir, name, ANY_KIND);
 }
 
-esp_err_t dedup_index_set(const char *album_dir, dedup_hash_t kind, const dedup_digest_t *d,
-                          const char *name)
+// Replaces the entries of `name` - of every kind, or only of `kind` - by one of `kind`.
+static esp_err_t index_write(const char *album_dir, dedup_hash_t kind, const dedup_digest_t *d,
+                             const char *name, bool replace_all_kinds)
 {
     if (!name || name[0] == '\0' || strpbrk(name, "\r\n") != NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t err = rewrite_without(album_dir, name);
+    esp_err_t err = rewrite_without(album_dir, name, replace_all_kinds ? ANY_KIND : (int) kind);
     if (err != ESP_OK) {
         return err;
     }
@@ -291,6 +300,18 @@ esp_err_t dedup_index_set(const char *album_dir, dedup_hash_t kind, const dedup_
     ok = ok && fprintf(fp, "%c %s %s\n", kind == DEDUP_HASH_STORED ? 's' : 'p', hex, name) > 0;
     ok = (fclose(fp) == 0) && ok;
     return ok ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t dedup_index_set(const char *album_dir, dedup_hash_t kind, const dedup_digest_t *d,
+                          const char *name)
+{
+    return index_write(album_dir, kind, d, name, true);
+}
+
+esp_err_t dedup_index_add(const char *album_dir, dedup_hash_t kind, const dedup_digest_t *d,
+                          const char *name)
+{
+    return index_write(album_dir, kind, d, name, false);
 }
 
 // ---- the duplicate report -------------------------------------------------------------------
