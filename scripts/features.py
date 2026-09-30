@@ -167,6 +167,13 @@ FEATURES = (
         "Duplicate detection at upload: MD5 index per album, skip or warn, report",
     ),
     Feature(
+        "glyphs",
+        "FEATURE_GLYPHS",
+        (),
+        (),
+        "Real glyphs for the umlauts, the sharp s, the degree and the euro sign in on-display text",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),

@@ -29,6 +29,9 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   expands repeating events itself, so monthly/yearly repeats and exceptions (which the on-device reader skips) show up, and a large calendar no
   longer runs into the 2 MB limit; a server that refuses the expand request is asked again without it
   ([docs/CALDAV.md](docs/CALDAV.md)).
+- **`glyphs` build option** (`--with glyphs`): ä ö ü Ä Ö Ü ß ° € are drawn as themselves in the text the frame draws (overlay captions and headlines, the Agenda's ToDo and
+  Calendar columns, Telegram captions) instead of being turned into ae/oe/ue/ss or dropped. The umlauts are the font's own letters with two dots, the sharp s, degree and euro signs are
+  drawn in the same 17x24 cell; the text sanitizer keeps them as single bytes 0x80-0x88, so wrapping and centring are unchanged ([docs/GLYPHS.md](docs/GLYPHS.md)).
 - **`caldav-todo` build option** (`--with caldav-todo`, needs `caldav`): a `caldavs://user:password@host/path` (or `caldav://`) address in the Agenda's ToDo
   field is read as a CalDAV task list - one `REPORT` for the open to-dos (a server that does not know that filter is asked for all and the finished ones
   are dropped on the frame). Priority 1-9 becomes the A-D chips, a due date the due colour (a UTC time as the frame's local date), finished and cancelled

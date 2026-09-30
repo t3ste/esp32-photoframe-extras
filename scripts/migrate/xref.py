@@ -43,6 +43,7 @@ MODULES = {
     "source-auth": ["source_auth"],
     "caldav": ["caldav", "caldav_fetch"],
     "caldav-todo": ["vtodo"],
+    "glyphs": ["glyph_extras"],
     "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }
 ALWAYS_HELPERS = {
@@ -63,6 +64,7 @@ SELECTS = {
         "climate",
         "error-banner",
         "facecrop",
+        "glyphs",
     ],
     "FORK_AUDIO_HAL": ["chimes", "alarmclock"],
 }

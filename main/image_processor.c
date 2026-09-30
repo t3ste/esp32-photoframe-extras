@@ -23,6 +23,9 @@
 #include "esp_task_wdt.h"
 #if FORK_IMAGE_PIPELINE
 #include "fonts.h"
+#if FEATURE_GLYPHS
+#include "glyph_extras.h"
+#endif
 #endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -3512,6 +3515,22 @@ esp_err_t image_processor_compose_pair_to_rgb(const uint8_t *data_a, size_t size
 // rows packed to ceil(Width/8) bytes) onto an RGB888 buffer.
 static void draw_glyph(uint8_t *rgb, int width, int height, int x, int y, char c, rgb_t color)
 {
+#if FEATURE_GLYPHS
+    // The umlauts, the sharp s, the degree and the euro sign (glyph_extras.h) are single bytes
+    // above the ASCII range; their bitmaps are composed from the font's own letters.
+    uint8_t extra_glyph[GLYPH_BYTES];
+    bool is_extra = glyph_extras_is_code((uint8_t) c) && Font24.Width == 17 &&
+                    Font24.Height == GLYPH_ROWS &&
+                    glyph_extras_compose((uint8_t) c, Font24.table, extra_glyph);
+    if (!is_extra && (c < ' ' || (unsigned char) c > 0x7E)) {
+        return;  // outside the printable ASCII range covered by Font24
+    }
+
+    uint32_t bytes_per_row = Font24.Width / 8 + (Font24.Width % 8 ? 1 : 0);
+    const uint8_t *ptr = is_extra
+                             ? extra_glyph
+                             : &Font24.table[(uint32_t) (c - ' ') * Font24.Height * bytes_per_row];
+#else
     if (c < ' ' || (unsigned char) c > 0x7E) {
         return;  // outside the printable ASCII range covered by Font24
     }
@@ -3519,6 +3538,7 @@ static void draw_glyph(uint8_t *rgb, int width, int height, int x, int y, char c
     uint32_t bytes_per_row = Font24.Width / 8 + (Font24.Width % 8 ? 1 : 0);
     uint32_t char_offset = (uint32_t) (c - ' ') * Font24.Height * bytes_per_row;
     const uint8_t *ptr = &Font24.table[char_offset];
+#endif
 
     for (int row = 0; row < Font24.Height; row++) {
         for (int col = 0; col < Font24.Width; col++) {
@@ -3791,6 +3811,17 @@ static void sanitize_caption_ascii(const char *utf8, char *out, size_t out_len)
             continue;
         }
 
+#if FEATURE_GLYPHS
+        // A glyph code from an earlier pass (text is sanitized where it is read and again where it
+        // is drawn): 0x80-0x88 are continuation bytes, never the start of UTF-8, so keeping them
+        // makes sanitizing idempotent.
+        if (glyph_extras_is_code(b0)) {
+            out[o++] = (char) b0;
+            p++;
+            continue;
+        }
+#endif
+
         uint32_t cp = 0;
         int extra;
         if ((b0 & 0xE0) == 0xC0) {
@@ -3821,6 +3852,18 @@ static void sanitize_caption_ascii(const char *utf8, char *out, size_t out_len)
             continue;
         }
         p += 1 + extra;
+
+#if FEATURE_GLYPHS
+        {
+            // The characters the font has real glyphs for (glyph_extras.h) are kept as their
+            // one-byte code instead of the digraph below.
+            uint8_t glyph_code = glyph_extras_code_for_codepoint(cp);
+            if (glyph_code != 0) {
+                out[o++] = (char) glyph_code;
+                continue;
+            }
+        }
+#endif
 
         const char *sub = NULL;
         switch (cp) {

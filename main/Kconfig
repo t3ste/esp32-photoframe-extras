@@ -232,6 +232,17 @@ menu "Photoframe optional features"
             there before can be indexed in the background, and a report lists
             the duplicates of an album. Needs storage (SD card or flash).
 
+    config FEATURE_GLYPHS
+        bool "Real glyphs for umlauts, sharp s, degree and euro"
+        default n
+        select FORK_IMAGE_PIPELINE
+        help
+            The 17x24 bitmap font of the display text has ASCII only, so
+            "Käse" is drawn "Kaese" and the degree and euro signs are lost.
+            With this option ä ö ü Ä Ö Ü ß ° € are drawn as themselves, in
+            overlay captions, headlines, the Agenda and Telegram captions. It
+            only changes text that is drawn by another feature.
+
     config FEATURE_MULTI_UPLOAD
         bool "Upload several images at once"
         default n

@@ -46,6 +46,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_SOURCE_AUTH
   CONFIG_FEATURE_CALDAV
   CONFIG_FEATURE_CALDAV_TODO
+  CONFIG_FEATURE_GLYPHS
   CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
@@ -222,6 +223,28 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/stubs
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# Extra glyphs (umlauts, sharp s, degree, euro) in the bitmap font (glyphs feature); the real Font24
+# table of the e-paper driver is linked so the umlauts are checked against the font itself
+add_executable(
+  glyph_extras_test
+  test_glyph_extras.cpp
+  ../main/glyph_extras.c
+  ../components/epaper_src/Fonts/font24.c
+)
+
+target_link_libraries(
+  glyph_extras_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  glyph_extras_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
 )
 
 # Microphone level maths (RMS/peak in dBFS, text bar) behind the console level test
@@ -470,6 +493,7 @@ gtest_discover_tests(source_auth_test)
 gtest_discover_tests(caldav_test)
 gtest_discover_tests(dedup_test)
 gtest_discover_tests(vtodo_test)
+gtest_discover_tests(glyph_extras_test)
 gtest_discover_tests(network_backoff_test)
 gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)
@@ -555,6 +579,7 @@ foreach(test_name image_pipeline display_flow)
   set(fork_sources
     test_${test_name}.cpp
     ../main/image_processor.c
+    ../main/glyph_extras.c
     stubs/esp_stubs.c
     stubs/fake_display_manager.c
     stubs/fake_config_manager.c
@@ -595,3 +620,42 @@ foreach(test_name image_pipeline display_flow)
 
   gtest_discover_tests(${fork_target} TEST_SUFFIX " (fork)")
 endforeach()
+
+# The umlaut/degree/euro glyphs through the real sanitizer and text drawing of image_processor.c
+# (glyphs feature)
+add_executable(
+  glyph_text_test
+  test_glyph_text.cpp
+  ../main/image_processor.c
+  ../main/glyph_extras.c
+  stubs/esp_stubs.c
+  stubs/fake_display_manager.c
+  stubs/fake_config_manager.c
+  stubs/fake_processing_settings.c
+  stubs/fork_stubs.c
+  ../components/epaper_src/Fonts/font24.c
+)
+
+target_compile_definitions(
+  glyph_text_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_include_directories(
+  glyph_text_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
+target_link_libraries(
+  glyph_text_test
+  GTest::gtest_main
+  PNG::PNG
+  m
+)
+
+gtest_discover_tests(glyph_text_test)

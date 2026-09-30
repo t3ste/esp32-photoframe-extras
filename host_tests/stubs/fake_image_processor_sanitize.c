@@ -4,7 +4,9 @@
 // linking the real image_processor.c) since that would drag in libpng, the
 // JPEG decoder, and board_hal for no benefit to this test - see
 // image_pipeline_test/display_flow_test for tests that DO need the real
-// pipeline. MUST be kept behaviorally identical to the real function.
+// pipeline. MUST be kept behaviorally identical to the real function - with the `glyphs` option
+// OFF: the parser tests that use this copy expect the transliteration (ae, oe, ue, ss). The
+// option's own sanitizer is tested against the real function in test_glyph_text.cpp.
 #include <stddef.h>
 #include <stdint.h>
 
