@@ -171,9 +171,11 @@ static void add_station(const cJSON *station, bool hide_closed, int max, fuel_re
     entry.dist_km = cJSON_IsNumber(dist) ? (float) dist->valuedouble : 0.0f;
     entry.price = (float) price->valuedouble;
 
-    // insert in price order, keep the cheapest `max`
+    // insert in price order (the nearer one first at the same price), keep the cheapest `max`
     int pos = out->count;
-    while (pos > 0 && out->stations[pos - 1].price > entry.price) {
+    while (pos > 0 && (out->stations[pos - 1].price > entry.price ||
+                       (out->stations[pos - 1].price == entry.price &&
+                        out->stations[pos - 1].dist_km > entry.dist_km))) {
         pos--;
     }
     if (pos >= max) {

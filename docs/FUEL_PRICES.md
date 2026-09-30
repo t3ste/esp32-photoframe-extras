@@ -25,7 +25,7 @@ longitude); nothing is entered twice. The frame must be online when the page is 
 ## What the page shows
 
 - A yellow header with the fuel type and the radius.
-- One row per station, the cheapest first (green bar and a green number for the cheapest): brand (or name), street and town, the distance in
+- One row per station, the cheapest first - at the same price the nearer one (green bar and a green number for the cheapest): brand (or name), street and town, the distance in
   kilometres, and the price in euros per litre.
 - The attribution the licence asks for - `tankerkoenig.de, CC BY 4.0` - and the time the prices were fetched, at the bottom.
 

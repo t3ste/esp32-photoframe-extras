@@ -40,21 +40,28 @@ static void message(canvas_t *canvas, const info_now_t *now, const fuel_screen_d
     }
     int u = canvas_unit(canvas);
     int s = canvas_text_scale(canvas, 1);
-    char lines[2][CANVAS_WRAP_LINE_MAX];
-    for (int i = 0; i < 2; i++) {
-        char raw[CANVAS_WRAP_LINE_MAX];
-        const char *text = now->german ? de[index][i] : en[index][i];
-        if (i == 1 && text[0] == '\0' && index == FUEL_SCREEN_KEY_REFUSED) {
-            text = data->result.message;  // what the service says, in its own words
-        }
-        canvas_text_from_utf8(text, raw, sizeof(raw));
-        canvas_text_fit(raw, canvas->width - 4 * u, s, lines[i], sizeof(lines[i]));
+    char title[CANVAS_WRAP_LINE_MAX], raw[CANVAS_WRAP_LINE_MAX];
+    canvas_text_from_utf8(now->german ? de[index][0] : en[index][0], raw, sizeof(raw));
+    canvas_text_fit(raw, canvas->width - 4 * u, s, title, sizeof(title));
+    // the second part may be long (the service's own words): wrapped to at most three lines
+    const char *detail = now->german ? de[index][1] : en[index][1];
+    if (detail[0] == '\0' && index == FUEL_SCREEN_KEY_REFUSED) {
+        detail = data->result.message;
     }
+    char detail_text[CANVAS_WRAP_LINE_MAX], lines[3][CANVAS_WRAP_LINE_MAX];
+    canvas_text_from_utf8(detail, detail_text, sizeof(detail_text));
+    int line_count =
+        detail_text[0] ? canvas_text_wrap(detail_text, canvas->width - 4 * u, s, lines, 3) : 0;
+
     canvas_fill(canvas, CANVAS_WHITE);
-    int y = canvas->height / 2 - canvas_text_height(s);
-    canvas_text_centered(canvas, canvas->width / 2, y, lines[0], s, CANVAS_BLACK);
-    canvas_text_centered(canvas, canvas->width / 2, y + canvas_text_height(s) + u, lines[1], s,
-                         CANVAS_BLACK);
+    int line_h = canvas_text_height(s);
+    int block_h = line_h + (line_count > 0 ? u + line_count * line_h : 0);
+    int y = canvas->height / 2 - block_h / 2;
+    canvas_text_centered(canvas, canvas->width / 2, y, title, s, CANVAS_BLACK);
+    for (int i = 0; i < line_count; i++) {
+        canvas_text_centered(canvas, canvas->width / 2, y + line_h + u + i * line_h, lines[i], s,
+                             CANVAS_BLACK);
+    }
 }
 
 // A number with one decimal: "1.5" ("1,5" in German).

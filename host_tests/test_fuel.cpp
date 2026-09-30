@@ -121,12 +121,14 @@ TEST(FuelParse, TheServicesOwnDemoAnswer)
     fuel_result_t r = parse(fixture("list-e5-demo.json"));
     ASSERT_EQ(r.status, FUEL_PARSE_OK);
     ASSERT_EQ(r.count, FUEL_MAX_STATIONS);  // 7 stations, the 5 cheapest
-    EXPECT_STREQ(r.stations[0].name, "Sprint");
-    EXPECT_STREQ(r.stations[0].place, "Kniprodestr., Berlin");
-    EXPECT_FLOAT_EQ(r.stations[0].dist_km, 1.5f);
+    // all seven cost the same in the demo data, so the nearest come first
+    EXPECT_STREQ(r.stations[0].name, "TotalEnergies");
+    EXPECT_STREQ(r.stations[0].place, "Margarete-Sommer-Str., Berlin");
+    EXPECT_FLOAT_EQ(r.stations[0].dist_km, 1.1f);
     EXPECT_NEAR(r.stations[0].price, 1.009f, 1e-4);
     for (int i = 1; i < r.count; i++) {
         EXPECT_LE(r.stations[i - 1].price, r.stations[i].price);
+        EXPECT_LE(r.stations[i - 1].dist_km, r.stations[i].dist_km);
     }
 }
 
@@ -227,6 +229,48 @@ TEST(FuelParse, BracesAndQuotesInsideTextDoNotConfuseTheReader)
     EXPECT_STREQ(r.stations[1].name, "A}B \"C\" {");
     EXPECT_STREQ(r.stations[1].place, "S, P");
     EXPECT_STREQ(r.stations[0].place, "");
+}
+
+TEST(FuelParse, AtTheSamePriceTheNearerStationComesFirst)
+{
+    fuel_result_t r = parse(
+        "{\"ok\":true,\"stations\":["
+        "{\"brand\":\"Far\",\"price\":1.5,\"isOpen\":true,\"dist\":4.0},"
+        "{\"brand\":\"Mid\",\"price\":1.5,\"isOpen\":true,\"dist\":2.0},"
+        "{\"brand\":\"Dear\",\"price\":1.6,\"isOpen\":true,\"dist\":0.1},"
+        "{\"brand\":\"Near\",\"price\":1.5,\"isOpen\":true,\"dist\":0.5}]}");
+    ASSERT_EQ(r.count, 4);
+    EXPECT_STREQ(r.stations[0].name, "Near");
+    EXPECT_STREQ(r.stations[1].name, "Mid");
+    EXPECT_STREQ(r.stations[2].name, "Far");
+    EXPECT_STREQ(r.stations[3].name, "Dear");  // a lower price still beats a shorter way
+}
+
+TEST(FuelScreen, ALongMessageFromTheServiceIsWrappedNotCut)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    GuardedCanvas cv(800, 480);
+    fuel_screen_data_t data;
+    memset(&data, 0, sizeof(data));
+    data.status = FUEL_SCREEN_KEY_REFUSED;
+    strcpy(data.result.message, "apikey nicht angegeben, falsch, oder im falschen Format");
+    fuel_screen_render(&cv.canvas, &now, &data);
+    ASSERT_TRUE(cv.guards_intact());
+    // the whole text fits on two lines: the picture has ink in three text rows (title + two lines)
+    int rows_with_ink = 0;
+    bool in_row = false;
+    for (int y = 0; y < 480; y++) {
+        bool ink = false;
+        for (int x = 0; x < 800 && !ink; x++) {
+            ink = !cv.blank(x, y);
+        }
+        if (ink && !in_row) {
+            rows_with_ink++;
+        }
+        in_row = ink;
+    }
+    EXPECT_GE(rows_with_ink, 3);
 }
 
 TEST(FuelParse, TheLimitKeepsTheCheapest)

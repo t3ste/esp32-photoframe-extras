@@ -2964,6 +2964,17 @@ static esp_err_t facts_put_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
     if (req->content_len > FACT_PACK_MAX_BYTES) {
+        // Read and drop what the client is still sending (up to 64 KB), or it sees the connection
+        // reset before it can read the answer.
+        char sink[256];
+        size_t left = req->content_len < 65536 ? req->content_len : 65536;
+        while (left > 0) {
+            int n = httpd_req_recv(req, sink, left < sizeof(sink) ? left : sizeof(sink));
+            if (n <= 0) {
+                break;
+            }
+            left -= (size_t) n;
+        }
         httpd_resp_set_status(req, "413 Payload Too Large");
         httpd_resp_sendstr(req, "The fact list is too long (16 KB at most)");
         return ESP_FAIL;
