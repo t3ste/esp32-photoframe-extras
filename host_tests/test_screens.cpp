@@ -265,3 +265,195 @@ TEST(ChoreWheel, WithoutSetupItSaysSoInBothLanguages)
     chore_wheel_render(&h.canvas, &english, &half);
     EXPECT_EQ(memcmp(h.canvas.rgb, en.canvas.rgb, (size_t) 800 * 480 * 3), 0);
 }
+
+// ---- weather ----------------------------------------------------------------------------------
+
+namespace
+{
+
+// The WMO codes Open-Meteo can answer with (and the frame's other providers are mapped into).
+const int kWmoCodes[] = {0,  1,  2,  3,  45, 48, 51, 53, 55, 56, 57, 61, 63, 65,
+                         66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86, 95, 96, 99};
+
+}  // namespace
+
+TEST(WeatherScreen, EveryWmoCodeHasAKindAndWordsInBothLanguages)
+{
+    for (int code : kWmoCodes) {
+        EXPECT_NE(weather_screen_kind(code), WEATHER_KIND_UNKNOWN) << code;
+        std::string en = weather_screen_condition(code, false);
+        std::string de = weather_screen_condition(code, true);
+        EXPECT_NE(en, "Unknown") << code;
+        EXPECT_NE(de, "Unbekannt") << code;
+        EXPECT_NE(en, de) << code;
+        EXPECT_LE(en.size(), 22u) << code;
+        EXPECT_LE(de.size(), 24u) << code;  // umlauts count two bytes here
+    }
+    for (int code : {-1, 4, 44, 100, 123, 1000}) {
+        EXPECT_EQ(weather_screen_kind(code), WEATHER_KIND_UNKNOWN) << code;
+        EXPECT_STREQ(weather_screen_condition(code, false), "Unknown");
+        EXPECT_STREQ(weather_screen_condition(code, true), "Unbekannt");
+    }
+}
+
+TEST(WeatherScreen, KindsFollowTheWeather)
+{
+    EXPECT_EQ(weather_screen_kind(0), WEATHER_KIND_CLEAR);
+    EXPECT_EQ(weather_screen_kind(2), WEATHER_KIND_PARTLY_CLOUDY);
+    EXPECT_EQ(weather_screen_kind(3), WEATHER_KIND_OVERCAST);
+    EXPECT_EQ(weather_screen_kind(45), WEATHER_KIND_FOG);
+    EXPECT_EQ(weather_screen_kind(53), WEATHER_KIND_DRIZZLE);
+    EXPECT_EQ(weather_screen_kind(65), WEATHER_KIND_RAIN);
+    EXPECT_EQ(weather_screen_kind(82), WEATHER_KIND_RAIN);  // showers look like rain
+    EXPECT_EQ(weather_screen_kind(67), WEATHER_KIND_FREEZING);
+    EXPECT_EQ(weather_screen_kind(75), WEATHER_KIND_SNOW);
+    EXPECT_EQ(weather_screen_kind(86), WEATHER_KIND_SNOW);
+    EXPECT_EQ(weather_screen_kind(99), WEATHER_KIND_THUNDER);
+}
+
+TEST(WeatherScreen, GermanWordsHaveRealUmlauts)
+{
+    EXPECT_STREQ(weather_screen_condition(2, true), "Teils bew\xC3\xB6lkt");
+    EXPECT_STREQ(weather_screen_condition(1, true),
+                 "\xC3\x9C"
+                 "berwiegend klar");
+}
+
+TEST(WeatherScreen, EveryIconStaysInItsBoxAndIsDrawn)
+{
+    for (int size : {24, 56, 100, 300}) {
+        std::set<std::string> pictures;
+        for (int k = WEATHER_KIND_CLEAR; k <= WEATHER_KIND_UNKNOWN; k++) {
+            int side = size + 80;
+            GuardedCanvas cv(side, side);
+            weather_screen_draw_icon(&cv.canvas, side / 2, side / 2, size, (weather_kind_t) k);
+            EXPECT_TRUE(cv.guards_intact()) << k << " at " << size;
+            EXPECT_GT(cv.painted(), (size_t) size) << "kind " << k << " at " << size;
+            // the outline may lie a pixel or two outside the nominal box
+            int low = side / 2 - size / 2 - 2, high = side / 2 + size / 2 + 2;
+            int stray = 0;
+            for (int y = 0; y < side; y++) {
+                for (int x = 0; x < side; x++) {
+                    const uint8_t *p = cv.canvas.rgb + ((size_t) y * side + x) * 3;
+                    bool ink = !(p[0] == 255 && p[1] == 255 && p[2] == 255);
+                    if (ink && (x < low || x > high || y < low || y > high)) {
+                        stray++;
+                    }
+                }
+            }
+            EXPECT_EQ(stray, 0) << "kind " << k << " at " << size;
+            pictures.insert(std::string((const char *) cv.canvas.rgb, (size_t) side * side * 3));
+        }
+        EXPECT_EQ(pictures.size(), (size_t) WEATHER_KIND_UNKNOWN + 1) << "size " << size;
+    }
+}
+
+TEST(WeatherScreen, IconsUseTheColoursOfTheWeather)
+{
+    auto colours_of = [](weather_kind_t kind) {
+        GuardedCanvas cv(160, 160);
+        weather_screen_draw_icon(&cv.canvas, 80, 80, 120, kind);
+        return cv.colours();
+    };
+    EXPECT_TRUE(colours_of(WEATHER_KIND_CLEAR).count(0xFFFF00));  // a yellow sun
+    EXPECT_TRUE(colours_of(WEATHER_KIND_PARTLY_CLOUDY).count(0xFFFF00));
+    EXPECT_TRUE(colours_of(WEATHER_KIND_RAIN).count(0x0000FF));  // blue rain
+    EXPECT_TRUE(colours_of(WEATHER_KIND_DRIZZLE).count(0x0000FF));
+    EXPECT_TRUE(colours_of(WEATHER_KIND_THUNDER).count(0xFFFF00));  // a yellow bolt
+    EXPECT_FALSE(colours_of(WEATHER_KIND_SNOW).count(0x0000FF));
+    EXPECT_FALSE(colours_of(WEATHER_KIND_FOG).count(0xFFFF00));
+}
+
+TEST(WeatherScreen, TinyIconsAreLeftOut)
+{
+    GuardedCanvas cv(40, 40);
+    weather_screen_draw_icon(&cv.canvas, 20, 20, 7, WEATHER_KIND_CLEAR);
+    EXPECT_EQ(cv.painted(), (size_t) 0);
+}
+
+TEST(WeatherScreen, EachReasonHasItsOwnMessageInBothLanguages)
+{
+    std::set<std::string> seen;
+    for (bool german : {false, true}) {
+        for (weather_screen_status_t status :
+             {WEATHER_SCREEN_NO_LOCATION, WEATHER_SCREEN_NO_NETWORK, WEATHER_SCREEN_FETCH_FAILED}) {
+            GuardedCanvas cv(800, 480);
+            info_now_t now;
+            info_now_from_date(2026, 9, 30, german, &now);
+            weather_screen_data_t data;
+            memset(&data, 0, sizeof(data));
+            data.status = status;
+            weather_screen_render(&cv.canvas, &now, &data);
+            EXPECT_GT(cv.painted(), (size_t) 300);
+            EXPECT_TRUE(cv.guards_intact());
+            EXPECT_TRUE(
+                seen.insert(std::string((const char *) cv.canvas.rgb, 800 * 480 * 3)).second)
+                << german << " " << status;
+        }
+    }
+}
+
+TEST(WeatherScreen, AnOkForecastWithoutDaysIsTreatedAsAFailedFetch)
+{
+    GuardedCanvas a(800, 480), b(800, 480);
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    weather_screen_data_t none;
+    memset(&none, 0, sizeof(none));
+    none.status = WEATHER_SCREEN_OK;
+    weather_screen_render(&a.canvas, &now, &none);
+    none.status = WEATHER_SCREEN_FETCH_FAILED;
+    weather_screen_render(&b.canvas, &now, &none);
+    EXPECT_EQ(memcmp(a.canvas.rgb, b.canvas.rgb, (size_t) 800 * 480 * 3), 0);
+}
+
+TEST(WeatherScreen, MoreDaysMeansMoreRows)
+{
+    static const int highs[] = {20, 21, 22, 23, 24}, lows[] = {10, 11, 12, 13, 14};
+    static const int codes[] = {0, 1, 2, 3, 61};
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    size_t painted_before = 0;
+    for (int count = 1; count <= 5; count++) {
+        GuardedCanvas cv(800, 480);
+        weather_screen_data_t data = weather_sample("Berlin", count, highs, lows, codes);
+        weather_screen_render(&cv.canvas, &now, &data);
+        EXPECT_TRUE(cv.guards_intact()) << count;
+        EXPECT_GT(cv.painted(), painted_before) << count;
+        painted_before = cv.painted();
+    }
+}
+
+TEST(WeatherScreen, TheDateAndLanguageMoveThePicture)
+{
+    GuardedCanvas today(800, 480), other_day(800, 480), german(800, 480);
+    draw_weather_english(&today.canvas);
+    info_now_t now;
+    info_now_from_date(2026, 10, 3, false, &now);  // the forecast starts three days before this
+    static const int highs[] = {24, 22, 19, 17, 15}, lows[] = {12, 11, 9, 6, 2};
+    static const int codes[] = {2, 61, 3, 95, 71};
+    weather_screen_data_t data = weather_sample("Berlin", 5, highs, lows, codes);
+    weather_screen_render(&other_day.canvas, &now, &data);
+    draw_weather_german(&german.canvas);
+    EXPECT_NE(memcmp(today.canvas.rgb, other_day.canvas.rgb, (size_t) 800 * 480 * 3), 0);
+    EXPECT_NE(memcmp(today.canvas.rgb, german.canvas.rgb, (size_t) 800 * 480 * 3), 0);
+}
+
+TEST(WeatherScreen, ExtremeValuesAndLongPlacesFitEveryPanel)
+{
+    static const int highs[] = {-100, 100, 0, -9, 99}, lows[] = {-100, -99, -1, 100, -10};
+    static const int codes[] = {45, 96, 1234, -5, 77};
+    for (const auto &size : kBoardSizes) {
+        for (bool german : {false, true}) {
+            GuardedCanvas cv(size[0], size[1]);
+            info_now_t now;
+            info_now_from_date(2026, 9, 30, german, &now);
+            weather_screen_data_t data =
+                weather_sample("Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch, Wales",
+                               5, highs, lows, codes);
+            weather_screen_render(&cv.canvas, &now, &data);
+            EXPECT_TRUE(cv.guards_intact()) << size[0] << "x" << size[1];
+            EXPECT_GT(cv.painted(), (size_t) 1000);
+        }
+    }
+}

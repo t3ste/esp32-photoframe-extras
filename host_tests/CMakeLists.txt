@@ -49,6 +49,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_GLYPHS
   CONFIG_FEATURE_INFO_SCREENS
   CONFIG_FEATURE_CHORE_WHEEL
+  CONFIG_FEATURE_WEATHER_SCREEN
   CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
@@ -280,6 +281,37 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
 )
 
+# Big stroke digits for the info screens (temperatures, prices)
+add_executable(
+  screen_digits_test
+  test_screen_digits.cpp
+  ../main/screen_digits.c
+  ../main/screen_canvas.c
+  ../main/glyph_extras.c
+  ../components/epaper_src/Fonts/font24.c
+)
+
+target_compile_definitions(
+  screen_digits_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_link_libraries(
+  screen_digits_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  screen_digits_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
 # The pure parts of the info screens: ISO weeks, names, rotation, list parsing
 add_executable(
   info_screens_core_test
@@ -306,6 +338,8 @@ set(INFO_SCREEN_SOURCES
   ../main/glyph_extras.c
   ../main/info_screens_core.c
   ../main/screen_chore_wheel.c
+  ../main/screen_digits.c
+  ../main/screen_weather.c
   ../components/epaper_src/Fonts/font24.c
 )
 
@@ -584,6 +618,7 @@ gtest_discover_tests(dedup_test)
 gtest_discover_tests(vtodo_test)
 gtest_discover_tests(glyph_extras_test)
 gtest_discover_tests(screen_canvas_test)
+gtest_discover_tests(screen_digits_test)
 gtest_discover_tests(info_screens_core_test)
 gtest_discover_tests(screens_test)
 gtest_discover_tests(network_backoff_test)

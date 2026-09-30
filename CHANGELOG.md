@@ -44,6 +44,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 - **`chore-wheel` build option** (`--with chore-wheel`, needs `info-screens`): a page for the household - a donut wheel with one coloured sector per member and one card per chore; chore `t` of ISO
   week `w` goes to member `(t + w) mod members`, so the chores move on every Monday. Up to 5 members and 6 chores, names typed in the Web UI (umlauts included), English and German
   ([docs/CHORE_WHEEL.md](docs/CHORE_WHEEL.md)).
+- **`weather-screen` build option** (`--with weather-screen`, needs `info-screens` and `overlays`): a full-screen weather page in the Agenda's rotation - today's condition as a big icon (drawn
+  from shapes: a yellow sun, outlined clouds, blue rain, a yellow bolt) with a very large temperature, the low under it, and the next four days as rows with weekday, icon, high and low. The numbers are
+  drawn with thick round strokes at any size; the place, service and language are the ones of the Overlays tab; the condition texts are whole words in English and German for every WMO code
+  ([docs/WEATHER_SCREEN.md](docs/WEATHER_SCREEN.md)).
 - **`upload-dedup` build option** (`--with upload-dedup`): every album keeps a small index (`.dedup`) of the MD5 of its images, and an upload the
   album already has is refused (`409`, naming the file; the Web UI offers "Upload anyway") or stored with a warning - as a setting; compared by the file's
   bytes or by the decoded pixels (an EPDGZ inside its gzip wrapper, a PNG as RGB), so the same photo converted by two browsers still counts as one. The

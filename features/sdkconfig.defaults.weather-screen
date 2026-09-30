@@ -1,0 +1,3 @@
+# Enabled by `build.py --with weather-screen` (see docs/FEATURES.md).
+# Feature-specific sdkconfig lines belong in this file.
+CONFIG_FEATURE_WEATHER_SCREEN=y

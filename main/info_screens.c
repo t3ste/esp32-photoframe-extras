@@ -16,10 +16,17 @@
 #if FEATURE_CHORE_WHEEL
 #include "screen_chore_wheel.h"
 #endif
+#if FEATURE_WEATHER_SCREEN
+#include <math.h>
+#include <stdio.h>
+
+#include "screen_weather.h"
+#include "weather.h"
+#endif
 
 static const char *TAG = "info_screens";
 
-static const char *const SCREEN_NAMES[INFO_SCREEN_COUNT] = {"agenda", "chore-wheel"};
+static const char *const SCREEN_NAMES[INFO_SCREEN_COUNT] = {"agenda", "chore-wheel", "weather"};
 
 const char *info_screen_name(int id)
 {
@@ -41,6 +48,9 @@ uint32_t info_screens_compiled_mask(void)
     uint32_t mask = 1u << INFO_SCREEN_AGENDA;
 #if FEATURE_CHORE_WHEEL
     mask |= 1u << INFO_SCREEN_CHORE_WHEEL;
+#endif
+#if FEATURE_WEATHER_SCREEN
+    mask |= 1u << INFO_SCREEN_WEATHER;
 #endif
     return mask;
 }
@@ -83,6 +93,50 @@ static esp_err_t show_canvas(const canvas_t *canvas)
     return display_manager_show_image(INFO_SCREEN_OUTPUT_PATH);
 }
 
+#if FEATURE_WEATHER_SCREEN
+// The forecast for the weather page - or the reason why there is none.
+static void load_weather(weather_screen_data_t *out, bool wifi_connected)
+{
+    memset(out, 0, sizeof(*out));
+    const char *place = config_manager_get_weather_location_name();
+    const char *lat = config_manager_get_weather_lat();
+    const char *lon = config_manager_get_weather_lon();
+    bool have_place = (place && place[0]) || (lat && lat[0] && lon && lon[0]);
+    if (!have_place) {
+        out->status = WEATHER_SCREEN_NO_LOCATION;
+        return;
+    }
+    if (place) {
+        strncpy(out->place, place, sizeof(out->place) - 1);
+    }
+    if (!wifi_connected) {
+        out->status = WEATHER_SCREEN_NO_NETWORK;
+        return;
+    }
+    weather_forecast_t forecast;
+    memset(&forecast, 0, sizeof(forecast));
+    if (weather_fetch_forecast(&forecast, WEATHER_SCREEN_MAX_DAYS) != ESP_OK || !forecast.valid ||
+        forecast.count < 1) {
+        out->status = WEATHER_SCREEN_FETCH_FAILED;
+        return;
+    }
+    out->status = WEATHER_SCREEN_OK;
+    for (int i = 0; i < forecast.count && i < WEATHER_SCREEN_MAX_DAYS; i++) {
+        weather_screen_day_t *day = &out->days[out->day_count];
+        if (sscanf(forecast.days[i].date, "%d-%d-%d", &day->year, &day->month, &day->day) != 3) {
+            continue;
+        }
+        day->temp_max = (int) lroundf(forecast.days[i].temp_max_c);
+        day->temp_min = (int) lroundf(forecast.days[i].temp_min_c);
+        day->code = forecast.days[i].weather_code;
+        out->day_count++;
+    }
+    if (out->day_count < 1) {
+        out->status = WEATHER_SCREEN_FETCH_FAILED;
+    }
+}
+#endif
+
 esp_err_t info_screens_show(int id, bool wifi_connected)
 {
     (void) wifi_connected;
@@ -110,6 +164,15 @@ esp_err_t info_screens_show(int id, bool wifi_connected)
         chore_config_parse(config_manager_get_chore_members(), config_manager_get_chore_tasks(),
                            &config);
         chore_wheel_render(&canvas, &now, &config);
+        err = ESP_OK;
+        break;
+    }
+#endif
+#if FEATURE_WEATHER_SCREEN
+    case INFO_SCREEN_WEATHER: {
+        weather_screen_data_t data;
+        load_weather(&data, wifi_connected);
+        weather_screen_render(&canvas, &now, &data);
         err = ESP_OK;
         break;
     }

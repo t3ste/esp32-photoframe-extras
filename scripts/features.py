@@ -188,6 +188,13 @@ FEATURES = (
         "Chore wheel: who does which chore this week, with a donut wheel and cards",
     ),
     Feature(
+        "weather-screen",
+        "FEATURE_WEATHER_SCREEN",
+        (),
+        ("info-screens", "overlays"),
+        "Weather page: today with a big icon and temperature, and the next four days",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),

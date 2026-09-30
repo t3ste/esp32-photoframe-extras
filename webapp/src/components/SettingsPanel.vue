@@ -2676,6 +2676,20 @@ async function performFactoryReset() {
               class="mb-2"
             />
 <!-- #endif -->
+<!-- #if FEATURE_WEATHER_SCREEN -->
+            <v-checkbox
+              v-model="settingsStore.deviceSettings.infoScreens"
+              value="weather"
+              label="Weather"
+              density="compact"
+              hide-details
+            />
+            <div class="text-caption text-medium-emphasis mt-2 mb-2">
+              Weather: today as a big icon and temperature, and the next four days. It uses the
+              place and the weather service of the Overlays tab, and needs the frame to be online
+              when the page is drawn.
+            </div>
+<!-- #endif -->
 <!-- #else -->
             <RotationSchedule
               v-model="settingsStore.deviceSettings.agendaCron"

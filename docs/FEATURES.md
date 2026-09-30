@@ -38,6 +38,7 @@ python build.py --board seeedstudio_xiao_ee02 --list-features
 | `glyphs` | Real glyphs for ä ö ü Ä Ö Ü ß ° € in the text the frame draws (overlays, Agenda, Telegram captions) instead of ae/oe/ue/ss | - | [GLYPHS.md](GLYPHS.md) |
 | `info-screens` | Full-screen information pages that take turns with the Agenda on its schedule (the base for the pages below) | `agenda`, `glyphs` | [INFO_SCREENS.md](INFO_SCREENS.md) |
 | `chore-wheel` | Chore wheel page: who does which chore this week - a donut wheel and one card per chore, the chores go round the members by calendar week | `info-screens` | [CHORE_WHEEL.md](CHORE_WHEEL.md) |
+| `weather-screen` | Weather page: today as a big icon and temperature, and the next four days as rows | `info-screens`, `overlays` | [WEATHER_SCREEN.md](WEATHER_SCREEN.md) |
 | `upload-dedup` | Duplicate detection at upload: a per-album MD5 index, refuse or warn, by file or by pixels, background indexing of earlier images, duplicate report | - | [UPLOAD_DEDUP.md](UPLOAD_DEDUP.md) |
 | `multi-upload` | Web UI: upload several images at once - photos converted one after the other, pre-rendered EPDGZ/PNG files as they are | - | [MULTI_UPLOAD.md](MULTI_UPLOAD.md) |
 | `fixes` | General bug fixes and robustness improvements | - | |
