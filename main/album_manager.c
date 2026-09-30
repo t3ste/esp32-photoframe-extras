@@ -6,6 +6,9 @@
 #include <unistd.h>
 
 #include "config.h"
+#if FEATURE_UPLOAD_DEDUP
+#include "dedup.h"
+#endif
 #include "esp_log.h"
 #include "feature_config.h"
 #if FORK_FIXES
@@ -224,6 +227,18 @@ esp_err_t album_manager_delete_album(const char *album_name)
 
     char album_path[256];
     snprintf(album_path, sizeof(album_path), "%s/%s", IMAGE_DIRECTORY, album_name);
+
+#if FEATURE_UPLOAD_DEDUP
+    {
+        // The duplicate index (dedup.h) is a hidden file, which the loops below skip - it would
+        // leave the folder non-empty and the rmdir() would fail.
+        char index_file[300];
+        snprintf(index_file, sizeof(index_file), "%s/%s", album_path, DEDUP_INDEX_NAME);
+        unlink(index_file);
+        snprintf(index_file, sizeof(index_file), "%s/%s.tmp", album_path, DEDUP_INDEX_NAME);
+        unlink(index_file);
+    }
+#endif
 
 #if FORK_FIXES
     if (remove_directory_recursive(album_path) != ESP_OK) {
