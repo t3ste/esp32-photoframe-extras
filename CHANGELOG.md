@@ -94,6 +94,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Fixed
 
+- **Agenda: with the frame awake (USB power) the next render came about 25 s too early, and a second one followed at once.** After a render the seconds to the next cron match come from the wall clock, but
+  they were added to the time from before the render (the fetches and the panel's ~20 s refresh), so the next render fired right before the cron boundary and, one second later, again. The Agenda was drawn twice
+  per turn - and with the `info-screens` option the rotation advanced twice, so every other page was on the panel for only a few seconds. Upstream fixed the same slip for the photo rotation; this is the same
+  change for the Agenda. Checked on a frame with a 3-minute schedule and all pages: one render per turn, 179-181 s apart.
 - **OTA: a frame that installed a release candidate is still offered the final release.** The version comparison
   stopped at `major.minor.patch`, so `v218.0.4-rc1` and `v218.0.4` compared equal; with the `fixes` option `-rc<n>`
   now sorts before the same version without a suffix (and `-rc2` before `-rc10`).

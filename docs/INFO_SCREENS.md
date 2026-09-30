@@ -67,5 +67,8 @@ not renumber) and `info_screens.c`, its own build option that requires `info-scr
 ## Limits
 
 - The pages only redraw when the schedule fires; there is no live clock.
+- One turn of the schedule draws one page, and it stays until the next turn. Drawing takes the panel about 20 s plus the fetch of a page with data from the
+  internet, and a colour panel should not be refreshed more often than its maker allows (Waveshare: not more often than every 3 minutes) - so the schedule
+  wants an interval of 3 minutes or more; with `*/3 * *` and six pages each page is on the panel for 3 minutes out of 18.
 - Pages with data from the internet (weather, exchange rates, fuel prices) fetch it when they are drawn - one request each - and show a message that says why
   when the frame has no network on that wake or the service does not answer; the next turn of the rotation tries again. Nothing is cached between turns.
