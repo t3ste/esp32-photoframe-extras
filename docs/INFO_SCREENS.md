@@ -60,8 +60,12 @@ names come with real umlauts thanks to the `glyphs` option.
 A page is a `screen_<name>.c` with a render function, one entry in `info_screens.h` (the ids are bits of a stored mask - do
 not renumber) and `info_screens.c`, its own build option that requires `info-screens`, and its settings. See
 `main/screen_chore_wheel.c` for a complete one.
+`main/screen_weather.c` shows the pattern for a page with data from the internet: the drawing takes a plain data struct with a status
+(ok / no network / no answer / ...), the fetch lives in `info_screens.c`, and both are tested on the PC (`host_tests/test_screens.cpp`,
+`test_finance.cpp`, `test_fuel.cpp`) with real recorded answers as fixtures.
 
 ## Limits
 
 - The pages only redraw when the schedule fires; there is no live clock.
-- Pages that need the internet (none is in yet) will draw what they have when the frame has no network on that wake.
+- Pages with data from the internet (weather, exchange rates, fuel prices) fetch it when they are drawn - one request each - and show a message that says why
+  when the frame has no network on that wake or the service does not answer; the next turn of the rotation tries again. Nothing is cached between turns.
