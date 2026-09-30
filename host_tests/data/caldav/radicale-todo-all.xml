@@ -1,0 +1,95 @@
+<?xml version='1.0' encoding='utf-8'?>
+<multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><response><href>/tester/tasks/alarm.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VTODO
+DTSTAMP:20260101T000000Z
+DUE;VALUE=DATE:20261001
+SUMMARY:With an alarm
+UID:alarm
+BEGIN:VALARM
+ACTION:DISPLAY
+SUMMARY:alarm text
+TRIGGER:-PT15M
+END:VALARM
+END:VTODO
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/tasks/bread.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VTODO
+DTSTAMP:20260101T000000Z
+DUE;VALUE=DATE:20261003
+PRIORITY:1
+STATUS:NEEDS-ACTION
+SUMMARY:Buy bread
+UID:bread
+END:VTODO
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/tasks/cancelled.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VTODO
+DTSTAMP:20260101T000000Z
+STATUS:CANCELLED
+SUMMARY:Cancelled thing
+UID:cancelled
+END:VTODO
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/tasks/done.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VTODO
+COMPLETED:20260929T100000Z
+DTSTAMP:20260101T000000Z
+PERCENT-COMPLETE:100
+STATUS:COMPLETED
+SUMMARY:Already done
+UID:done
+END:VTODO
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/tasks/plants.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VTODO
+DTSTAMP:20260101T000000Z
+DUE;VALUE=DATE:20261002
+PRIORITY:9
+RRULE:FREQ=WEEKLY
+SUMMARY:Water the plants
+UID:plants
+END:VTODO
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/tasks/taxes.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VTODO
+DTSTAMP:20260101T000000Z
+DUE:20261015T120000Z
+PERCENT-COMPLETE:40
+PRIORITY:5
+STATUS:IN-PROCESS
+SUMMARY:Tax return
+UID:taxes
+END:VTODO
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/tasks/umlaut.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VTODO
+DTSTAMP:20260101T000000Z
+PRIORITY:3
+SUMMARY:Brötchen für Käse und eine ziemlich lange Beschreibung
+UID:umlaut
+END:VTODO
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response><response><href>/tester/tasks/undated.ics</href><propstat><prop><C:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//probe//EN
+BEGIN:VTODO
+DTSTAMP:20260101T000000Z
+SUMMARY:Someday
+UID:undated
+END:VTODO
+END:VCALENDAR
+</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response></multistatus>

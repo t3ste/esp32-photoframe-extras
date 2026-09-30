@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
 extern "C" {
+#include "fake_http_fetch.h"
 #include "todo.h"
 }
 
@@ -169,3 +172,128 @@ TEST(TodoParse, NullOutIsInvalidArg)
     esp_err_t err = todo_parse("Task\n", 5, nullptr);
     EXPECT_EQ(err, ESP_ERR_INVALID_ARG);
 }
+
+#if FEATURE_CALDAV_TODO
+// A CalDAV task list (FEATURE_CALDAV_TODO): a caldav(s):// ToDo address is answered by a REPORT for
+// the VTODO components; http_fetch_report() is the scriptable stub of fake_http_fetch.c.
+namespace
+{
+
+std::string read_fixture(const char *name)
+{
+    std::string path = std::string(CALDAV_TEST_DATA_DIR) + "/" + name;
+    FILE *fp = std::fopen(path.c_str(), "rb");
+    if (!fp) {
+        return "";
+    }
+    std::string data;
+    char chunk[4096];
+    size_t n;
+    while ((n = std::fread(chunk, 1, sizeof(chunk), fp)) > 0) {
+        data.append(chunk, n);
+    }
+    std::fclose(fp);
+    return data;
+}
+
+class TodoCaldav : public ::testing::Test
+{
+   protected:
+    void SetUp() override
+    {
+        setenv("TZ", "UTC0", 1);
+        tzset();
+        fake_report_reset();
+    }
+};
+
+}  // namespace
+
+TEST_F(TodoCaldav, RadicaleTaskListBecomesTheColumn)
+{
+    std::string xml = read_fixture("radicale-todo-open.xml");
+    ASSERT_FALSE(xml.empty());
+    fake_report.response = xml.c_str();
+    todo_list_t list;
+    ASSERT_EQ(todo_fetch("caldavs://u:p@cal.example.org/tester/tasks/", 0, nullptr, nullptr,
+                         nullptr, 0, &list),
+              ESP_OK);
+    // the finished ones (a cancelled one, unlike a completed one, comes back from the server) are
+    // dropped, the rest is ordered by due date, then the undated by priority
+    ASSERT_EQ(list.count, 6);
+    EXPECT_STREQ(list.items[0].text, "With an alarm");
+    EXPECT_STREQ(list.items[0].due_date, "2026-10-01");
+    EXPECT_EQ(list.items[0].priority, 0);
+    EXPECT_STREQ(list.items[1].text, "Water the plants");  // repeats: listed once, as it stands
+    EXPECT_EQ(list.items[1].priority, 'D');
+    EXPECT_STREQ(list.items[2].text, "Buy bread");
+    EXPECT_EQ(list.items[2].priority, 'A');
+    EXPECT_STREQ(list.items[2].due_date, "2026-10-03");
+    EXPECT_STREQ(list.items[3].text, "Tax return");
+    EXPECT_STREQ(list.items[3].due_date, "2026-10-15");  // 12:00 UTC
+    EXPECT_EQ(list.items[3].priority, 'C');
+    EXPECT_STREQ(list.items[4].text,
+                 "Broetchen fuer Kaese und eine ziemlich lange Beschreibung, die ueber zwei Zeilen "
+                 "geht");
+    EXPECT_EQ(list.items[4].priority, 'B');
+    EXPECT_STREQ(list.items[4].due_date, "");
+    EXPECT_STREQ(list.items[5].text, "Someday");
+}
+
+TEST_F(TodoCaldav, AnswerWithTheFinishedOnesIsFilteredHere)
+{
+    std::string xml = read_fixture("radicale-todo-all.xml");
+    ASSERT_FALSE(xml.empty());
+    fake_report.response = xml.c_str();
+    fake_report.status[0] = 400;  // a server that does not take the open-only filter
+    todo_list_t list;
+    ASSERT_EQ(todo_fetch("caldavs://u:p@cal.example.org/tester/tasks/", 0, nullptr, nullptr,
+                         nullptr, 0, &list),
+              ESP_OK);
+    ASSERT_EQ(fake_report.calls, 2);
+    EXPECT_NE(std::string(fake_report.body[0]).find("is-not-defined"), std::string::npos);
+    EXPECT_EQ(std::string(fake_report.body[1]).find("prop-filter"), std::string::npos);
+    EXPECT_NE(std::string(fake_report.body[1]).find("name=\"VTODO\""), std::string::npos);
+    EXPECT_EQ(list.count, 6);  // "Already done" (and the cancelled one) are not in it
+    for (int i = 0; i < list.count; i++) {
+        EXPECT_STRNE(list.items[i].text, "Already done");
+        EXPECT_STRNE(list.items[i].text, "Cancelled thing");
+    }
+}
+
+TEST_F(TodoCaldav, AskedOnceWithTheLoginInTheAddress)
+{
+    fake_report.response = "<d:multistatus xmlns:d=\"DAV:\"></d:multistatus>";
+    todo_list_t list;
+    ASSERT_EQ(todo_fetch("caldav://user:pw@192.168.1.5:5232/user/tasks/", 0, nullptr, nullptr,
+                         nullptr, 0, &list),
+              ESP_OK);
+    EXPECT_EQ(fake_report.calls, 1);
+    EXPECT_STREQ(fake_report.url[0], "http://user:pw@192.168.1.5:5232/user/tasks/");
+    EXPECT_EQ(list.count, 0);  // an empty list is a valid answer
+}
+
+TEST_F(TodoCaldav, RefusedLoginAndOtherErrorsAreNotRetried)
+{
+    for (int status : {401, 403, 404}) {
+        fake_report_reset();
+        fake_report.response = "";
+        fake_report.status[0] = status;
+        todo_list_t list;
+        EXPECT_NE(
+            todo_fetch("caldavs://u:p@cal.example.org/t/", 0, nullptr, nullptr, nullptr, 0, &list),
+            ESP_OK)
+            << status;
+        EXPECT_EQ(fake_report.calls, 1) << status;
+        EXPECT_EQ(list.count, 0);
+    }
+}
+
+TEST_F(TodoCaldav, PlainAddressesStillFetchAFile)
+{
+    // an https:// todo.txt address is not a CalDAV one: it does not go through the REPORT path
+    todo_list_t list;
+    todo_fetch("https://example.org/todo.txt", 0, nullptr, nullptr, nullptr, 0, &list);
+    EXPECT_EQ(fake_report.calls, 0);
+}
+#endif

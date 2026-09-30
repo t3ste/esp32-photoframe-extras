@@ -41,7 +41,8 @@ MODULES = {
     "https": ["https_cert"],
     "facecrop": ["facecrop_metadata"],
     "source-auth": ["source_auth"],
-    "caldav": ["caldav"],
+    "caldav": ["caldav", "caldav_fetch"],
+    "caldav-todo": ["vtodo"],
     "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }
 ALWAYS_HELPERS = {
@@ -256,7 +257,20 @@ def include_closure(path, active_raw, headers_by_name):
     return seen
 
 
+def with_requirements(feature_names):
+    """The set as build.py builds it: a feature brings the features it requires."""
+    names = list(feature_names)
+    pending = list(names)
+    while pending:
+        for dependency in feature_registry.FEATURES_BY_NAME[pending.pop()].requires:
+            if dependency not in names:
+                names.append(dependency)
+                pending.append(dependency)
+    return names
+
+
 def check(feature_names):
+    feature_names = with_requirements(feature_names)
     flags, sources, headers = sources_for(feature_names)
     active_text, active_raw, file_defs, inactive_defs = {}, {}, {}, set()
     for path in sources + headers:

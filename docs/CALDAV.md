@@ -44,7 +44,7 @@ Write `caldavs://` (or `caldav://`) instead of `https://` (`http://`). If your s
 
 ## Limits
 
-- Events (`VEVENT`) only; the ToDo list reads its own address (a todo.txt).
+- Events (`VEVENT`) only; the ToDo list reads its own address (a todo.txt - or, with the `caldav-todo` option, a CalDAV task list, see [CALDAV_TODO.md](CALDAV_TODO.md)).
 - No discovery: the address has to be the calendar, not the account.
 - Basic and Digest login only. Google Calendar's CalDAV (OAuth) and iCloud (app-specific passwords, redirects) are not supported -
   use the calendar's ICS "secret address" for Google.

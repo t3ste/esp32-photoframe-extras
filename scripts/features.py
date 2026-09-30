@@ -153,6 +153,13 @@ FEATURES = (
         "CalDAV calendars (caldavs://): the server sends only the coming days, repeats expanded",
     ),
     Feature(
+        "caldav-todo",
+        "FEATURE_CALDAV_TODO",
+        (),
+        ("caldav",),
+        "CalDAV task lists (caldavs:// as the ToDo address): open to-dos in the ToDo column",
+    ),
+    Feature(
         "upload-dedup",
         "FEATURE_UPLOAD_DEDUP",
         (),

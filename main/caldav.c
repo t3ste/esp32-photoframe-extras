@@ -57,6 +57,21 @@ int caldav_build_report_body(char *buf, size_t buf_len, time_t start, time_t end
     return (n < 0 || (size_t) n >= buf_len) ? -1 : n;
 }
 
+int caldav_build_todo_report_body(char *buf, size_t buf_len, bool only_open)
+{
+    int n = snprintf(
+        buf, buf_len,
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+        "<c:calendar-query xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">"
+        "<d:prop><c:calendar-data/></d:prop>"
+        "<c:filter><c:comp-filter name=\"VCALENDAR\">"
+        "<c:comp-filter name=\"VTODO\">%s</c:comp-filter>"
+        "</c:comp-filter></c:filter>"
+        "</c:calendar-query>",
+        only_open ? "<c:prop-filter name=\"COMPLETED\"><c:is-not-defined/></c:prop-filter>" : "");
+    return (n < 0 || (size_t) n >= buf_len) ? -1 : n;
+}
+
 // Encodes a code point as UTF-8 at out; returns the number of bytes (0 for an invalid one).
 static size_t utf8_encode(unsigned long cp, char *out)
 {

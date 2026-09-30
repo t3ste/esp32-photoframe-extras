@@ -7,8 +7,14 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "feature_config.h"
 #include "http_fetch.h"
 #include "image_processor.h"
+#if FEATURE_CALDAV_TODO
+#include "caldav.h"
+#include "caldav_fetch.h"
+#include "vtodo.h"
+#endif
 
 static const char *TAG = "todo";
 
@@ -243,6 +249,35 @@ static char *read_whole_file(const char *path, size_t *out_len)
     return buf;
 }
 
+#if FEATURE_CALDAV_TODO
+// A caldav(s):// address is a CalDAV task list: one REPORT for its VTODO components (only the open
+// ones if the server takes that filter, else all of them - vtodo_parse() drops the finished
+// ones either way), no ETag and no cache. A task list can be long, so the answer may be larger
+// than a todo.txt.
+#define TODO_CALDAV_MAX_RESPONSE_BYTES (512 * 1024)
+
+static esp_err_t todo_fetch_caldav(const char *url, int timeout_ms, todo_list_t *out)
+{
+    char open_only[CALDAV_REPORT_BODY_MAX], everything[CALDAV_REPORT_BODY_MAX];
+    if (caldav_build_todo_report_body(open_only, sizeof(open_only), true) < 0 ||
+        caldav_build_todo_report_body(everything, sizeof(everything), false) < 0) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    char *text = NULL;
+    size_t len = 0;
+    esp_err_t err =
+        caldav_report_text(url, timeout_ms > 0 ? timeout_ms : TODO_HTTP_TIMEOUT_MS,
+                           TODO_CALDAV_MAX_RESPONSE_BYTES, open_only, everything, &text, &len);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "ToDo fetch failed: %s", esp_err_to_name(err));
+        return err;
+    }
+    err = vtodo_parse(text, len, out);
+    free(text);
+    return err;
+}
+#endif
+
 esp_err_t todo_fetch(const char *url, int timeout_ms, const char *cache_path, const char *etag_in,
                      char *etag_out, size_t etag_out_len, todo_list_t *out)
 {
@@ -256,6 +291,11 @@ esp_err_t todo_fetch(const char *url, int timeout_ms, const char *cache_path, co
     if (!url || url[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
+#if FEATURE_CALDAV_TODO
+    if (caldav_is_url(url)) {
+        return todo_fetch_caldav(url, timeout_ms, out);
+    }
+#endif
 
     char *body = NULL;
     size_t body_len = 0;

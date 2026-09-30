@@ -211,6 +211,16 @@ menu "Photoframe optional features"
             repeating events itself, instead of the frame downloading the whole
             calendar. Needs the source-auth feature (and through it Agenda).
 
+    config FEATURE_CALDAV_TODO
+        bool "CalDAV task lists"
+        default n
+        depends on FEATURE_CALDAV
+        help
+            A caldavs://user:password@host/path address in the Agenda's ToDo
+            field is read as a CalDAV task list: its open to-dos (VTODO) show
+            up in the ToDo column with their priority and due date. Needs
+            the caldav feature.
+
     config FEATURE_UPLOAD_DEDUP
         bool "Duplicate detection at upload"
         default n

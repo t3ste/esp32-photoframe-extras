@@ -2101,6 +2101,11 @@ async function performFactoryReset() {
               ("x " prefix) are never shown. Treated like a password field (never shown back to you)
               since a private feed's URL can embed an access token, the same way a Google Calendar
               link can.
+<!-- #if FEATURE_CALDAV_TODO -->
+              A CalDAV task list of your own server works as well, written
+              caldavs://user:password@host/path (caldav:// for plain http): its open to-dos show up
+              with their priority and due date.
+<!-- #endif -->
             </div>
             <v-text-field
               v-model="settingsStore.deviceSettings.agendaTodoUrl"

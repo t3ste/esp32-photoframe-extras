@@ -29,6 +29,11 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   expands repeating events itself, so monthly/yearly repeats and exceptions (which the on-device reader skips) show up, and a large calendar no
   longer runs into the 2 MB limit; a server that refuses the expand request is asked again without it
   ([docs/CALDAV.md](docs/CALDAV.md)).
+- **`caldav-todo` build option** (`--with caldav-todo`, needs `caldav`): a `caldavs://user:password@host/path` (or `caldav://`) address in the Agenda's ToDo
+  field is read as a CalDAV task list - one `REPORT` for the open to-dos (a server that does not know that filter is asked for all and the finished ones
+  are dropped on the frame). Priority 1-9 becomes the A-D chips, a due date the due colour (a UTC time as the frame's local date), finished and cancelled
+  to-dos are left out, a repeating one is listed once; ordered by due date, then priority. The CalDAV query code is shared with `caldav`
+  ([docs/CALDAV_TODO.md](docs/CALDAV_TODO.md)).
 - **`upload-dedup` build option** (`--with upload-dedup`): every album keeps a small index (`.dedup`) of the MD5 of its images, and an upload the
   album already has is refused (`409`, naming the file; the Web UI offers "Upload anyway") or stored with a warning - as a setting; compared by the file's
   bytes or by the decoded pixels (an EPDGZ inside its gzip wrapper, a PNG as RGB), so the same photo converted by two browsers still counts as one. The

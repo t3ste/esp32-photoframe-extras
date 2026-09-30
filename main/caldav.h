@@ -19,8 +19,11 @@
  * is made by calendar_ics.c through http_fetch_report().
  */
 
-// Room for the REPORT request body of caldav_build_report_body().
+// Room for a REPORT request body (caldav_build_report_body(), caldav_build_todo_report_body()).
 #define CALDAV_REPORT_BODY_MAX 1024
+
+// Room for the http(s) address caldav_resolve_url() makes (the config stores at most 256).
+#define CALDAV_URL_MAX_LEN 300
 
 /** @brief True for a `caldav://` or `caldavs://` address (case-insensitive). */
 bool caldav_is_url(const char *url);
@@ -39,6 +42,16 @@ const char *caldav_resolve_url(const char *url, char *buf, size_t buf_len);
  * @return Length of the body, or -1 if `buf` is too small.
  */
 int caldav_build_report_body(char *buf, size_t buf_len, time_t start, time_t end, bool expand);
+
+/**
+ * @brief Writes the calendar-query REPORT body for the to-dos (VTODO) of a task list.
+ *
+ * @param only_open Ask the server to leave out to-dos that have a COMPLETED time (a server that
+ * does not take this filter answers 4xx; the caller then asks again with `false` and drops the
+ * finished ones itself).
+ * @return Length of the body, or -1 if `buf` is too small.
+ */
+int caldav_build_todo_report_body(char *buf, size_t buf_len, bool only_open);
 
 /**
  * @brief Collects the iCalendar text of a multistatus response, in place.

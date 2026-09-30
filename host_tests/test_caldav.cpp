@@ -163,3 +163,32 @@ TEST(Caldav, HugeResponseIsCompactedInPlace)
     std::string out = extract(xml);
     EXPECT_EQ(out.size(), 200u * 1000u + 199u);  // 200 texts plus the separators
 }
+
+TEST(Caldav, TodoBodyAsksForOpenTodos)
+{
+    char body[CALDAV_REPORT_BODY_MAX];
+    int n = caldav_build_todo_report_body(body, sizeof(body), true);
+    ASSERT_GT(n, 0);
+    EXPECT_EQ(static_cast<size_t>(n), strlen(body));
+    std::string s = body;
+    EXPECT_NE(s.find("<c:comp-filter name=\"VTODO\">"), std::string::npos);
+    EXPECT_NE(s.find("<c:prop-filter name=\"COMPLETED\"><c:is-not-defined/></c:prop-filter>"),
+              std::string::npos);
+    EXPECT_EQ(s.find("time-range"), std::string::npos);  // to-dos are not asked for by time
+    EXPECT_EQ(s.find("expand"), std::string::npos);
+}
+
+TEST(Caldav, TodoBodyForEverything)
+{
+    char body[CALDAV_REPORT_BODY_MAX];
+    ASSERT_GT(caldav_build_todo_report_body(body, sizeof(body), false), 0);
+    std::string s = body;
+    EXPECT_NE(s.find("name=\"VTODO\""), std::string::npos);
+    EXPECT_EQ(s.find("prop-filter"), std::string::npos);
+}
+
+TEST(Caldav, TodoBodyBufferTooSmall)
+{
+    char tiny[64];
+    EXPECT_EQ(caldav_build_todo_report_body(tiny, sizeof(tiny), true), -1);
+}

@@ -13,6 +13,7 @@
 #include <time.h>
 
 #include "caldav.h"
+#include "caldav_fetch.h"
 #endif
 
 static const char *TAG = "calendar_ics";
@@ -695,44 +696,14 @@ const char *calendar_ics_resolve_url(const char *url, char *buf, size_t buf_len)
 static esp_err_t caldav_query(const char *url, int timeout_ms, time_t start, time_t end,
                               char **out_body, size_t *out_len)
 {
-    char resolved_url[ICS_URL_MAX_LEN];
-    const char *http_url = caldav_resolve_url(url, resolved_url, sizeof(resolved_url));
-    if (!http_url) {
-        ESP_LOGW(TAG, "Calendar URL is too long");
-        return ESP_ERR_INVALID_ARG;
+    char with_expand[CALDAV_REPORT_BODY_MAX], without_expand[CALDAV_REPORT_BODY_MAX];
+    if (caldav_build_report_body(with_expand, sizeof(with_expand), start, end, true) < 0 ||
+        caldav_build_report_body(without_expand, sizeof(without_expand), start, end, false) < 0) {
+        return ESP_ERR_INVALID_SIZE;
     }
-    for (int expand = 1; expand >= 0; expand--) {
-        char request[CALDAV_REPORT_BODY_MAX];
-        if (caldav_build_report_body(request, sizeof(request), start, end, expand) < 0) {
-            return ESP_ERR_INVALID_SIZE;
-        }
-        char *body = NULL;
-        size_t len = 0;
-        bool truncated = false;
-        int status = 0;
-        esp_err_t err =
-            http_fetch_report(http_url, timeout_ms > 0 ? timeout_ms : ICS_HTTP_TIMEOUT_MS,
-                              ICS_MAX_RESPONSE_BYTES, request, &body, &len, &truncated, &status);
-        if (err == ESP_OK) {
-            if (truncated) {
-                ESP_LOGW(TAG, "CalDAV response truncated at %d bytes - using what was captured",
-                         ICS_MAX_RESPONSE_BYTES);
-            }
-            *out_body = body;
-            *out_len = caldav_extract_calendar_data(body, len);
-            return ESP_OK;
-        }
-        bool expand_refused =
-            expand && (status == 400 || status == 415 || status == 422 || status == 501);
-        if (!expand_refused) {
-            ESP_LOGW(TAG, "CalDAV query failed: %s", esp_err_to_name(err));
-            return err;
-        }
-        ESP_LOGW(TAG,
-                 "The server did not take the query with expand (HTTP %d) - asking again without",
-                 status);
-    }
-    return ESP_FAIL;
+    return caldav_report_text(url, timeout_ms > 0 ? timeout_ms : ICS_HTTP_TIMEOUT_MS,
+                              ICS_MAX_RESPONSE_BYTES, with_expand, without_expand, out_body,
+                              out_len);
 }
 
 static bool write_cache_file(const char *path, const char *data, size_t len)

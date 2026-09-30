@@ -45,6 +45,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_WEBCAL
   CONFIG_FEATURE_SOURCE_AUTH
   CONFIG_FEATURE_CALDAV
+  CONFIG_FEATURE_CALDAV_TODO
   CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
@@ -196,6 +197,33 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# iCalendar to-dos as ToDo-column items (caldav-todo feature)
+add_executable(
+  vtodo_test
+  test_vtodo.cpp
+  ../main/vtodo.c
+  stubs/fake_image_processor_sanitize.c
+)
+
+target_compile_definitions(
+  vtodo_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_link_libraries(
+  vtodo_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  vtodo_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Microphone level maths (RMS/peak in dBFS, text bar) behind the console level test
 # (voice-stop feature)
 add_executable(
@@ -336,6 +364,9 @@ add_executable(
   todo_test
   test_todo.cpp
   ../main/todo.c
+  ../main/caldav.c
+  ../main/caldav_fetch.c
+  ../main/vtodo.c
   stubs/fake_http_fetch.c
   stubs/fake_image_processor_sanitize.c
 )
@@ -344,6 +375,7 @@ target_compile_definitions(
   todo_test
   PRIVATE
   ${FORK_FEATURE_DEFS}
+  CALDAV_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/caldav"
 )
 
 target_link_libraries(
@@ -368,6 +400,7 @@ add_executable(
   test_calendar_ics.cpp
   ../main/calendar_ics.c
   ../main/caldav.c
+  ../main/caldav_fetch.c
   stubs/fake_http_fetch.c
   stubs/fake_image_processor_sanitize.c
 )
@@ -401,6 +434,8 @@ add_executable(
   test_example_calendars.cpp
   ../main/calendar_ics.c
   ../main/caldav.c
+  ../main/caldav_fetch.c
+  ../main/vtodo.c
   ../main/todo.c
   stubs/fake_http_fetch.c
   stubs/fake_image_processor_sanitize.c
@@ -434,6 +469,7 @@ gtest_discover_tests(http_auth_test)
 gtest_discover_tests(source_auth_test)
 gtest_discover_tests(caldav_test)
 gtest_discover_tests(dedup_test)
+gtest_discover_tests(vtodo_test)
 gtest_discover_tests(network_backoff_test)
 gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)
