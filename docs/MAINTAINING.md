@@ -84,6 +84,8 @@ Why two: GitHub allows one fork of a repository per account, and the maintainer'
 its slot for the older fork, so the project began as a standalone repository there. A second account
 (`t3stier`) made the real fork; the first repository was kept as a mirror.
 
+The **extended line** (the `extras` features, kept next to `main`) has its own repository and a source branch: see [EXTENDED_LINE.md](EXTENDED_LINE.md).
+
 Local remotes: `origin` = mirror, `t3stier` = canonical fork, `upstream` = aitjcize. **Every push goes to both**:
 
 ```sh

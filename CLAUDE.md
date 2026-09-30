@@ -4,6 +4,10 @@ This repository is a fork of `aitjcize/esp32-photoframe` with 16 opt-in features
 [docs/MAINTAINING.md](docs/MAINTAINING.md) first** - it has the accounts, the git model, the design, the commands,
 the pitfalls and the open items.
 
+**The extended line.** The branch/repository that carries the `extras` features is described in
+[docs/EXTENDED_LINE.md](docs/EXTENDED_LINE.md) (where it lives, how it is kept in step with `main`, releases, the check set, open
+items, ideas decided against). Read that page too when you work on it.
+
 Rules that must not be forgotten (details and reasons in MAINTAINING.md):
 
 - **No build option = upstream firmware, 1:1** (Kconfig, ELF symbols, `.bin` size, web bundle). Guard every change to

@@ -1,5 +1,15 @@
 # ESP32 PhotoFrame — a configurable fork
 
+> **Extended edition.** This is the `extras` line of the firmware: the base project
+> ([t3stier/esp32-photoframe-rebuild](https://github.com/t3stier/esp32-photoframe-rebuild), branch `main`) plus webcal, CalDAV,
+> batch upload, duplicate detection and the information pages (weather, exchange rates, fuel prices, markets, ...), switched
+> on with `--with extras`. It is a hobby-scale variant, **tested on one board only** - see
+> [docs/EXTENDED_EDITION.md](docs/EXTENDED_EDITION.md). Releases and the web flasher:
+> [t3ste/esp32-photoframe-extras](https://github.com/t3ste/esp32-photoframe-extras).
+> **Building it yourself? Set `--ota-repo t3ste/esp32-photoframe-extras` or switch the automatic update check off** (Settings ->
+> Power): a frame built from source asks the *base* project for updates by default, and installing one replaces this build with the
+> base firmware, which has none of the extras.
+
 > **About this repository.** A rebuild of
 > [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe), run as a fork of
 > it: the canonical repository is the GitHub fork

@@ -19,6 +19,9 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **Extended edition** ([docs/EXTENDED_EDITION.md](docs/EXTENDED_EDITION.md), [docs/EXTENDED_LINE.md](docs/EXTENDED_LINE.md)): this line of the firmware is published next to the base project - source in
+  the branch `extras`, releases, update feed and web flasher in `t3ste/esp32-photoframe-extras`. New: a README notice with the warning about the update feed of self-built frames, a hardware test report
+  issue template, the maintainer's guide for keeping it in step with `main`, and `SITE_REPO` (the demo site's base path and repository links follow the repository it is published from; unset = unchanged).
 - **[docs/EXTRAS_USER_GUIDE.md](docs/EXTRAS_USER_GUIDE.md)**: a user guide to the newer options - what each does, where it is switched on in the Web UI, what to enter and what you need (keys, servers,
   a place), the notes on the information pages, how keys and passwords are kept, and a table of what to do when a page or calendar does not show up.
 - **`extras` bundle** (`--with extras`): one name for every option added after the first fork release - `webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `upload-dedup`,

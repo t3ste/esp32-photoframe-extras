@@ -321,6 +321,9 @@ jobs:
         node-version: '20'
 
     - name: Build demo webapp
+      env:
+        # the site names the repository it is published from (webapp/vite.config.demo.js)
+        SITE_REPO: ${{ github.repository }}
       run: |
         cd webapp
         npm ci
