@@ -37,6 +37,8 @@ turn of the rotation tries again.
 
 - Currencies only. Stocks, crypto and commodities have no source of this kind: the interface the original idea used is undocumented
   and its terms forbid some uses, so it is deliberately not built in. Another source can be added the same way (`fx_rates.c` is the
-  request and the parser, `screen_finance.c` the drawing).
+  request and the parser, `screen_finance.c` the drawing). Sources for stocks, ETFs and indices have been compared (checked 2026-09-30): Yahoo's
+  chart endpoint (no key, worldwide, but unofficial), Twelve Data (free key, 800 requests a day, US stocks/ETFs, forex, crypto) and Alpha Vantage (free key, 25 requests a day, the only official free one
+  with European listings) make the best chain of fallbacks; none of them is built in yet.
 - The rates are reference rates at a fixed time of the day, not live quotes.
 - Up to four currencies, 30 working days.
