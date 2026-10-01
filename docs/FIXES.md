@@ -29,10 +29,10 @@ corrections and hardening changes over upstream's own behavior, gated behind one
   GitHub answered with `Transfer-Encoding: chunked` rather than a fixed `Content-Length`.
 - **Home Assistant integration**: `ha_is_configured()` also checks the enabled toggle, not just whether a URL is
   saved, so a disabled integration doesn't send (or log an intent to send) notifications.
-- **Diagnostics**: a stored crash coredump now also logs `exc_cause`/`exc_vaddr` (distinguishes a null/dangling
-  pointer fault from other fault classes), not just the backtrace; free/used NVS entry counts are logged on every
-  boot, so a slow drift toward exhaustion is visible before it actually triggers a full NVS erase; that erase
-  itself now logs loudly when it happens, instead of silently.
+- **Diagnostics**: free/used NVS entry counts are logged on every boot, so a slow drift toward exhaustion is
+  visible before it actually triggers a full NVS erase; that erase itself now logs loudly when it happens,
+  instead of silently. (The exception cause and fault address of a crash, which this option used to add to the
+  boot log, are part of upstream's own crash record now - the Maintenance tab's **Last crash**.)
 - **Concurrency / memory safety**: the enabled-albums list is now protected by a mutex (several tasks - the HTTP
   server, the Telegram bot, auto-rotate - could otherwise race a read against a concurrent change); the buffer
   holding the currently-displayed image's path was widened from 64 to 256 bytes after real-world filenames
