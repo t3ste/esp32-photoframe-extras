@@ -60,3 +60,6 @@ docs/CHIMES_CLIMATE_OVERHEAD.md
 # Outdated process-cli flowcharts (predate face-crop/capture-date); regenerate and re-add if
 # wanted, see docs/FACE_CROP.md and process-cli/README.md
 docs/diagrams/
+
+# Local helper files and programs of the assistant: kept on this machine only, never published
+/local-tools/
