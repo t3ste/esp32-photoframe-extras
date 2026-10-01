@@ -7,6 +7,10 @@ A page for the [information screens](INFO_SCREENS.md) with the **reference excha
 currency with the price of one euro in that currency in big digits, the change against the working day before (a green arrow up, a red
 arrow down) and a line chart of the last 30 working days.
 
+<img src="screens/info-exchange-rates.png" width="480" alt="The exchange-rate page: four currencies with the price of one euro, the daily change and a line">
+
+*Sample data, drawn by the firmware's own code - [more pictures](SCREENSHOTS.md).*
+
 ## Settings
 
 - Settings -> Agenda -> Information screens: tick **Exchange rates**.

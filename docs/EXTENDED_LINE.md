@@ -131,6 +131,9 @@ build again. `make` may not exist on Windows: run the parts by hand.
 
 - Per feature: `docs/<FEATURE>.md` (settings, limits, fixtures, how it was verified); for users
   [EXTRAS_USER_GUIDE.md](EXTRAS_USER_GUIDE.md); the option matrix in [FEATURES.md](FEATURES.md); the changelog.
+- What the display looks like: [SCREENSHOTS.md](SCREENSHOTS.md) and `docs/screens/`, with made-up data - no real names, places or calendars in a picture. The
+  information pages come from `host_tests/render_screens.cpp` (commands in that page); the Agenda pictures from a small program that is deliberately not in the
+  repository (the maintainer keeps their helper files local) - redraw them whenever the look of a page changes.
 - Fixtures of real service answers: `host_tests/data/{ecb,tankerkoenig,market,caldav,...}` with a README each (no secrets; invented data).
 - Design notes per page: the information pages are pure drawing functions (`main/screen_*.c`, host-tested for five panel sizes, pictures
   via `host_tests/render_screens.cpp`); data fetching lives in `info_screens.c` / `market_service.c`; settings in `config_manager.c`,

@@ -9,6 +9,8 @@ The **extended edition** is this firmware plus a group of newer options that are
 With no option chosen the firmware is still the upstream firmware, exactly as in the base project; the extras only exist when
 you switch them on (or build the full firmware, which contains everything the board supports).
 
+What the pages and the Agenda look like: [SCREENSHOTS.md](SCREENSHOTS.md).
+
 ## Why a separate edition
 
 The extras are a large change for a small audience, and only one board was available for testing them. They are therefore kept

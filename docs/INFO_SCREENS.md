@@ -8,6 +8,8 @@ The Agenda draws a page of ToDo items and calendar events whenever its schedule 
 this option the frame can also draw **other full-screen pages** on that same schedule: every time the schedule would draw the
 Agenda, the next page of the rotation is drawn instead. The Agenda itself is one member of the rotation.
 
+A picture of every page, and of the Agenda it takes turns with: [SCREENSHOTS.md](SCREENSHOTS.md).
+
 ## Settings
 
 Settings -> Agenda -> **Information screens**: tick the pages that take part. The Agenda is ticked by default, so a firmware

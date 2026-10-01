@@ -7,6 +7,10 @@ A full-screen weather page for the [information screens](INFO_SCREENS.md): today
 temperature, and the next four days as rows. It is drawn on the schedule of the Agenda (Settings -> Agenda -> Schedule) whenever
 its turn comes in the rotation.
 
+<img src="screens/info-weather.png" width="480" alt="The weather page: today as a big icon and temperature, the next four days as rows">
+
+*Sample data, drawn by the firmware's own code - [more pictures](SCREENSHOTS.md).*
+
 ## Settings
 
 - Settings -> Agenda -> Information screens: tick **Weather**.

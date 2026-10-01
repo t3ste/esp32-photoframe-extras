@@ -18,6 +18,12 @@ sign, the euro sign, other accents, emoji - was dropped. With this option nine c
 Because the umlauts are built from the font's letters they always match it. Every other character that has no glyph (é, ñ,
 emoji, ...) is still dropped, as before.
 
+The fact-of-the-day page in German, with ä, ö, ü, Ü and ß drawn as themselves:
+
+<img src="screens/info-fact-de.png" width="480" alt="The fact of the day page in German, with umlauts and a sharp s">
+
+*Sample data, drawn by the firmware's own code - [more pictures](SCREENSHOTS.md).*
+
 ## Where it shows
 
 Everything that goes through the frame's text drawing: the overlay bar with captions and headlines, the Agenda's ToDo and

@@ -7,6 +7,10 @@ A page for the [information screens](INFO_SCREENS.md) with the **prices of up to
 and currency pairs: the last price in big digits with its currency, the change against the day before (green up, red down) and a line of the last
 30 days. It complements the [exchange-rate page](FINANCE_SNAPSHOT.md), which only knows the ECB's currencies.
 
+<img src="screens/info-markets.png" width="480" alt="The markets page: four symbols with the last price, the daily change and a 30-day line">
+
+*Sample data, drawn by the firmware's own code - [more pictures](SCREENSHOTS.md).*
+
 ## Settings
 
 Settings -> Agenda -> Information screens: tick **Markets**, then

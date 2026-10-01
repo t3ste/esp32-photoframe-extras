@@ -33,6 +33,10 @@ something does not show up. Each section ends with a link to the detailed page f
 
 All of this happens in **Settings -> Agenda**, in the same address fields the Agenda always had (Calendar A-E and the ToDo list).
 
+<img src="screens/agenda-grid-a.png" width="480" alt="The Agenda as a 7-day grid">
+
+*The Calendar column as a 7-day grid (Settings -> Agenda -> Layout). The other layouts and a colour profile: [SCREENSHOTS.md](SCREENSHOTS.md).*
+
 ### webcal links
 
 A calendar app's "subscribe" link looks like `webcal://calendar.example.org/me.ics`. Paste it into a calendar field as it is; the
@@ -121,11 +125,13 @@ with the number of pictures - it is someone else's free service. More: [ART_FETC
 With `glyphs`, the text the frame draws itself shows **ä ö ü Ä Ö Ü ß ° €** as themselves instead of `ae oe ue ss` and nothing.
 There is nothing to set. Other accented letters and emoji are still left out. More: [GLYPHS.md](GLYPHS.md).
 
+<img src="screens/info-fact-de.png" width="400" alt="A German page with umlauts and a sharp s">
+
 ## 4. Information screens
 
 The Agenda draws a page of calendar events and to-dos whenever its schedule fires. With the information screens, the frame can
 draw **other full-screen pages** on the same schedule: at each run, the next page of the rotation is drawn instead. The Agenda
-is one member of the rotation.
+is one member of the rotation. A picture of each page: [SCREENSHOTS.md](SCREENSHOTS.md).
 
 ### Switching pages on
 
@@ -151,6 +157,8 @@ does not answer, the page says so instead of drawing an empty picture, and the n
 
 ### Chore wheel
 
+<img src="screens/info-chore-wheel.png" width="400" alt="The chore wheel page">
+
 *Who does which chore this week.* Tick **Chore wheel** and fill in two lists, separated by commas:
 
 | Field | Example | Limits |
@@ -165,12 +173,16 @@ enough panels) the name for next week. Without members or chores the page tells 
 
 ### Weather
 
+<img src="screens/info-weather.png" width="400" alt="The weather page">
+
 *Today's weather big, and the next four days.* Tick **Weather**. The place and the weather service come from the **Overlays**
 tab (Weather location - a name or coordinates - and the service); nothing is entered twice. The page shows today's high in
 large digits with a big icon, the low in blue under it, the condition in words, and four more days as rows. Without a place it
 says so. More: [WEATHER_SCREEN.md](WEATHER_SCREEN.md).
 
 ### Fact of the day
+
+<img src="screens/info-fact.png" width="400" alt="The fact of the day page">
 
 *One fact a day*, the same all day, changing at midnight: a topic, the fact in the biggest text that fits, and - if it has one -
 a question to think about. Tick **Fact of the day**. The frame has 24 built-in facts in English and German.
@@ -190,6 +202,8 @@ facts. (Needs storage.) More: [FACT_OF_THE_DAY.md](FACT_OF_THE_DAY.md).
 
 ### Exchange rates
 
+<img src="screens/info-exchange-rates.png" width="400" alt="The exchange-rate page">
+
 *The ECB reference rates against the euro.* Tick **Exchange rates** and, if you like, enter up to four currency codes
 (`USD, GBP, CHF, JPY` - the default). Each row shows the price of 1 euro in that currency, the change against the working day
 before (a green arrow up, a red arrow down) and a line of the last 30 working days. No account and no key are needed. The ECB
@@ -197,6 +211,8 @@ publishes once on working days, so on weekends you see Friday's rates. A currenc
 example ones it stopped publishing) is left out. More: [FINANCE_SNAPSHOT.md](FINANCE_SNAPSHOT.md).
 
 ### Fuel prices (Germany)
+
+<img src="screens/info-fuel-prices.png" width="400" alt="The fuel-price page">
 
 *The cheapest petrol stations around a place, priced like on the pump.* Tick **Fuel prices**, then:
 
@@ -211,6 +227,8 @@ attribution the licence asks for. If this page comes up more often than every 5 
 schedule), **lengthen the schedule**: the service asks home-automation systems not to query more often than once in 5 minutes. More: [FUEL_PRICES.md](FUEL_PRICES.md).
 
 ### Markets (stocks, ETFs, indices, crypto, currency pairs)
+
+<img src="screens/info-markets.png" width="400" alt="The markets page">
 
 *Up to four symbols with the last price, the change against the day before and a line of the last 30 days.* Tick **Markets**
 and type the symbols the way Yahoo writes them, separated by commas. Empty means `AAPL, EUNL.DE, ^GDAXI, BTC-EUR`.

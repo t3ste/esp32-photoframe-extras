@@ -19,6 +19,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **Pictures of the display** ([docs/SCREENSHOTS.md](docs/SCREENSHOTS.md), `docs/screens/`): the Agenda in its layouts (7-day grid A and B, ToDo and Calendar stacked and side by side) and in a colour profile, and every
+  information page, with made-up sample data (no real names, places or calendars); also in the user guide to the extras, the page of each option, the README and the demo package. The information pages are drawn
+  by the firmware's own drawing code through `host_tests/render_screens.cpp` (it existed; the page says how to draw them again), the Agenda pictures by the real `agenda_renderer.c` run on a PC with made-up
+  sources by a small program that is not part of the repository.
 - **Extended edition** ([docs/EXTENDED_EDITION.md](docs/EXTENDED_EDITION.md), [docs/EXTENDED_LINE.md](docs/EXTENDED_LINE.md)): this line of the firmware is published next to the base project - source in
   the branch `extras`, releases, update feed and web flasher in `t3ste/esp32-photoframe-extras`. New: a README notice with the warning about the update feed of self-built frames, a hardware test report
   issue template, the maintainer's guide for keeping it in step with `main`, and `SITE_REPO` (the demo site's base path and repository links follow the repository it is published from; unset = unchanged).
@@ -125,6 +129,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Fixed
 
+- **Host render harness: the `fact-long` case overran a buffer.** It copied a 63-character title into the 48-byte title of the fact with a plain `strcpy`, which wrote 16 bytes into the text field after it (hidden only
+  because the text was written over it afterwards; a fortified build aborted). It truncates now. Only test code - the firmware's own title handling was not involved.
 - **Agenda: with the frame awake (USB power) the next render came about 25 s too early, and a second one followed at once.** After a render the seconds to the next cron match come from the wall clock, but
   they were added to the time from before the render (the fetches and the panel's ~20 s refresh), so the next render fired right before the cron boundary and, one second later, again. The Agenda was drawn twice
   per turn - and with the `info-screens` option the rotation advanced twice, so every other page was on the panel for only a few seconds. Upstream fixed the same slip for the photo rotation; this is the same

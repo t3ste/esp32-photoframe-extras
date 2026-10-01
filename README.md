@@ -82,6 +82,22 @@ needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
 | 📤 `multi-upload` | Upload a whole selection of photos in the Web UI, or pre-rendered EPDGZ/PNG files (e.g. from `process-cli`) as they are | - | [docs](docs/MULTI_UPLOAD.md) |
 | 🛠️ `fixes` | General bug fixes and robustness improvements over upstream | - | [docs](docs/FIXES.md) |
 
+### What it looks like
+
+<table>
+<tr>
+<td><a href="docs/SCREENSHOTS.md"><img src="docs/screens/agenda-grid-a.png" width="330" alt="The Agenda as a 7-day grid"></a></td>
+<td><a href="docs/SCREENSHOTS.md"><img src="docs/screens/info-weather.png" width="330" alt="The weather page"></a></td>
+</tr>
+<tr>
+<td><a href="docs/SCREENSHOTS.md"><img src="docs/screens/info-chore-wheel.png" width="330" alt="The chore wheel page"></a></td>
+<td><a href="docs/SCREENSHOTS.md"><img src="docs/screens/info-markets.png" width="330" alt="The markets page"></a></td>
+</tr>
+</table>
+
+The Agenda's layouts and colour profiles and every information page, drawn with sample data by the firmware's own code:
+[docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+
 ## Ecosystem
 
 This project has companion tools for different use cases:

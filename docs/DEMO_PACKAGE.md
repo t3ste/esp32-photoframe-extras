@@ -66,7 +66,8 @@ storage profile - no camera, no licence question. Regenerate with `python script
 **Color profiles** (`examples/waveshare_photopainter_73/color_profiles/`): three exports of the Agenda's Calendar
 color profiles (the same file `profile-editor.html` and the Settings -> Agenda -> Calendar color profiles
 **Export** button produce), differing in their marking color (white, yellow, blue). Import one into a profile slot
-(1-3) to see the Calendar view in it - they hold color choices only.
+(1-3) to see the Calendar view in it - they hold color choices only. How profile 1 looks:
+[SCREENSHOTS.md](SCREENSHOTS.md#a-colour-profile).
 
 ## What it can't show
 

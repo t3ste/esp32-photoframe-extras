@@ -7,6 +7,10 @@ A page for the [information screens](INFO_SCREENS.md) with the **cheapest petrol
 its brand, street and town, the distance and the price in big digits with the third decimal small, like on the pump. **Germany only** - the
 prices come from the Markttransparenzstelle fuer Kraftstoffe through the free [Tankerkoenig](https://creativecommons.tankerkoenig.de) API.
 
+<img src="screens/info-fuel-prices.png" width="480" alt="The fuel-price page: five petrol stations, the cheapest first, with the price like on the pump">
+
+*Sample data, drawn by the firmware's own code - [more pictures](SCREENSHOTS.md).*
+
 ## Settings
 
 Settings -> Agenda -> Information screens: tick **Fuel prices**, then

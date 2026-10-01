@@ -7,6 +7,10 @@ A page for the [information screens](INFO_SCREENS.md) that shows one fact a day:
 topic of the fact as a blue pill, the fact itself in the biggest text that fits, and - if the fact has one - a yellow box with a
 question to think about. The fact changes at midnight (local time) and is the same all day, however often the page is drawn.
 
+<img src="screens/info-fact.png" width="480" alt="The fact of the day page: a red header, the topic as a blue pill, the fact and a yellow question box">
+
+*Sample data, drawn by the firmware's own code - [more pictures](SCREENSHOTS.md).*
+
 ## Settings
 
 - Settings -> Agenda -> Information screens: tick **Fact of the day**.

@@ -6,6 +6,10 @@
 A page for the fridge-door frame: **who does which chore this week**. A donut wheel with one coloured sector per household member
 on one side, one card per chore on the other; the chores go round the members week by week, so nobody has to remember whose turn it is.
 
+<img src="screens/info-chore-wheel.png" width="480" alt="The chore wheel page: a donut with one coloured sector per household member and one card per chore">
+
+*Sample data, drawn by the firmware's own code - [more pictures](SCREENSHOTS.md).*
+
 ## Settings
 
 Settings -> Agenda -> Information screens: tick **Chore wheel**, then fill in two lists (separate the names with commas; semicolons
