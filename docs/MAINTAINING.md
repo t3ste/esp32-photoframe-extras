@@ -136,7 +136,7 @@ them: no fetch, pull, checkout, commit, gc or new files there.
   action (section 14).
 - Because history now reaches upstream's true root, `git rev-list --max-parents=0 HEAD` is **not** the baseline.
   The scripts use fixed SHAs: the **graft point** `1347744...` (never moves; `gate.py` uses it) and the
-  **equality baseline**, the newest merged upstream commit (`495e0b6900d63ab2d75877d4e269d101834c379e` at the
+  **equality baseline**, the newest merged upstream commit (`f5e3ec974403b31174a3c8da1cf09385453f4abb` at the
   time of writing), stored in `scripts/verify_baseline.py` (`upstream_sha`) and `scripts/migrate/alloff_source.py`
   (`BASELINE`, imported by `alloff_web.py`). Move the baseline with each upstream merge (section 12).
 - Branches: `main` (release line), `feature/<name>` for work (merged locally into `main` after the checks,
@@ -212,12 +212,12 @@ which to run after which change.
 | Feature tooling unit tests | `python -m unittest discover -s scripts -p "test_*.py"` | registry, `generate_manifests.py`, `verify_baseline.py` helpers | - |
 | Capability tables | `python scripts/check_capabilities.py` | boards/capabilities/Kconfig agree | - |
 | Cross-reference | `python scripts/migrate/xref.py [set ...]` | a symbol defined only in a guarded-out region, or in a header included conditionally (seconds instead of a build) | not a compile |
-| All-off C sources | `python scripts/migrate/alloff_source.py` | with every guard resolved "off", each C/H file equals the upstream text at `BASELINE` (170 files; intended differences listed in the script) | build wiring, web |
-| All-off web sources | `python scripts/migrate/alloff_web.py` | same for the 31 web sources that reach the device bundle (runs the real directive plugin through node; only `webapp/index-demo.html` may differ) | build output |
+| All-off C sources | `python scripts/migrate/alloff_source.py` | with every guard resolved "off", each C/H file equals the upstream text at `BASELINE` (175 files; intended differences listed in the script) | build wiring, web |
+| All-off web sources | `python scripts/migrate/alloff_web.py` | same for the 33 web sources that reach the device bundle (runs the real directive plugin through node; only `webapp/index-demo.html` may differ) | build output |
 | Binary acceptance A | `python scripts/verify_baseline.py --board <b>` (IDF shell) | Kconfig symbols, ELF `nm`, `.bin` size equal to an upstream build; `--all-features` variants compare against the old fork | **feeds both builds the same prebuilt web assets - cannot see web differences** |
 | Web bundle byte compare | manual, below | the all-off web bundle is byte-identical to a build of upstream's own webapp | - |
 | Compile matrix | `python scripts/feature_matrix.py --board <b> off fixes single ...` (IDF shell) | every flag alone, none, all compile (`--full` also links) | runtime |
-| Host tests | section 7 | 557 tests: upstream tests on the all-off code + module tests + "(fork)" image variants | hardware |
+| Host tests | section 7 | 564 tests: upstream tests on the all-off code + module tests + "(fork)" image variants | hardware |
 
 After **any** edit to a shared file: `alloff_source.py`, `alloff_web.py`, `xref.py`, host tests, plus a real build
 of the board you touched. After an **upstream merge** or a **web change**: also the manual bundle compare and
@@ -282,7 +282,7 @@ ctest --test-dir ~/pf-host-build            # SERIAL: tests of one binary share 
 ```
 
 Keep the build directory outside the repository. `-j` with ctest makes the DisplayFlow tests flake. Result at the
-time of writing: 557/557.
+time of writing: 564/564.
 
 **Tooling traps on Windows**: `json.dumps` reformats files (edit JSON as text); backslash escapes and odd numbers
 of quotes/backticks in shell-tool heredocs are unreliable (write patch scripts to a file and run them); `which`
@@ -414,7 +414,7 @@ The Pages site keeps offering the newest published pre-release until a newer sta
 ## 12. Merging upstream changes
 
 Do it when the maintainer asks, never on your own initiative. Experience from the three merges so far
-(`151e716`, `7ccabe0`, `495e0b6`):
+(`151e716`, `7ccabe0`, `495e0b6`, `f5e3ec9`):
 
 1. `git fetch upstream`; `git log refs/heads/main..upstream/main --oneline`; branch `feature/upstream-<date>`;
    `git merge upstream/main` (message file, `[skip ci]` optional for the merge commit).
@@ -580,14 +580,14 @@ fix; the rest are standing notes, not work items.
 | `components/` | Drivers and HAL: `board_hal`, e-paper drivers, sensors, RTC, PMIC, SD card |
 | `boards/` | `boards.json`, `capabilities.json`, per-board sdkconfig defaults |
 | `features/` | `sdkconfig.defaults.<feature>` overlays |
-| `sdkconfig.defaults`, `sdkconfig.defaults.debug` | Base sdkconfig (note `CONFIG_ESP_TLS_INSECURE`: without a pinned certificate, HTTPS image/ICS fetches do not verify the server) |
+| `sdkconfig.defaults` | Base sdkconfig (note `CONFIG_ESP_TLS_INSECURE`: without a pinned certificate, HTTPS image/ICS fetches do not verify the server) |
 | `scripts/features.py`, `boards.py`, `check_capabilities.py`, `feature_matrix.py` | Feature registry, board tables, checks, compile matrix |
 | `scripts/verify_baseline.py`, `scripts/migrate/` | Equality proofs (`alloff_source.py`, `alloff_web.py`, `xref.py`), the one-off `gate.py` and its `maps/` |
 | `scripts/generate_manifests.py`, `launch_demo.py` | Web flasher manifests, local demo server |
 | `scripts/test_*.py` | Tooling unit tests (41) |
 | `webapp/` | Vue web UI; `feature-directives.js`, `vite.config.js`, `vite.config.demo.js`, `index-demo.html`, `src/` |
 | `process-cli/` | Host-side image processing tool (Node) |
-| `host_tests/` | GoogleTest host tests (557) |
+| `host_tests/` | GoogleTest host tests (564) |
 | `demo/` | Tracked stubs (`.nojekyll`, `_headers`, `favicon.svg`); the rest is generated site output (gitignored) |
 | `.github/workflows/ci.yml`, `build.yml` | CI, builds, release, Pages deploy |
 | `docs/FEATURES.md` | User-facing feature list and OTA notes |
