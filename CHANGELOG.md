@@ -31,6 +31,13 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Changed
 
+- Upstream `f5e3ec9` is merged (six commits of 2026-09-29, all about crash reports): **core dumps are captured in every build**, in the 56 KiB that were free below `ota_0` (the partition table
+  generator puts the `coredump` partition there on every board layout); the last crash is kept as one record in the settings memory (reason, task, program counter, backtrace, firmware version, the ELF's
+  SHA-256), reported by `GET /api/system-info` as `last_crash`, shown in the Maintenance tab (**Last crash**, with a copy button) and cleared by `POST /api/crash/clear`; the CI attaches each board's
+  ELF to the release (`[board]-[version].elf`, for decoding a crash report - [docs/DEV.md](docs/DEV.md)). The `--debug` build option and `sdkconfig.defaults.debug` are gone (they did what is now always
+  on), and so is the `fixes` option's extra `exc_cause`/`exc_vaddr` log line of the boot-time coredump summary: the new record names the exception and the faulting address itself. The CI uploads the ELF
+  of the full builds only - the plain build would upload an artifact of the same name. A frame updated over OTA keeps its old partition table and so has no `coredump` partition: it records no crash
+  (the firmware copes with that), a web-flasher install of this release does.
 - Upstream `495e0b6` is merged (two commits, both in `main/main.c`): waking a frame with its CLEAR button no longer
   re-runs `board_hal_init()`/`display_manager_init()` (the second `spi_bus_initialize()` aborted, so the frame
   panicked and rebooted instead of clearing the screen - every ESP32-S3 board was affected; the climate reading

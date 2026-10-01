@@ -314,9 +314,9 @@ def main():
 
     assets = prepare_shared_assets(args.board)
     # The newest aitjcize/esp32-photoframe commit merged into this repository:
-    # 495e0b6 (after v2.18.0-27, the commit the history is grafted onto). Move it
+    # f5e3ec9 (after v2.18.0-27, the commit the history is grafted onto). Move it
     # with every upstream merge (docs/MAINTAINING.md section 12).
-    upstream_sha = "495e0b6900d63ab2d75877d4e269d101834c379e"
+    upstream_sha = "f5e3ec974403b31174a3c8da1cf09385453f4abb"
     ref = args.baseline or upstream_sha
     ensure_reference(reference_tree, work, args.board, ref, args.baseline_args, assets)
 

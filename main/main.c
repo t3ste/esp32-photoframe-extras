@@ -28,6 +28,7 @@
 #include "color_palette.h"
 #include "config.h"
 #include "config_manager.h"
+#include "crash_log.h"
 #include "debug_log.h"
 #include "display_manager.h"
 #include "driver/gpio.h"
@@ -68,10 +69,6 @@
 #include "utils.h"
 #include "wifi_manager.h"
 #include "wifi_provisioning.h"
-
-#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
-#include "esp_core_dump.h"
-#endif
 
 static const char *TAG = "main";
 
@@ -942,51 +939,6 @@ static void deep_sleep_wake_task(void *arg)
 }
 
 #endif
-#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
-// Dev builds only: if the previous boot stored a core dump (panic), log the
-// crashed task + backtrace so it lands in the persistent debug log, then clear
-// it. Resolve the addresses offline against build/esp32-photoframe.elf with
-// xtensa-esp32s3-elf-addr2line. Used to root-cause the #105 wake-path crash.
-static void log_coredump_summary(void)
-{
-    if (esp_core_dump_image_check() != ESP_OK) {
-        return;  // no valid core dump stored
-    }
-
-    char reason[200];
-    if (esp_core_dump_get_panic_reason(reason, sizeof(reason)) == ESP_OK) {
-        ESP_LOGE(TAG, "COREDUMP: panic reason: %s", reason);
-    }
-
-    esp_core_dump_summary_t summary;
-    esp_err_t err = esp_core_dump_get_summary(&summary);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "COREDUMP: stored but could not be summarised (%s); left in flash",
-                 esp_err_to_name(err));
-        return;
-    }
-#if FORK_FIXES
-    ESP_LOGE(TAG, "COREDUMP: task '%s' crashed at PC 0x%08x (%u frames%s)", summary.exc_task,
-             (unsigned) summary.exc_pc, (unsigned) summary.exc_bt_info.depth,
-             summary.exc_bt_info.corrupted ? ", CORRUPTED" : "");
-    // exc_cause/exc_vaddr distinguish a null/dangling-pointer access
-    // (LoadProhibited=28/StoreProhibited=29, exc_vaddr = the bad address)
-    // from other fault classes - not previously logged, so every past
-    // crash summary only had the backtrace to go on.
-    ESP_LOGE(TAG, "COREDUMP   exc_cause=%u exc_vaddr=0x%08x", (unsigned) summary.ex_info.exc_cause,
-             (unsigned) summary.ex_info.exc_vaddr);
-#else
-    ESP_LOGE(TAG, "COREDUMP: task '%s' crashed at PC 0x%08x (%u frames)", summary.exc_task,
-             (unsigned) summary.exc_pc, (unsigned) summary.exc_bt_info.depth);
-#endif
-    for (uint32_t i = 0; i < summary.exc_bt_info.depth; i++) {
-        ESP_LOGE(TAG, "COREDUMP   bt[%u] 0x%08x", (unsigned) i,
-                 (unsigned) summary.exc_bt_info.bt[i]);
-    }
-    esp_core_dump_image_erase();  // clear so it isn't re-reported on every boot
-}
-#endif
-
 void app_main(void)
 {
     // Check reset reason to detect crashes
@@ -1090,10 +1042,9 @@ void app_main(void)
     // watchdog, power-on) lands in normal-init instead of the rotation path.
     ESP_LOGI(TAG, "Reset reason: %s", reset_reason_str);
 
-#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
-    // Dev builds: surface any core dump left by a previous crash into the log.
-    log_coredump_summary();
-#endif
+    // A core dump from the previous boot becomes the last-crash record. Done
+    // before the RTC init below, so a crash there can't loop unrecorded.
+    crash_log_capture();
 
     // Initialize external RTC (via HAL). Kept after debug_log_init so this — the
     // suspected #105 crash site — is captured in the persistent log.

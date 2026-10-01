@@ -136,7 +136,6 @@ def idf_py_command():
 def build_firmware(
     board,
     extra_args,
-    debug=False,
     overlays=(),
     build_dir=DEFAULT_BUILD_DIR,
     command="build",
@@ -147,7 +146,7 @@ def build_firmware(
     overlays are the sdkconfig.defaults files of the enabled features; ota_repo
     ("owner/name") replaces the default release feed of OTA updates.
     """
-    print(f"\n=== Building firmware for {board}{' [debug]' if debug else ''} ===")
+    print(f"\n=== Building firmware for {board} ===")
     sdkconfig_defaults = f"sdkconfig.defaults;boards/sdkconfig.defaults.{board}"
     for overlay in overlays:
         sdkconfig_defaults += f";{overlay}"
@@ -157,11 +156,6 @@ def build_firmware(
         with open(defaults, "w", newline="\n") as out:
             out.write(f'CONFIG_FORK_OTA_REPO="{ota_repo}"\n')
         sdkconfig_defaults += f";{defaults}"
-    if debug:
-        # Debug-only overlay: core-dump-to-flash capture (+ the coredump partition
-        # from generate_partitions.py). Changes the partition table — never used
-        # for release or demo builds.
-        sdkconfig_defaults += ";sdkconfig.defaults.debug"
 
     # Boards differ in target chip (the M5Paper is a plain ESP32, everything
     # else is an ESP32-S3). Pass it explicitly: idf.py resolves the target
@@ -217,12 +211,6 @@ def main():
         "--fullclean",
         action="store_true",
         help="Remove sdkconfig and run idf.py fullclean before building",
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Debug build: enable core-dump-to-flash capture. Changes the "
-        "partition table (adds a coredump partition) — do not ship to users.",
     )
     parser.add_argument(
         "--with",
@@ -314,7 +302,7 @@ def main():
             "build with the release's firmware (the full-feature build of the board)."
         )
 
-    build_state = {"board": args.board, "features": enabled, "debug": args.debug}
+    build_state = {"board": args.board, "features": enabled}
     if args.ota_repo:
         build_state["ota_repo"] = args.ota_repo
 
@@ -337,7 +325,6 @@ def main():
         build_firmware(
             args.board,
             extra_args,
-            debug=args.debug,
             overlays=overlays,
             build_dir=build_dir,
             command="reconfigure",
@@ -349,7 +336,6 @@ def main():
         build_firmware(
             args.board,
             extra_args,
-            debug=args.debug,
             overlays=overlays,
             build_dir=build_dir,
             ota_repo=args.ota_repo,

@@ -152,11 +152,28 @@ jobs:
         # Copy OTA binary with board name for release
         cp build/esp32-photoframe.bin firmware/esp32-photoframe-${{ matrix.board }}${{ matrix.suffix }}.bin
 
+        # Symbols for decoding crash reports (docs/DEV.md). A separate artifact,
+        # so deploy-pages (photoframe-firmware-*) never fetches them. Only the full
+        # build has one: it is the firmware that is released (the plain build would
+        # upload an artifact of the same name).
+        if [ "${{ matrix.variant }}" = "full" ]; then
+          mkdir -p elf
+          cp build/esp32-photoframe.elf elf/${{ matrix.board }}-${{ steps.version.outputs.version }}.elf
+        fi
+
     - name: Upload firmware artifacts
       uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.artifact_prefix }}${{ matrix.board }}
         path: firmware/
+        retention-days: 90
+
+    - name: Upload ELF artifact
+      if: matrix.variant == 'full'
+      uses: actions/upload-artifact@v4
+      with:
+        name: photoframe-elf-${{ matrix.board }}
+        path: elf/
         retention-days: 90
 
   # Every optional feature on its own (plus nothing and everything) must at least
@@ -227,6 +244,13 @@ jobs:
         pattern: photoframe-firmware-*
         merge-multiple: true
 
+    - name: Download all ELF artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: elf-artifacts
+        pattern: photoframe-elf-*
+        merge-multiple: true
+
     - name: Create Release
       uses: softprops/action-gh-release@v3
       with:
@@ -253,6 +277,14 @@ jobs:
           firmware-artifacts/esp32-photoframe-seeedstudio_xiao_ee03.bin
           firmware-artifacts/photoframe-firmware-m5stack_m5paper_v11-merged.bin
           firmware-artifacts/esp32-photoframe-m5stack_m5paper_v11.bin
+          elf-artifacts/waveshare_photopainter_73-${{ github.ref_name }}.elf
+          elf-artifacts/seeedstudio_xiao_ee02-${{ github.ref_name }}.elf
+          elf-artifacts/seeedstudio_reterminal_e1002-${{ github.ref_name }}.elf
+          elf-artifacts/seeedstudio_xiao_ee04-${{ github.ref_name }}.elf
+          elf-artifacts/seeedstudio_reterminal_e1004-${{ github.ref_name }}.elf
+          elf-artifacts/seeedstudio_reterminal_e1003-${{ github.ref_name }}.elf
+          elf-artifacts/seeedstudio_xiao_ee03-${{ github.ref_name }}.elf
+          elf-artifacts/m5stack_m5paper_v11-${{ github.ref_name }}.elf
         body: |
           The firmware in this release is the full build: every optional feature the board's
           hardware supports (see docs/FEATURES.md). It updates itself from these releases.
@@ -288,6 +320,8 @@ jobs:
           # M5Stack M5Paper (ESP32)
           esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 photoframe-firmware-m5stack_m5paper_v11-merged.bin
           ```
+
+          The `[board]-[version].elf` files are debug symbols for decoding crash reports; they are not needed to install.
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

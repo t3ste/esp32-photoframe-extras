@@ -9,6 +9,7 @@ import RotationSchedule from "./RotationSchedule.vue";
 import MicrophoneTools from "./MicrophoneTools.vue";
 import VoiceStopTools from "./VoiceStopTools.vue";
 // #endif
+import LastCrash from "./LastCrash.vue";
 import { isValidCron } from "../utils/cron";
 import { TIMEZONES } from "../data/timezones";
 import {
@@ -3715,6 +3716,8 @@ async function performFactoryReset() {
             <v-divider class="my-6" />
 
 <!-- #endif -->
+            <LastCrash />
+
             <div class="text-subtitle-1 mb-4">Factory Reset</div>
             <v-row>
               <v-col cols="12">
