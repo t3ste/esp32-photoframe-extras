@@ -68,10 +68,11 @@ Rules:
    `b95c483` and the comment text was then made identical (`21c8a7b`), so the merge has nothing to resolve in that hunk.
 2. **Merge, do not cherry-pick**, in one direction: `git merge refs/heads/main` into `feature/ideas`. Nothing is merged from here to
    `main` except by a deliberate decision (single generic fixes go through `main`-first).
-3. **Upstream goes into the base first** (MAINTAINING.md section 12), then into this line via the merge above. Note on 2026-09-30:
-   `upstream/main` is **ahead** of the base (`495e0b6` -> `f5e3ec9`, six commits: core dump partition on every layout, the last crash kept
-   in NVS and shown in the Maintenance tab, ELF attached to releases, a doc). They are not merged yet; the partition change needs care
-   for OTA compatibility.
+3. **Upstream goes into the base first** (MAINTAINING.md section 12), then into this line via the merge above. State on 2026-10-01:
+   the base contains upstream up to `f5e3ec9` (core dump partition on every layout, the last crash kept in NVS and shown in the
+   Maintenance tab, ELF attached to releases) and this line contains the base. The first such round is the model: the three textual
+   conflicts were `CHANGELOG.md` (keep both), `docs/MAINTAINING.md` (the test count - take the measured one) and
+   `SettingsPanel.vue` (both blocks kept); the all-off proofs then moved to the new baseline on their own.
 
 Procedure after the base changed:
 
@@ -116,8 +117,8 @@ Run before every push (all green on 2026-09-30):
 | C/C++ format | `clang-format-18 --dry-run --Werror` on `main/`, `components/`, `host_tests/` | clean |
 | Web format, tests, lint | `cd webapp && npx prettier --check src && npx vitest run && npx eslint src` | 74 tests |
 | Python format, tooling tests | `python -m black --check scripts build.py`, `python -m isort --check-only scripts`, `python -m unittest discover scripts -p "test_*.py"` | 91 tests |
-| Host tests (WSL/Linux) | cmake `host_tests/`, build, `ctest` (serial - a few dedup tests collide in parallel) | 681 tests |
-| Proofs | `alloff_source.py` (170 files), `alloff_web.py` (31 files), `xref.py`, `check_capabilities.py` | 0 differences |
+| Host tests (WSL/Linux) | cmake `host_tests/`, build, `ctest` (serial - a few dedup tests collide in parallel) | 688 tests |
+| Proofs | `alloff_source.py` (175 files), `alloff_web.py` (33 files), `xref.py`, `check_capabilities.py` | 0 differences |
 | Compile matrix | IDF shell: `python scripts/feature_matrix.py --board <b> extras all` for at least Waveshare, M5Paper and XIAO EE02 | OK |
 | Firmware + flash | only with the maintainer's explicit OK, multi-part esptool command (MAINTAINING.md section 13) | |
 
