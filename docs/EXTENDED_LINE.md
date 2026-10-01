@@ -117,7 +117,7 @@ Run before every push (all green on 2026-09-30):
 | C/C++ format | `clang-format-18 --dry-run --Werror` on `main/`, `components/`, `host_tests/` | clean |
 | Web format, tests, lint | `cd webapp && npx prettier --check src && npx vitest run && npx eslint src` | 74 tests |
 | Python format, tooling tests | `python -m black --check scripts build.py`, `python -m isort --check-only scripts`, `python -m unittest discover scripts -p "test_*.py"` | 91 tests |
-| Host tests (WSL/Linux) | cmake `host_tests/`, build, `ctest` (serial - a few dedup tests collide in parallel) | 688 tests |
+| Host tests (WSL/Linux) | cmake `host_tests/`, build, `ctest` (serial - a few dedup tests collide in parallel) | 754 tests |
 | Proofs | `alloff_source.py` (175 files), `alloff_web.py` (33 files), `xref.py`, `check_capabilities.py` | 0 differences |
 | Compile matrix | IDF shell: `python scripts/feature_matrix.py --board <b> extras all` for at least Waveshare, M5Paper and XIAO EE02 | OK |
 | Firmware + flash | only with the maintainer's explicit OK, multi-part esptool command (MAINTAINING.md section 13) | |
@@ -148,6 +148,7 @@ Only the Waveshare PhotoPainter 7.3" was flashed. Not done, and how to check:
 | --- | --- |
 | Other boards (M5Paper first: plain ESP32, no PSRAM assumptions; flash-only XIAO: index files on internal flash; the two 16-grey and the big panels) | flash a full build, tick each page, upload a batch, run a duplicate index; look at colours/greys |
 | `market-quotes` with personal Twelve Data / Alpha Vantage keys, Yahoo over days at a short schedule, a wake without network, the quota counter, the 12 KB wake-task stack with a page, the look on the e-paper | real keys, a day of the debug log, unplug the network once |
+| `artworks`: a rotation on a real frame (the three museums over TLS, the picture decode and conversion, the album, the clean-up, the caption on 6-colour and 16-grey panels, no network -> album), the Smithsonian demo key's quota | flash the full build, set Auto Rotate to *Artworks*, watch the log for a day; unplug the network once; fill the storage |
 | `fuel-prices` with a personal Tankerkoenig key (only the public demo key was used) | real key, a real place in Germany; keep the schedule >= 5 minutes (the service asks for it) |
 | `caldav` / `caldav-todo` against Nextcloud, Baikal, iCloud-like servers; long task lists; `source-auth` Digest/https on a real server | see the per-feature docs |
 | Web UI in Safari/Firefox/Android | batch upload uses `CompressionStream`/`DecompressionStream` |

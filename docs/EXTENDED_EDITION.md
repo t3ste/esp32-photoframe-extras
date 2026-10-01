@@ -3,7 +3,8 @@
 The **extended edition** is this firmware plus a group of newer options that are **not** part of the base project
 ([t3stier/esp32-photoframe-rebuild](https://github.com/t3stier/esp32-photoframe-rebuild), branch `main`): `webcal`, `source-auth`,
 `caldav`, `caldav-todo`, `multi-upload`, `upload-dedup`, `glyphs` and the information pages (`info-screens`, `chore-wheel`,
-`weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`). Together they are the bundle
+`weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`) and the rotation mode `artworks`.
+Together they are the bundle
 **`extras`**. How to use them: [EXTRAS_USER_GUIDE.md](EXTRAS_USER_GUIDE.md).
 
 With no option chosen the firmware is still the upstream firmware, exactly as in the base project; the extras only exist when

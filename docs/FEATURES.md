@@ -47,6 +47,7 @@ python build.py --board waveshare_photopainter_73 --with extras
 | `finance-snapshot` | Exchange-rate page: ECB reference rates of up to four currencies with the change and a 30-day line, free and without a key | `info-screens` | [FINANCE_SNAPSHOT.md](FINANCE_SNAPSHOT.md) |
 | `fuel-prices` | Fuel-price page: the cheapest petrol stations around the weather place, price like on the pump (Germany, free Tankerkoenig API key) | `info-screens`, `overlays` | [FUEL_PRICES.md](FUEL_PRICES.md) |
 | `market-quotes` | Markets page: up to four stocks, ETFs, indices, futures, crypto or currency pairs with the last price, the change and a 30-day line; Yahoo Finance without a key, Twelve Data and Alpha Vantage (free keys) as fallbacks | `info-screens` | [MARKET_QUOTES.md](MARKET_QUOTES.md) |
+| `artworks` | Artworks rotation mode: a painting, drawing or print from the Rijksmuseum, SMK or the Smithsonian (public domain / CC0) per rotation, kept in an album for wakes without network, deleting the oldest to keep free space, with a small caption | `overlays` | [ARTWORKS.md](ARTWORKS.md) |
 | `upload-dedup` | Duplicate detection at upload: a per-album MD5 index, refuse or warn, by file or by pixels, background indexing of earlier images, duplicate report | - | [UPLOAD_DEDUP.md](UPLOAD_DEDUP.md) |
 | `multi-upload` | Web UI: upload several images at once - photos converted one after the other, pre-rendered EPDGZ/PNG files as they are | - | [MULTI_UPLOAD.md](MULTI_UPLOAD.md) |
 | `fixes` | General bug fixes and robustness improvements | - | |

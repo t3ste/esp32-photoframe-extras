@@ -2,8 +2,8 @@
 
 > **Extended edition.** This is the `extras` line of the firmware: the base project
 > ([t3stier/esp32-photoframe-rebuild](https://github.com/t3stier/esp32-photoframe-rebuild), branch `main`) plus webcal, CalDAV,
-> batch upload, duplicate detection and the information pages (weather, exchange rates, fuel prices, markets, ...), switched
-> on with `--with extras`. It is a hobby-scale variant, **tested on one board only** - see
+> batch upload, duplicate detection, the information pages (weather, exchange rates, fuel prices, markets, ...) and an artworks
+> mode, switched on with `--with extras`. It is a hobby-scale variant, **tested on one board only** - see
 > [docs/EXTENDED_EDITION.md](docs/EXTENDED_EDITION.md). Releases and the web flasher:
 > [t3ste/esp32-photoframe-extras](https://github.com/t3ste/esp32-photoframe-extras).
 > **Building it yourself? Set `--ota-repo t3ste/esp32-photoframe-extras` or switch the automatic update check off** (Settings ->
@@ -43,7 +43,7 @@ A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently 
 
 Every row below is off by default (the firmware is then upstream's own, 1:1) and switched on one at a time -
 `python build.py --with telegram,agenda` and so on, `--with extras` for the whole group of newer options (webcal,
-CalDAV, multi-upload, duplicate detection and the information pages), or `--all-features` for everything the board's hardware
+CalDAV, multi-upload, duplicate detection, the information pages and the artworks mode), or `--all-features` for everything the board's hardware
 supports. This project's own releases, the web flasher, and the frame's OTA update all ship the **full** build for
 each board (every feature that board's hardware supports) - see [Installation](#installation). Full list, hardware
 needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md). How to use the newer options:
@@ -78,6 +78,7 @@ needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
 | 💶 `finance-snapshot` | A full-screen exchange-rate page: ECB reference rates of up to four currencies against the euro with the daily change and a 30-day line | - | [docs](docs/FINANCE_SNAPSHOT.md) |
 | 📈 `market-quotes` | A full-screen markets page: up to four stocks, ETFs, indices, crypto or currency pairs with the last price, the daily change and a 30-day line - Yahoo Finance without a key, with Twelve Data and Alpha Vantage (free keys) as fallbacks | - | [docs](docs/MARKET_QUOTES.md) |
 | ⛽ `fuel-prices` | A full-screen fuel-price page: the cheapest petrol stations around your place with the price like on the pump - Germany only, needs a free Tankerkoenig API key | - | [docs](docs/FUEL_PRICES.md) |
+| 🖌️ `artworks` | A rotation mode with a painting, drawing or print from the Rijksmuseum, SMK or the Smithsonian (public domain / CC0), kept in an album for wakes without network, with a small caption | - | [docs](docs/ARTWORKS.md) |
 | ♊ `upload-dedup` | The same image uploaded twice is refused (or flagged): a per-album MD5 index, optionally by the decoded pixels, background indexing of earlier images and a duplicate report | - | [docs](docs/UPLOAD_DEDUP.md) |
 | 📤 `multi-upload` | Upload a whole selection of photos in the Web UI, or pre-rendered EPDGZ/PNG files (e.g. from `process-cli`) as they are | - | [docs](docs/MULTI_UPLOAD.md) |
 | 🛠️ `fixes` | General bug fixes and robustness improvements over upstream | - | [docs](docs/FIXES.md) |

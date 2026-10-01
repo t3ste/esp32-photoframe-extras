@@ -67,6 +67,15 @@ themselves ([GLYPHS.md](GLYPHS.md)):
 
 <img src="screens/info-fact-de.png" width="400" alt="The fact of the day page in German, with umlauts and a sharp s">
 
+## Artworks
+
+The [artworks mode](ARTWORKS.md) shows a painting, drawing or print from a museum with a small caption at the bottom left:
+
+<img src="screens/artworks-caption.png" width="560" alt="A painting by Jan Toorop on the panel with its caption at the bottom left: white text with a black border">
+
+*Jan Toorop, Misty Sea (1899), Rijksmuseum, public domain mark. The caption is drawn by the firmware's own code; the picture is not
+dithered here, on the panel it is made of the panel's inks.*
+
 ## Drawing the pictures again
 
 When the look of a page changes, the pictures have to be drawn again.
@@ -89,9 +98,10 @@ build-host/render_screens out                              # every case in five 
 
 The program knows more cases than are shown here (German variants, empty and error pages).
 
-**The Agenda pictures** (`agenda-*.png`) are the real `agenda_renderer.c` and colour-profile loader, run on a PC with made-up sources (a week of
+**The Agenda pictures** (`agenda-*.png`) and **the artworks picture** (`artworks-caption.png`: a public-domain painting, letterboxed, with
+the real caption drawing) come from small programs that are not part of this repository. The Agenda pictures are the real `agenda_renderer.c` and colour-profile loader, run on a PC with made-up sources (a week of
 events in five calendars, a ToDo list, a forecast) on the fixed day above. The small program that did it is **not part of this repository**, so
-these five pictures cannot be redrawn from a checkout; the colour profile in `agenda-grid-a-profile.png` is
+these six pictures cannot be redrawn from a checkout; the colour profile in `agenda-grid-a-profile.png` is
 [color-profile-slot1-BW.json](../examples/waveshare_photopainter_73/color_profiles/color-profile-slot1-BW.json).
 
 Keep the sample data made up: no real names, places, calendars or prices of real shops.

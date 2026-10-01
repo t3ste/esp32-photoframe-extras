@@ -27,6 +27,7 @@ something does not show up. Each section ends with a link to the detailed page f
 | ... exchange rates of the ECB | `finance-snapshot` | the same box | nothing |
 | ... the cheapest petrol stations (Germany) | `fuel-prices` | the same box | a free Tankerkoenig key and a place |
 | ... stocks, ETFs, indices, crypto, currency pairs | `market-quotes` | the same box | nothing; two free keys are optional |
+| A painting, drawing or print from a museum at each rotation | `artworks` | Settings -> Auto Rotate -> mode *Artworks* | nothing; a Smithsonian key is optional |
 | Art albums for your frame | `scripts/fetch_art.py` (a PC helper) | on your computer | Python and Node.js |
 
 ## 1. Calendars and to-dos
@@ -119,6 +120,16 @@ python scripts/fetch_art.py --board waveshare_photopainter_73 --upload --host <a
 
 It writes an `ATTRIBUTION.md` with title, artist and licence of each picture; keep it with the pictures. Please be modest
 with the number of pictures - it is someone else's free service. More: [ART_FETCH.md](ART_FETCH.md).
+
+### Artworks from museums (a rotation mode)
+
+With `artworks` the frame itself fetches one work per rotation: **Settings -> Auto Rotate -> mode Artworks**. The kind of work
+(painting, drawing, print) is drawn first, then a random work of the Rijksmuseum, SMK or the Smithsonian that is public domain
+or CC0; its picture is loaded in the smallest size that covers the panel, shown with a small caption (artist, title, year) and
+kept in the album `Art`. With no network - or when anything fails - a random picture of that album is shown. The oldest pictures
+are deleted to keep free space (by default it keeps 20 % free and cleans up to 30 %), and only pictures this mode made. Nothing
+to sign up for; a Smithsonian key is optional. For private use: you are responsible for the terms of use of the pictures. All of it,
+including the settings, the free-space rule and the rights hint: [ARTWORKS.md](ARTWORKS.md). Not yet run on a frame.
 
 ## 3. Text on the display
 
