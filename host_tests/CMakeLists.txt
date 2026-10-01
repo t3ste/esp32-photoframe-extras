@@ -466,6 +466,40 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
 )
 
+# The artworks mode (kind and source choice, caption text, the readers of the three museum services against
+# real answers as fixtures, the album rule on a temporary directory; the real cJSON)
+add_executable(
+  art_test
+  test_art.cpp
+  ../main/art_select.c
+  ../main/art_caption.c
+  ../main/art_sources.c
+  ../main/art_store.c
+  ${CJSON_DIR}/cJSON.c
+)
+
+target_compile_definitions(
+  art_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  ART_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/art"
+)
+
+target_link_libraries(
+  art_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  art_test
+  PRIVATE
+  ${CJSON_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # The device side of the markets page (main/market_service.c) with the settings and the HTTP helper faked,
 # real answers as fixtures, and the cache as a real file in a temporary directory
 add_executable(
@@ -841,6 +875,7 @@ gtest_discover_tests(fact_pack_test)
 gtest_discover_tests(finance_test)
 gtest_discover_tests(fuel_test)
 gtest_discover_tests(market_test)
+gtest_discover_tests(art_test)
 gtest_discover_tests(market_service_test)
 gtest_discover_tests(info_screens_core_test)
 gtest_discover_tests(screens_test)
