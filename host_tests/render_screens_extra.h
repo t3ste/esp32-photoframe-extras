@@ -33,7 +33,7 @@ inline void draw_chore_wheel_english(canvas_t *canvas)
     info_now_from_date(2026, 9, 30, false, &now);
     chore_config_t config;
     chore_config_parse(
-        "Anna, Ben, Clara, Dave",
+        "Fox, Owl, Bear, Hare",
         "Take out the bins, Vacuum the living room, Water the plants, Wash the dishes", &config);
     chore_wheel_render(canvas, &now, &config);
 }
@@ -96,7 +96,7 @@ inline void draw_weather_english(canvas_t *canvas)
     static const int codes[] = {2, 61, 3, 95, 71};
     info_now_t now;
     info_now_from_date(2026, 9, 30, false, &now);
-    weather_screen_data_t data = weather_sample("Berlin", 5, highs, lows, codes);
+    weather_screen_data_t data = weather_sample("Sampletown", 5, highs, lows, codes);
     weather_screen_render(canvas, &now, &data);
 }
 
@@ -181,7 +181,10 @@ inline void draw_fact_long(canvas_t *canvas)
     info_now_from_date(2026, 3, 1, true, &now);
     fact_t fact;
     memset(&fact, 0, sizeof(fact));
-    strcpy(fact.title, "A rather long topic that does not fit its pill on a small panel");
+    // 63 characters into a 48-byte field: truncated, not overrun (a plain strcpy wrote 16 bytes
+    // into fact.text, which only the strncpy below hid)
+    snprintf(fact.title, sizeof(fact.title), "%s",
+             "A rather long topic that does not fit its pill on a small panel");
     std::string text, question;
     while (text.size() < FACT_TEXT_MAX - 14) {
         text += "Ein langes Wort. ";
@@ -272,7 +275,8 @@ inline void draw_finance_offline(canvas_t *canvas)
 // A fuel page with `count` made-up stations, the cheapest first.
 inline fuel_screen_data_t fuel_sample(int count, fuel_type_t type, int radius)
 {
-    static const char *const names[] = {"Aral", "Shell", "JET", "Esso", "Freie Tankstelle"};
+    static const char *const names[] = {"North Fuel", "City Oil", "Blue Pump", "Express Fuel",
+                                        "Independent Station"};
     static const char *const streets[] = {"Hauptstr.", "Ringstrasse", "Am Markt", "Bahnhofstr.",
                                           "Industrieweg"};
     fuel_screen_data_t data;
