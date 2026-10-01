@@ -192,7 +192,15 @@ collaborator with write access and the invitation accepted); the line pushed as 
 its first CI run passed (**CI: format, 681 host tests, tooling; Build Firmware: the 16 firmware builds, all feature compiles and the deploy - 82 jobs green,
 the release job skipped as it should**); GitHub Pages switched on (branch `gh-pages`, folder `/`) and checked: `https://t3ste.github.io/esp32-photoframe-extras/`
 serves the landing page with the extended repository's name in its links and the web flasher manifests; finally the line pushed as branch `extras` to
-the canonical fork and the mirror. **No release has been published yet** (no tag); the first one is a pre-release (section 4).
+the canonical fork and the mirror.
+
+**First release, 2026-10-01:** after the base had merged upstream `f5e3ec9` and this line had merged that `main` (commit `4c763dc`; checks of
+section 5 all green, CI and Build Firmware green on the extended repository), the tag `v218.7.1-rc1` was pushed there as `t3stier`. The
+workflow built the 16 firmware files and the 8 ELF files and created a draft; its title and notes (English: why a pre-release, what is in
+it, web flasher link, manual flashing, the OTA/`coredump` remark) were set by hand and the draft published as a **pre-release**. Releases
+of this repository are the only ones whose OTA feed a frame running this firmware asks. The next release on the same base: `v218.7.1-rc2`,
+or the final `v218.7.1` (no suffix - `version_compare()` sorts it above its release candidates) once a board other than the Waveshare was
+flashed and reported; a new base version gets its own numbers.
 
 Quick check that everything is still in step: `git ls-remote t3stier`, `git ls-remote origin` and `git ls-remote extras` must show the same commit for
 `refs/heads/extras` (first two) and `refs/heads/main` (the third); the base `refs/heads/main` of the first two is the base.
