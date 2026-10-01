@@ -244,6 +244,14 @@ TEST(ArtCaption, WhenEvenTheShortenedTitleDoesNotFitTheWholeTextIsCut)
     EXPECT_EQ(text.substr(0, 10), "A very lon");
 }
 
+TEST(ArtCaption, ADateTextWithoutADigitIsLeftOut)
+{
+    EXPECT_EQ(compose("Artist", "Title", "n.d.", 47), "Artist - Title");
+    EXPECT_EQ(compose("Artist", "Title", "undated", 47), "Artist - Title");
+    EXPECT_EQ(compose("Artist", "Title", "ca. 1642", 47), "Artist - Title (ca. 1642)");
+    EXPECT_EQ(compose("Artist", "Title", "1677 - 1755", 47), "Artist - Title (1677 - 1755)");
+}
+
 TEST(ArtCaption, ALongDateTextIsLeftOut)
 {
     EXPECT_EQ(compose("A", "B", "between 1642 and 1650, perhaps", 47), "A - B");

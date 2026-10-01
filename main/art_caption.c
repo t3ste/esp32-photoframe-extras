@@ -268,6 +268,13 @@ void art_caption_compose(const char *artist, const char *title, const char *year
     if (art_caption_char_count(y) > 12) {  // a long date text is of no use in one line
         y[0] = '\0';
     }
+    bool has_digit = false;
+    for (const char *c = y; *c; c++) {
+        has_digit = has_digit || (*c >= '0' && *c <= '9');
+    }
+    if (!has_digit) {  // "n.d." and the like say nothing
+        y[0] = '\0';
+    }
 
     build(a, t, y, full, sizeof(full));
     if (art_caption_char_count(full) <= max_chars) {
