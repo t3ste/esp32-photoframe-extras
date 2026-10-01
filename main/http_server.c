@@ -2307,7 +2307,23 @@ static esp_err_t config_handler(httpd_req_t *req)
         else if (rm == ROTATION_MODE_TELEGRAM)
             rotation_mode_str = "telegram";
 #endif
+#if FEATURE_ARTWORKS
+        else if (rm == ROTATION_MODE_ARTWORKS)
+            rotation_mode_str = "artworks";
+#endif
         cJSON_AddStringToObject(root, "rotation_mode", rotation_mode_str);
+#if FEATURE_ARTWORKS
+        cJSON_AddNumberToObject(root, "art_types", config_manager_get_art_types());
+        cJSON_AddNumberToObject(root, "art_sources", config_manager_get_art_sources());
+        cJSON_AddBoolToObject(root, "art_save", config_manager_get_art_save());
+        cJSON_AddStringToObject(root, "art_album", config_manager_get_art_album());
+        cJSON_AddNumberToObject(root, "art_free_min", config_manager_get_art_free_min());
+        cJSON_AddNumberToObject(root, "art_free_target", config_manager_get_art_free_target());
+        cJSON_AddBoolToObject(root, "art_caption", config_manager_get_art_caption());
+        // the key is write-only: only whether there is one
+        cJSON_AddBoolToObject(root, "art_si_key_configured",
+                              config_manager_get_art_si_key()[0] != '\0');
+#endif
 
         // Auto Rotate - SDCARD
         cJSON_AddStringToObject(root, "sd_rotation_mode",
@@ -2957,6 +2973,9 @@ static esp_err_t config_urls_handler(httpd_req_t *req)
                             config_manager_get_market_key_twelvedata());
     cJSON_AddStringToObject(root, "market_key_alphavantage",
                             config_manager_get_market_key_alphavantage());
+#endif
+#if FEATURE_ARTWORKS
+    cJSON_AddStringToObject(root, "art_si_key", config_manager_get_art_si_key());
 #endif
 
     char *json_str = cJSON_Print(root);

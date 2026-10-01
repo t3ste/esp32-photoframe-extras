@@ -670,7 +670,7 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
                        agenda_manager_is_enabled() && agenda_manager_wake_matches_now();
 
 #endif
-#if FEATURE_TELEGRAM || FEATURE_AGENDA
+#if FEATURE_TELEGRAM || FEATURE_AGENDA || FEATURE_ARTWORKS
     // Initialize WiFi if needed (URL/Telegram modes always need it, SD card mode only if HA
     // configured, agenda mode always does)
     const char *wifi_reason = "HA battery post";
@@ -683,6 +683,12 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
     if (rotation_mode == ROTATION_MODE_TELEGRAM) {
         wifi_needed = true;
         wifi_reason = "Telegram rotation";
+    }
+#endif
+#if FEATURE_ARTWORKS
+    if (rotation_mode == ROTATION_MODE_ARTWORKS) {
+        wifi_needed = true;
+        wifi_reason = "artworks rotation";
     }
 #endif
 #if FEATURE_AGENDA

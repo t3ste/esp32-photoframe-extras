@@ -328,7 +328,7 @@ esp_err_t http_fetch_get_conditional(const char *url, int timeout_ms, size_t max
                          out_truncated, out_etag, out_etag_len, out_not_modified, user_agent, NULL);
 }
 
-#if FEATURE_MARKET_QUOTES
+#if FEATURE_MARKET_QUOTES || FEATURE_ARTWORKS
 esp_err_t http_fetch_get_once(const char *url, int timeout_ms, size_t max_response_bytes,
                               char **out_body, size_t *out_len, int *out_status,
                               const char *user_agent)

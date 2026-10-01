@@ -523,6 +523,32 @@ void config_manager_set_market_quota(const char *text);
 #endif
 #endif
 
+#if FEATURE_ARTWORKS
+// The artworks rotation mode (art_flow.h): the kinds of work and the sources that may be used (bit
+// masks, see art_select.h), the Smithsonian key (write-only like the fuel key: never returned by
+// the API, only by the export that includes credentials; empty = the public DEMO_KEY), whether
+// pictures are kept in the album and its name, the free space to keep and to clean up to (percent
+// of the storage; the pair is kept in range), the caption, and the counter that orders the saved
+// pictures.
+uint8_t config_manager_get_art_types(void);
+void config_manager_set_art_types(uint8_t mask);
+uint8_t config_manager_get_art_sources(void);
+void config_manager_set_art_sources(uint8_t mask);
+const char *config_manager_get_art_si_key(void);
+void config_manager_set_art_si_key(const char *key);
+bool config_manager_get_art_save(void);
+void config_manager_set_art_save(bool enabled);
+const char *config_manager_get_art_album(void);
+void config_manager_set_art_album(
+    const char *name);  // letters, digits, blank, '-' and '_'; others are ignored
+int config_manager_get_art_free_min(void);
+int config_manager_get_art_free_target(void);
+void config_manager_set_art_free_limits(int free_min_pct, int free_target_pct);
+bool config_manager_get_art_caption(void);
+void config_manager_set_art_caption(bool enabled);
+uint32_t config_manager_next_art_seq(void);
+#endif
+
 #if FEATURE_UPLOAD_DEDUP
 // Duplicate detection at upload (dedup.h): mode 0 off / 1 skip / 2 warn, hash 0 stored bytes /
 // 1 decoded pixels, and whether images from before are indexed in the background.

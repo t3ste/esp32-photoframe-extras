@@ -10,6 +10,9 @@ import { validateTimezone } from "../utils/timezone";
 // #if FEATURE_MARKET_QUOTES
 import { isMarketKey } from "../utils/marketKey";
 // #endif
+// #if FEATURE_ARTWORKS
+import { isArtAlbumName, isArtKey } from "../utils/artKey";
+// #endif
 
 export const useSettingsStore = defineStore("settings", () => {
   const API_BASE = "";
@@ -337,6 +340,20 @@ export const useSettingsStore = defineStore("settings", () => {
     marketKeyAlphavantage: "",
     marketKeyAlphavantageConfigured: false,
 // #endif
+// #endif
+// #if FEATURE_ARTWORKS
+    // Artworks rotation mode (see docs/ARTWORKS.md): bit masks of the kinds of work
+    // (1 painting, 2 drawing, 4 print) and of the sources (1 Rijksmuseum, 2 SMK, 4 Smithsonian)
+    artTypes: 7,
+    artSources: 7,
+    // the key is write-only: typed here, never loaded back
+    artSiKey: "",
+    artSiKeyConfigured: false,
+    artSave: true,
+    artAlbum: "Art",
+    artFreeMin: 20,
+    artFreeTarget: 30,
+    artCaption: true,
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
     // Duplicate detection at upload (see docs/UPLOAD_DEDUP.md)
@@ -717,6 +734,16 @@ export const useSettingsStore = defineStore("settings", () => {
         data.market_key_alphavantage_configured === true;
 // #endif
 // #endif
+// #if FEATURE_ARTWORKS
+      deviceSettings.value.artTypes = data.art_types ?? 7;
+      deviceSettings.value.artSources = data.art_sources ?? 7;
+      deviceSettings.value.artSiKeyConfigured = data.art_si_key_configured === true;
+      deviceSettings.value.artSave = data.art_save !== false;
+      deviceSettings.value.artAlbum = data.art_album || "Art";
+      deviceSettings.value.artFreeMin = data.art_free_min ?? 20;
+      deviceSettings.value.artFreeTarget = data.art_free_target ?? 30;
+      deviceSettings.value.artCaption = data.art_caption !== false;
+// #endif
 // #if FEATURE_UPLOAD_DEDUP
       deviceSettings.value.dedupMode = data.dedup_mode ?? "skip";
       deviceSettings.value.dedupHash = data.dedup_hash ?? "stored";
@@ -991,6 +1018,22 @@ export const useSettingsStore = defineStore("settings", () => {
         ? { market_key_alphavantage: deviceSettings.value.marketKeyAlphavantage }
         : {}),
 // #endif
+// #endif
+// #if FEATURE_ARTWORKS
+      art_types: deviceSettings.value.artTypes,
+      art_sources: deviceSettings.value.artSources,
+      art_save: deviceSettings.value.artSave,
+      // a name the frame would refuse is not sent
+      ...(isArtAlbumName(deviceSettings.value.artAlbum)
+        ? { art_album: deviceSettings.value.artAlbum }
+        : {}),
+      art_free_min: deviceSettings.value.artFreeMin,
+      art_free_target: deviceSettings.value.artFreeTarget,
+      art_caption: deviceSettings.value.artCaption,
+      // write-only: sent only when something valid was typed (an empty value means "not touched")
+      ...(isArtKey(deviceSettings.value.artSiKey)
+        ? { art_si_key: deviceSettings.value.artSiKey }
+        : {}),
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
       dedup_mode: deviceSettings.value.dedupMode,

@@ -224,6 +224,14 @@ FEATURES = (
         "Twelve Data, Alpha Vantage as fallbacks)",
     ),
     Feature(
+        "artworks",
+        "FEATURE_ARTWORKS",
+        (),
+        ("overlays",),
+        "Artworks rotation mode: a painting, drawing or print from the Rijksmuseum, SMK or the "
+        "Smithsonian per rotation, kept in an album for offline wakes, with a small caption",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),
@@ -266,9 +274,10 @@ BUNDLES = (
             "finance-snapshot",
             "fuel-prices",
             "market-quotes",
+            "artworks",
         ),
         "Everything added after the first fork release: webcal, CalDAV calendars and to-dos, "
-        "multi-upload, duplicate detection, glyphs and the information pages",
+        "multi-upload, duplicate detection, glyphs, the information pages and the artworks mode",
     ),
 )
 

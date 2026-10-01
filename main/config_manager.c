@@ -12,6 +12,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #endif
+#if FEATURE_ARTWORKS
+#include <ctype.h>
+
+#include "art_select.h"
+#include "art_store.h"
+#endif
 #include "nvs.h"
 #include "storage.h"
 
@@ -222,6 +228,37 @@ static char market_key_td[MARKET_API_KEY_MAX_LEN] = {0};
 static char market_key_av[MARKET_API_KEY_MAX_LEN] = {0};
 static char market_quota[MARKET_QUOTA_TEXT_MAX_LEN] = {0};
 #endif
+#endif
+#if FEATURE_ARTWORKS
+static uint8_t art_types = ART_TYPES_ALL;
+static uint8_t art_sources = ART_SOURCES_ALL;
+static char art_si_key[ART_SI_KEY_MAX_LEN] = {0};
+static bool art_save = true;
+static char art_album[ART_ALBUM_NAME_MAX_LEN] = ART_ALBUM_DEFAULT;
+static uint8_t art_free_min = ART_FREE_MIN_DEFAULT;
+static uint8_t art_free_target = ART_FREE_TARGET_DEFAULT;
+static bool art_caption = true;
+static uint32_t art_seq = 0;
+
+// An album name is a folder name: letters, digits, blank, '-' and '_', not starting or ending with
+// a blank
+static bool art_album_name_valid(const char *name)
+{
+    if (!name) {
+        return false;
+    }
+    size_t len = strlen(name);
+    if (len == 0 || len >= ART_ALBUM_NAME_MAX_LEN || name[0] == ' ' || name[len - 1] == ' ') {
+        return false;
+    }
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char) name[i];
+        if (!isalnum(c) && c != ' ' && c != '-' && c != '_') {
+            return false;
+        }
+    }
+    return true;
+}
 #endif
 #if FEATURE_UPLOAD_DEDUP
 static uint8_t dedup_mode = 1;  // skip
@@ -1359,6 +1396,37 @@ esp_err_t config_manager_init(void)
         size_t market_quota_len = sizeof(market_quota);
         nvs_get_str(nvs_handle, NVS_MARKET_QUOTA_KEY, market_quota, &market_quota_len);
 #endif
+#endif
+#if FEATURE_ARTWORKS
+        uint8_t stored_art = 0;
+        if (nvs_get_u8(nvs_handle, NVS_ART_TYPES_KEY, &stored_art) == ESP_OK) {
+            art_types = stored_art & ART_TYPES_ALL;
+        }
+        if (nvs_get_u8(nvs_handle, NVS_ART_SOURCES_KEY, &stored_art) == ESP_OK) {
+            art_sources = stored_art & ART_SOURCES_ALL;
+        }
+        size_t art_si_key_len = sizeof(art_si_key);
+        nvs_get_str(nvs_handle, NVS_ART_SI_KEY, art_si_key, &art_si_key_len);
+        if (nvs_get_u8(nvs_handle, NVS_ART_SAVE_KEY, &stored_art) == ESP_OK) {
+            art_save = (stored_art != 0);
+        }
+        char stored_album[ART_ALBUM_NAME_MAX_LEN] = {0};
+        size_t stored_album_len = sizeof(stored_album);
+        if (nvs_get_str(nvs_handle, NVS_ART_ALBUM_KEY, stored_album, &stored_album_len) == ESP_OK &&
+            art_album_name_valid(stored_album)) {
+            snprintf(art_album, sizeof(art_album), "%s", stored_album);
+        }
+        uint8_t stored_min = art_free_min, stored_target = art_free_target;
+        nvs_get_u8(nvs_handle, NVS_ART_FREE_MIN_KEY, &stored_min);
+        nvs_get_u8(nvs_handle, NVS_ART_FREE_TO_KEY, &stored_target);
+        int limit_min = stored_min, limit_target = stored_target;
+        art_store_clamp_limits(&limit_min, &limit_target);
+        art_free_min = (uint8_t) limit_min;
+        art_free_target = (uint8_t) limit_target;
+        if (nvs_get_u8(nvs_handle, NVS_ART_CAPTION_KEY, &stored_art) == ESP_OK) {
+            art_caption = (stored_art != 0);
+        }
+        nvs_get_u32(nvs_handle, NVS_ART_SEQ_KEY, &art_seq);
 #endif
 #if FEATURE_UPLOAD_DEDUP
         uint8_t stored_upload_dedup = 0;
@@ -3882,6 +3950,108 @@ void config_manager_set_market_quota(const char *text)
     agenda_nvs_set_str_or_erase(NVS_MARKET_QUOTA_KEY, market_quota);
 }
 #endif
+#endif
+
+#if FEATURE_ARTWORKS
+uint8_t config_manager_get_art_types(void)
+{
+    return art_types;
+}
+
+void config_manager_set_art_types(uint8_t mask)
+{
+    art_types = mask & ART_TYPES_ALL;
+    agenda_nvs_set_u8(NVS_ART_TYPES_KEY, art_types);
+}
+
+uint8_t config_manager_get_art_sources(void)
+{
+    return art_sources;
+}
+
+void config_manager_set_art_sources(uint8_t mask)
+{
+    art_sources = mask & ART_SOURCES_ALL;
+    agenda_nvs_set_u8(NVS_ART_SOURCES_KEY, art_sources);
+}
+
+const char *config_manager_get_art_si_key(void)
+{
+    return art_si_key;
+}
+
+void config_manager_set_art_si_key(const char *key)
+{
+    snprintf(art_si_key, sizeof(art_si_key), "%s", key ? key : "");
+    agenda_nvs_set_str_or_erase(NVS_ART_SI_KEY, art_si_key);
+}
+
+bool config_manager_get_art_save(void)
+{
+    return art_save;
+}
+
+void config_manager_set_art_save(bool enabled)
+{
+    art_save = enabled;
+    agenda_nvs_set_u8(NVS_ART_SAVE_KEY, enabled ? 1 : 0);
+}
+
+const char *config_manager_get_art_album(void)
+{
+    return art_album;
+}
+
+void config_manager_set_art_album(const char *name)
+{
+    if (!art_album_name_valid(name)) {
+        return;
+    }
+    snprintf(art_album, sizeof(art_album), "%s", name);
+    agenda_nvs_set_str(NVS_ART_ALBUM_KEY, art_album);
+}
+
+int config_manager_get_art_free_min(void)
+{
+    return art_free_min;
+}
+
+int config_manager_get_art_free_target(void)
+{
+    return art_free_target;
+}
+
+void config_manager_set_art_free_limits(int free_min_pct, int free_target_pct)
+{
+    art_store_clamp_limits(&free_min_pct, &free_target_pct);
+    art_free_min = (uint8_t) free_min_pct;
+    art_free_target = (uint8_t) free_target_pct;
+    agenda_nvs_set_u8(NVS_ART_FREE_MIN_KEY, art_free_min);
+    agenda_nvs_set_u8(NVS_ART_FREE_TO_KEY, art_free_target);
+}
+
+bool config_manager_get_art_caption(void)
+{
+    return art_caption;
+}
+
+void config_manager_set_art_caption(bool enabled)
+{
+    art_caption = enabled;
+    agenda_nvs_set_u8(NVS_ART_CAPTION_KEY, enabled ? 1 : 0);
+}
+
+uint32_t config_manager_next_art_seq(void)
+{
+    art_seq++;
+    nvs_handle_t handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) == ESP_OK) {
+        nvs_set_u32(handle, NVS_ART_SEQ_KEY, art_seq);
+        nvs_commit(handle);
+        nvs_close(handle);
+    }
+    return art_seq;
+}
 #endif
 
 #if FEATURE_UPLOAD_DEDUP

@@ -72,6 +72,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_FINANCE_SNAPSHOT
   CONFIG_FEATURE_FUEL_PRICES
   CONFIG_FEATURE_MARKET_QUOTES
+  CONFIG_FEATURE_ARTWORKS
   CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
@@ -1006,6 +1007,45 @@ foreach(test_name image_pipeline display_flow)
 
   gtest_discover_tests(${fork_target} TEST_SUFFIX " (fork)")
 endforeach()
+
+# The small caption of the artworks mode drawn by the real image_processor.c (white text with a black border, no bar)
+add_executable(
+  art_caption_draw_test
+  test_art_caption_draw.cpp
+  ../main/image_processor.c
+  ../main/glyph_extras.c
+  stubs/esp_stubs.c
+  stubs/fake_display_manager.c
+  stubs/fake_config_manager.c
+  stubs/fake_processing_settings.c
+  stubs/fork_stubs.c
+  ../components/epaper_src/Fonts/font24.c
+)
+
+target_compile_definitions(
+  art_caption_draw_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_include_directories(
+  art_caption_draw_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
+target_link_libraries(
+  art_caption_draw_test
+  GTest::gtest_main
+  PNG::PNG
+  m
+)
+
+gtest_discover_tests(art_caption_draw_test)
 
 # The umlaut/degree/euro glyphs through the real sanitizer and text drawing of image_processor.c
 # (glyphs feature)

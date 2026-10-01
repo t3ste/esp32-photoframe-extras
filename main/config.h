@@ -12,7 +12,8 @@
 typedef enum {
     ROTATION_MODE_STORAGE = 0,
     ROTATION_MODE_URL = 1,
-    ROTATION_MODE_TELEGRAM = 2
+    ROTATION_MODE_TELEGRAM = 2,
+    ROTATION_MODE_ARTWORKS = 3
 } rotation_mode_t;
 #else
 typedef enum { ROTATION_MODE_STORAGE = 0, ROTATION_MODE_URL = 1 } rotation_mode_t;
@@ -1117,6 +1118,26 @@ typedef enum {
 #define ALARM_RAMP_DEFAULT_SEC 0  // 0 = no ramp, full volume at once
 #define ALARM_RAMP_MAX_SEC 120    // 2 minutes: longer than a gentle wake-up needs
 #define ALARM_TUNE_MAX_INDEX 5    // alarm_pattern.h: ALARM_TUNE_COUNT - 1
+#endif
+
+#if FEATURE_ARTWORKS
+// artworks feature: the kinds of work that may be shown (bit 0 painting, 1 drawing, 2 print) and
+// the sources that may be asked (bit 0 Rijksmuseum, 1 SMK, 2 Smithsonian), the Smithsonian key
+// (empty = the public DEMO_KEY; a write-only credential), whether the pictures are kept in an album
+// and its name, the free space to keep and the free space to clean up to (percent of the storage),
+// the caption, and the counter that tells which saved picture is the oldest
+#define NVS_ART_TYPES_KEY "art_types"
+#define NVS_ART_SOURCES_KEY "art_sources"
+#define NVS_ART_SI_KEY "art_si_key"
+#define NVS_ART_SAVE_KEY "art_save"
+#define NVS_ART_ALBUM_KEY "art_album"
+#define NVS_ART_FREE_MIN_KEY "art_free_min"
+#define NVS_ART_FREE_TO_KEY "art_free_to"
+#define NVS_ART_CAPTION_KEY "art_caption"
+#define NVS_ART_SEQ_KEY "art_seq"
+#define ART_SI_KEY_MAX_LEN 65
+#define ART_ALBUM_NAME_MAX_LEN 32
+#define ART_ALBUM_DEFAULT "Art"
 #endif
 
 #endif

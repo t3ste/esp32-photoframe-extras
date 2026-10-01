@@ -57,6 +57,7 @@ MODULES = {
     "finance-snapshot": ["fx_rates", "screen_finance"],
     "fuel-prices": ["fuel_prices", "screen_fuel"],
     "market-quotes": ["market_quotes", "market_service", "screen_markets"],
+    "artworks": ["art_select", "art_caption", "art_sources", "art_store", "art_flow"],
     "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }
 ALWAYS_HELPERS = {

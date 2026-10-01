@@ -582,3 +582,41 @@ bool art_image_url(const art_work_t *work, int max_w, int max_h, char *out, size
     }
     return n > 0 && (size_t) n < out_len;
 }
+
+bool art_jpeg_is_baseline(const uint8_t *data, size_t len)
+{
+    if (!data || len < 4 || data[0] != 0xFF || data[1] != 0xD8) {
+        return false;
+    }
+    size_t i = 2;
+    while (i + 3 < len) {
+        if (data[i] != 0xFF) {
+            return false;  // not at a marker
+        }
+        uint8_t marker = data[i + 1];
+        if (marker == 0xFF) {  // a fill byte
+            i++;
+            continue;
+        }
+        if (marker == 0x01 || (marker >= 0xD0 && marker <= 0xD8)) {  // markers without a length
+            i += 2;
+            continue;
+        }
+        if (marker == 0xD9 || marker == 0xDA) {
+            return false;  // the end, or the scan, before any frame header
+        }
+        size_t segment = ((size_t) data[i + 2] << 8) | data[i + 3];
+        if (segment < 2) {
+            return false;
+        }
+        if (marker == 0xC0 || marker == 0xC1) {
+            return true;  // baseline or extended sequential
+        }
+        if (marker >= 0xC2 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 &&
+            marker != 0xCC) {
+            return false;  // progressive, lossless, arithmetic coding
+        }
+        i += 2 + segment;
+    }
+    return false;
+}

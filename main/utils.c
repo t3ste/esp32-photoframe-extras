@@ -31,6 +31,10 @@
 #if FEATURE_MARKET_QUOTES
 #include "market_quotes.h"
 #endif
+#if FEATURE_ARTWORKS
+#include "art_flow.h"
+#include "art_sources.h"
+#endif
 #include "cron.h"
 #include "debug_log.h"
 #include "display_flow.h"
@@ -692,6 +696,10 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         else if (strcmp(mode_str, "telegram") == 0)
             mode = ROTATION_MODE_TELEGRAM;
 #endif
+#if FEATURE_ARTWORKS
+        else if (strcmp(mode_str, "artworks") == 0)
+            mode = ROTATION_MODE_ARTWORKS;
+#endif
         // Backwards compatibility: accept "sdcard" as alias for "storage"
         if (strcmp(mode_str, "sdcard") == 0)
             mode = ROTATION_MODE_STORAGE;
@@ -1231,6 +1239,51 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         config_manager_set_market_key_alphavantage("");
     }
 #endif
+#endif
+#if FEATURE_ARTWORKS
+    item = cJSON_GetObjectItem(root, "art_types");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_art_types((uint8_t) item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "art_sources");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_art_sources((uint8_t) item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "art_save");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_art_save(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "art_album");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_art_album(
+            cJSON_GetStringValue(item));  // a name that cannot be a folder is ignored
+    }
+    item = cJSON_GetObjectItem(root, "art_caption");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_art_caption(cJSON_IsTrue(item));
+    }
+    cJSON *art_free_min = cJSON_GetObjectItem(root, "art_free_min");
+    cJSON *art_free_target = cJSON_GetObjectItem(root, "art_free_target");
+    if ((art_free_min && cJSON_IsNumber(art_free_min)) ||
+        (art_free_target && cJSON_IsNumber(art_free_target))) {
+        int free_min = (art_free_min && cJSON_IsNumber(art_free_min))
+                           ? art_free_min->valueint
+                           : config_manager_get_art_free_min();
+        int free_target = (art_free_target && cJSON_IsNumber(art_free_target))
+                              ? art_free_target->valueint
+                              : config_manager_get_art_free_target();
+        config_manager_set_art_free_limits(free_min, free_target);
+    }
+    // The key is write-only like the fuel key: an empty string means "not touched", a separate flag
+    // removes it; a text that cannot be a key (letters, digits and '_', 4 to 64) is ignored.
+    item = cJSON_GetObjectItem(root, "art_si_key");
+    if (item && cJSON_IsString(item) && art_si_key_valid(cJSON_GetStringValue(item))) {
+        config_manager_set_art_si_key(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "art_si_key_clear");
+    if (item && cJSON_IsTrue(item)) {
+        config_manager_set_art_si_key("");
+    }
 #endif
 #if FEATURE_UPLOAD_DEDUP
     item = cJSON_GetObjectItem(root, "dedup_mode");
@@ -2714,6 +2767,14 @@ esp_err_t trigger_image_rotation(void)
 {
     rotation_mode_t rotation_mode = config_manager_get_rotation_mode();
     esp_err_t result = ESP_OK;
+
+#if FEATURE_ARTWORKS
+    if (rotation_mode == ROTATION_MODE_ARTWORKS) {
+        // a work from a museum, kept in an album; without network or on any failure a
+        // picture of that album (art_flow.h)
+        return art_flow_rotate();
+    }
+#endif
 
 #if FEATURE_TELEGRAM
     if (rotation_mode == ROTATION_MODE_TELEGRAM) {

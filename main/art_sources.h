@@ -102,4 +102,10 @@ bool art_si_parse_row(const char *json, size_t len, art_work_t *work);
  */
 bool art_image_url(const art_work_t *work, int max_w, int max_h, char *out, size_t out_len);
 
+/**
+ * @brief Whether the bytes are a JPEG the frame can decode: baseline (or extended sequential), not
+ * progressive and not lossless. Looks at the markers up to the frame header only.
+ */
+bool art_jpeg_is_baseline(const uint8_t *data, size_t len);
+
 #endif

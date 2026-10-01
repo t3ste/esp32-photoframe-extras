@@ -542,6 +542,58 @@ TEST(ArtImage, TheSmallestPictureThatCoversThePanel)
     EXPECT_STREQ(url, "https://ids.si.edu/ids/deliveryService?id=SAAM-1&max=800");
 }
 
+namespace
+{
+// The markers of a JPEG up to the frame header: a comment, a quantisation table, a Huffman table
+// (which starts with the same 0xC4 that is no frame header) and the frame header `sof`
+std::vector<uint8_t> jpeg_with(uint8_t sof)
+{
+    return {0xFF, 0xD8,                                      // start of image
+            0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00,              // APP0, 2 bytes
+            0xFF, 0xDB, 0x00, 0x03, 0x00,                    // DQT, 1 byte
+            0xFF, 0xC4, 0x00, 0x03, 0x00,                    // DHT, 1 byte
+            0xFF, sof,  0x00, 0x0B, 0x08, 0x00, 0x10, 0x00,  // the frame header: 8 bits, 16 x 16
+            0x10, 0x01, 0x01, 0x11, 0x00,                    // one component
+            0xFF, 0xDA, 0x00, 0x02};                         // start of scan
+}
+}  // namespace
+
+TEST(ArtImage, OnlyABaselineJpegCanBeDecodedByTheFrame)
+{
+    auto baseline = jpeg_with(0xC0);
+    EXPECT_TRUE(art_jpeg_is_baseline(baseline.data(), baseline.size()));
+    auto extended = jpeg_with(0xC1);
+    EXPECT_TRUE(art_jpeg_is_baseline(extended.data(), extended.size()));
+    for (uint8_t sof : {0xC2, 0xC3, 0xC5, 0xC9, 0xCA, 0xCF}) {  // progressive, lossless, arithmetic
+        auto other = jpeg_with(sof);
+        EXPECT_FALSE(art_jpeg_is_baseline(other.data(), other.size())) << std::hex << (int) sof;
+    }
+}
+
+TEST(ArtImage, TheJpegCheckSurvivesFillBytesAndRefusesNonsense)
+{
+    auto fill = jpeg_with(0xC0);
+    fill.insert(fill.begin() + 2, {0xFF, 0xFF});  // fill bytes before a marker are allowed
+    EXPECT_TRUE(art_jpeg_is_baseline(fill.data(), fill.size()));
+
+    std::vector<uint8_t> no_frame = {0xFF, 0xD8, 0xFF, 0xDA, 0x00, 0x02, 0x00, 0x00};
+    EXPECT_FALSE(
+        art_jpeg_is_baseline(no_frame.data(), no_frame.size()));  // a scan, no frame header
+    std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    EXPECT_FALSE(art_jpeg_is_baseline(png.data(), png.size()));
+    std::vector<uint8_t> html = {'<', 'h', 't', 'm', 'l', '>'};
+    EXPECT_FALSE(art_jpeg_is_baseline(html.data(), html.size()));
+    EXPECT_FALSE(art_jpeg_is_baseline(nullptr, 100));
+    EXPECT_FALSE(art_jpeg_is_baseline(fill.data(), 0));
+
+    auto good = jpeg_with(0xC0);
+    for (size_t cut = 0; cut <= 21; cut++) {  // cut off before the frame header's length is there
+        EXPECT_FALSE(art_jpeg_is_baseline(good.data(), cut)) << cut;
+    }
+    std::vector<uint8_t> zero_length = {0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x00, 0xFF, 0xC0, 0x00, 0x0B};
+    EXPECT_FALSE(art_jpeg_is_baseline(zero_length.data(), zero_length.size()));
+}
+
 TEST(ArtImage, ImpossibleRequestsAreRefused)
 {
     art_work_t work;

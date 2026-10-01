@@ -16,6 +16,9 @@
 #include "image_processor.h"
 #include "utils.h"
 #include "weather.h"
+#if FEATURE_ARTWORKS
+#include "art_store.h"
+#endif
 
 static const char *TAG = "overlay_manager";
 
@@ -167,7 +170,18 @@ const char *overlay_manager_apply(const char *source_path)
     bool climate_badge_due = climate_badge_should_show(
         climate_temp_text, sizeof(climate_temp_text), &climate_temp_category, climate_hum_text,
         sizeof(climate_hum_text), &climate_hum_category);
+#if FEATURE_ARTWORKS
+    // The artworks mode's own small caption (a companion file next to its pictures, see
+    // art_store.h): the user's choice for that mode, so it is drawn on EPDGZ pictures too, whatever
+    // the EPDGZ overlay setting says, like the battery badge
+    char art_caption[ART_CAPTION_TEXT_MAX] = {0};
+    bool art_caption_due = config_manager_get_art_caption() &&
+                           art_store_read_caption(source_path, art_caption, sizeof(art_caption));
+#endif
     if (!weather_on && !headlines_on && !exif_caption_due && !battery_badge_due &&
+#if FEATURE_ARTWORKS
+        !art_caption_due &&
+#endif
         !climate_badge_due) {
         return source_path;
     }
@@ -175,7 +189,16 @@ const char *overlay_manager_apply(const char *source_path)
     image_format_t format = image_processor_detect_format(source_path);
     bool is_epdgz = (format == IMAGE_FORMAT_EPD_GZ);
     if (is_epdgz && !config_manager_get_overlay_epdgz_enabled()) {
-        if (!battery_badge_due) {
+#if FEATURE_ARTWORKS
+        if (art_caption_due) {
+            // drawn anyway (see above); the decorative overlays still respect the setting
+            weather_on = false;
+            headlines_on = false;
+            exif_caption_due = false;
+            climate_badge_due = false;
+        } else
+#endif
+            if (!battery_badge_due) {
             ESP_LOGI(TAG, "Skipping overlay for %s: EPDGZ overlay support is disabled",
                      source_path);
             return source_path;
@@ -265,6 +288,24 @@ const char *overlay_manager_apply(const char *source_path)
         }
     }
 
+#if FEATURE_ARTWORKS
+    if (art_caption_due && line_count == 0 && !exif_caption_due && !battery_badge_due &&
+        !climate_badge_due) {
+        // only the artworks caption: a scratch copy that gets nothing else
+        static char art_scratch_path[64];
+        strncpy(art_scratch_path, is_epdgz ? CURRENT_OVERLAY_EPDGZ_PATH : CURRENT_OVERLAY_PNG_PATH,
+                sizeof(art_scratch_path) - 1);
+        art_scratch_path[sizeof(art_scratch_path) - 1] = '\0';
+        if (!copy_file(source_path, art_scratch_path)) {
+            return source_path;
+        }
+        if (image_processor_add_art_caption_to_file(art_scratch_path, art_caption) != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to draw the artwork caption onto the scratch copy");
+            return source_path;
+        }
+        return art_scratch_path;
+    }
+#endif
     if (line_count == 0 && !exif_caption_due && !battery_badge_due && !climate_badge_due) {
         ESP_LOGI(TAG, "No overlay content available this cycle, showing %s unmodified",
                  source_path);
@@ -294,6 +335,14 @@ const char *overlay_manager_apply(const char *source_path)
         ESP_LOGW(TAG, "Failed to draw overlay onto scratch copy: %s", esp_err_to_name(err));
         return source_path;
     }
+#if FEATURE_ARTWORKS
+    if (art_caption_due) {
+        // on top of the rest, bottom left; the scratch path may change its extension again
+        if (image_processor_add_art_caption_to_file(scratch_path, art_caption) != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to draw the artwork caption onto the scratch copy");
+        }
+    }
+#endif
 
     return scratch_path;
 }

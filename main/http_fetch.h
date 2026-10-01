@@ -61,13 +61,13 @@ esp_err_t http_fetch_get_conditional(const char *url, int timeout_ms, size_t max
                                      bool *out_truncated, char *out_etag, size_t out_etag_len,
                                      bool *out_not_modified, const char *user_agent);
 
-#if FEATURE_MARKET_QUOTES
+#if FEATURE_MARKET_QUOTES || FEATURE_ARTWORKS
 /**
- * @brief A GET for APIs with a request quota (build option market-quotes): unlike http_fetch_get()
- * it asks again only if the server did not answer at all (a retry of an answer would spend the
- * quota again, or hammer a server that said "too many requests"), and it returns the answer of any
- * HTTP status - with its body, which is where such APIs write what went wrong. The URL may hold an
- * API key: it is never logged.
+ * @brief A GET for APIs with a request quota (build options market-quotes, artworks): unlike
+ * http_fetch_get() it asks again only if the server did not answer at all (a retry of an answer
+ * would spend the quota again, or hammer a server that said "too many requests"), and it returns
+ * the answer of any HTTP status - with its body, which is where such APIs write what went wrong.
+ * The URL may hold an API key: it is never logged.
  *
  * @param out_body The body (NUL-terminated, caller frees with free()), NULL if the answer had none.
  * @param out_status The HTTP status of the answer (0 if the server never answered).

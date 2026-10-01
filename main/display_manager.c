@@ -1382,3 +1382,53 @@ void display_manager_rotate_from_storage(void)
     album_manager_free_album_list(enabled_albums, album_count);
     ESP_LOGI(TAG, "Rotation complete");
 }
+
+#if FEATURE_ARTWORKS
+void display_manager_show_album_file(const char *path)
+{
+    // The same steps as the rotation above takes for a picture it chose: the overlays (here also
+    // the caption of the artworks mode), the panel, and the bookkeeping of what was shown
+    const char *shown = overlay_manager_apply(path);
+    display_manager_show_image(shown);
+    if (strcmp(shown, path) != 0) {
+        history_manager_mark_shown(path);
+    }
+    save_last_displayed_image(path);
+}
+
+bool display_manager_rotate_from_album(const char *album_name)
+{
+    if (!album_name || !storage_has_persistent_storage() ||
+        !album_manager_album_exists(album_name)) {
+        return false;
+    }
+    char album_path[256];
+    if (album_manager_get_album_path(album_name, album_path, sizeof(album_path)) != ESP_OK) {
+        return false;
+    }
+    // Is there a picture at all? (the sidecars - thumbnails, caption files - are no pictures)
+    int image_count = 0;
+    DIR *dir = opendir(album_path);
+    if (!dir) {
+        return false;
+    }
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        const char *ext = strrchr(entry->d_name, '.');
+        if (entry->d_type == DT_REG && !(entry->d_name[0] == '.' && entry->d_name[1] == '_') &&
+            ext &&
+            (strcasecmp(ext, ".bmp") == 0 || strcasecmp(ext, ".png") == 0 ||
+             strcasecmp(ext, ".epdgz") == 0)) {
+            image_count++;
+        }
+    }
+    closedir(dir);
+    if (image_count == 0) {
+        return false;
+    }
+    char *album_list[1] = {(char *) album_name};
+    ESP_LOGI(TAG, "Artworks: showing a random picture of album %s", album_name);
+    rotate_random(album_list, 1);
+    return true;
+}
+#endif

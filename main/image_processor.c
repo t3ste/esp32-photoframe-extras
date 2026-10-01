@@ -4519,6 +4519,102 @@ esp_err_t image_processor_add_overlay_to_file(char *path, const char *const *lin
     return err;
 }
 
+#if FEATURE_ARTWORKS
+void image_processor_draw_caption_outlined(uint8_t *rgb_buffer, int width, int height,
+                                           const char *text)
+{
+    if (!rgb_buffer || !text || text[0] == '\0' || width <= 0 || height <= 0) {
+        return;
+    }
+    const int margin = 6;
+    char ascii[CAPTION_LINE_MAX_CHARS];
+    sanitize_caption_ascii(text, ascii, sizeof(ascii));
+    if (ascii[0] == '\0') {
+        return;  // nothing renderable left
+    }
+    int max_chars = (width - 2 * margin) / Font24.Width;
+    if (max_chars < 4) {
+        return;  // display too narrow for this font, skip silently
+    }
+    if ((int) strlen(ascii) > max_chars) {
+        ascii[max_chars - 1] = '~';
+        ascii[max_chars] = '\0';
+    }
+    int x = margin;
+    int y = height - Font24.Height - margin;
+    if (y < 0) {
+        y = 0;
+    }
+    // The exact palette values, like image_processor_draw_caption(): black border, white text
+    rgb_t black = palette[0];
+    rgb_t white = palette[1];
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            if (dx != 0 || dy != 0) {
+                image_processor_draw_text(rgb_buffer, width, height, x + dx, y + dy, ascii, black.r,
+                                          black.g, black.b);
+            }
+        }
+    }
+    image_processor_draw_text(rgb_buffer, width, height, x, y, ascii, white.r, white.g, white.b);
+}
+
+esp_err_t image_processor_add_art_caption_to_file(char *path, const char *text)
+{
+    if (!text || text[0] == '\0') {
+        return ESP_OK;
+    }
+    if (!path) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        ESP_LOGE(TAG, "Failed to open %s for the artwork caption", path);
+        return ESP_FAIL;
+    }
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    uint8_t *file_buffer =
+        file_size > 0 ? (uint8_t *) heap_caps_malloc(file_size, MALLOC_CAP_SPIRAM) : NULL;
+    if (!file_buffer) {
+        fclose(fp);
+        return ESP_ERR_NO_MEM;
+    }
+    size_t read_bytes = fread(file_buffer, 1, file_size, fp);
+    fclose(fp);
+    if (read_bytes != (size_t) file_size) {
+        heap_caps_free(file_buffer);
+        return ESP_FAIL;
+    }
+
+    image_format_t format = image_processor_detect_format(path);
+    uint8_t *rgb_buffer = NULL;
+    int width = 0, height = 0;
+    esp_err_t err = (format == IMAGE_FORMAT_EPD_GZ)
+                        ? decode_epdgz_buffer(file_buffer, file_size, &rgb_buffer, &width, &height)
+                        : decode_png_buffer(file_buffer, file_size, &rgb_buffer, &width, &height);
+    heap_caps_free(file_buffer);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    image_processor_draw_caption_outlined(rgb_buffer, width, height, text);
+
+    image_format_t actual_format = format;
+    err = image_processor_write_rgb_to_fmt(rgb_buffer, width, height, path, format, &actual_format);
+    heap_caps_free(rgb_buffer);
+    if (err == ESP_OK && actual_format != format) {
+        // EPDGZ requested but fell back to PNG (not enough memory): written under a ".png" path
+        char *ext = strrchr(path, '.');
+        if (ext) {
+            strcpy(ext, ".png");
+        }
+    }
+    return err;
+}
+#endif
+
 esp_err_t image_processor_write_rgb_to_png(const uint8_t *rgb_buffer, int width, int height,
                                            const char *output_path)
 {

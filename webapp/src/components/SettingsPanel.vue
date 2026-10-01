@@ -27,6 +27,9 @@ import { wideEdit } from "../utils/uiPrefs";
 // #if FEATURE_MARKET_QUOTES
 import { isMarketKey } from "../utils/marketKey";
 // #endif
+// #if FEATURE_ARTWORKS
+import { isArtAlbumName, isArtKey } from "../utils/artKey";
+// #endif
 
 const settingsStore = useSettingsStore();
 const appStore = useAppStore();
@@ -626,6 +629,12 @@ const rotationModeOptions = computed(() => {
 // #else
   const options = [{ title: "URL - Fetch image from URL", value: "url" }];
 // #endif
+// #if FEATURE_ARTWORKS
+  options.push({
+    title: "Artworks - A painting, drawing or print from a museum",
+    value: "artworks",
+  });
+// #endif
   if (appStore.systemInfo.sdcard_inserted || appStore.systemInfo.has_flash_storage) {
     options.unshift({ title: "Storage - Rotate through images", value: "storage" });
   }
@@ -891,6 +900,49 @@ async function removeMarketKey(which) {
       const name = which === "twelvedata" ? "Twelvedata" : "Alphavantage";
       settingsStore.deviceSettings[`marketKey${name}Configured`] = false;
       settingsStore.deviceSettings[`marketKey${name}`] = "";
+    }
+  } catch {
+    /* the frame is not reachable: the key stays */
+  }
+}
+// #endif
+// #if FEATURE_ARTWORKS
+// A bit of a mask setting (kinds of work, sources) as a check box.
+function artMaskModel(field, bit) {
+  return computed({
+    get: () => (settingsStore.deviceSettings[field] & bit) !== 0,
+    set: (on) => {
+      const mask = settingsStore.deviceSettings[field];
+      settingsStore.deviceSettings[field] = on ? mask | bit : mask & ~bit;
+    },
+  });
+}
+const artPaintingModel = artMaskModel("artTypes", 1);
+const artDrawingModel = artMaskModel("artTypes", 2);
+const artPrintModel = artMaskModel("artTypes", 4);
+const artRijksModel = artMaskModel("artSources", 1);
+const artSmkModel = artMaskModel("artSources", 2);
+const artSmithsonianModel = artMaskModel("artSources", 4);
+
+const artKeyRule = (value) =>
+  !value || isArtKey(value) || "Letters, digits and _ only, 4 to 64 characters";
+const artAlbumRule = (value) =>
+  isArtAlbumName(value) || "Letters, digits, blank, - and _, up to 31 characters";
+const artLimitsRule = () =>
+  settingsStore.deviceSettings.artFreeTarget > settingsStore.deviceSettings.artFreeMin ||
+  "The clean-up level must be above the minimum";
+
+// Removes the Smithsonian key from the frame (it is write-only, there is no way to read it).
+async function removeArtKey() {
+  try {
+    const response = await fetch("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ art_si_key_clear: true }),
+    });
+    if (response.ok) {
+      settingsStore.deviceSettings.artSiKeyConfigured = false;
+      settingsStore.deviceSettings.artSiKey = "";
     }
   } catch {
     /* the frame is not reachable: the key stays */
@@ -1918,6 +1970,152 @@ async function performFactoryReset() {
                   </v-card-text>
                 </v-card>
               </v-expand-transition>
+<!-- #if FEATURE_ARTWORKS -->
+
+              <v-expand-transition>
+                <v-card
+                  v-if="
+                    settingsStore.deviceSettings.autoRotate &&
+                    settingsStore.deviceSettings.rotationMode === 'artworks'
+                  "
+                  variant="tonal"
+                  class="mb-4"
+                >
+                  <v-card-text>
+                    <div class="text-caption text-medium-emphasis mb-3">
+                      Each rotation shows a painting, drawing or print from a museum's open-access
+                      service: the kind of work is chosen first, then a random work that is public
+                      domain or CC0. Without network, or when something fails, a picture of the
+                      album below is shown instead.
+                    </div>
+                    <div class="text-subtitle-2 mb-1">Kinds of work</div>
+                    <v-checkbox
+                      v-model="artPaintingModel"
+                      label="Paintings"
+                      density="compact"
+                      hide-details
+                    />
+                    <v-checkbox
+                      v-model="artDrawingModel"
+                      label="Drawings"
+                      density="compact"
+                      hide-details
+                    />
+                    <v-checkbox
+                      v-model="artPrintModel"
+                      label="Prints"
+                      density="compact"
+                      hide-details
+                      class="mb-2"
+                    />
+                    <div class="text-subtitle-2 mb-1">Sources, asked in this order</div>
+                    <v-checkbox
+                      v-model="artRijksModel"
+                      label="Rijksmuseum"
+                      density="compact"
+                      hide-details
+                    />
+                    <v-checkbox
+                      v-model="artSmkModel"
+                      label="SMK (Statens Museum for Kunst)"
+                      density="compact"
+                      hide-details
+                    />
+                    <v-checkbox
+                      v-model="artSmithsonianModel"
+                      label="Smithsonian American Art Museum (paintings, drawings)"
+                      density="compact"
+                      hide-details
+                      class="mb-2"
+                    />
+                    <v-text-field
+                      v-model="settingsStore.deviceSettings.artSiKey"
+                      label="Smithsonian API key (optional)"
+                      :placeholder="
+                        settingsStore.deviceSettings.artSiKeyConfigured
+                          ? 'A key is saved'
+                          : 'Empty: the shared demo key (10 requests an hour)'
+                      "
+                      :rules="[artKeyRule]"
+                      type="password"
+                      autocomplete="off"
+                      variant="outlined"
+                      density="compact"
+                      hide-details="auto"
+                      class="mb-4"
+                    >
+                      <template v-if="settingsStore.deviceSettings.artSiKeyConfigured" #append-inner>
+                        <v-btn size="x-small" variant="text" @click="removeArtKey()">Remove</v-btn>
+                      </template>
+                    </v-text-field>
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.artSave"
+                      label="Keep the pictures in an album"
+                      color="primary"
+                      density="compact"
+                      hide-details
+                    />
+                    <v-text-field
+                      v-model="settingsStore.deviceSettings.artAlbum"
+                      label="Album"
+                      :rules="[artAlbumRule]"
+                      maxlength="31"
+                      variant="outlined"
+                      density="compact"
+                      hide-details="auto"
+                      class="mb-2"
+                    />
+                    <div class="text-caption text-medium-emphasis mb-2">
+                      When the free space on the frame's storage is at or below the first level,
+                      the oldest pictures this mode saved are deleted before a new one is kept,
+                      until the second level is reached. Only pictures with their caption file in
+                      this album are ever deleted; your own pictures are not touched. If that is
+                      not enough, the new picture is shown but not kept.
+                    </div>
+                    <v-row dense>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="settingsStore.deviceSettings.artFreeMin"
+                          label="Keep at least this much free (%)"
+                          type="number"
+                          min="5"
+                          max="80"
+                          :rules="[artLimitsRule]"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                        />
+                      </v-col>
+                      <v-col cols="6">
+                        <v-text-field
+                          v-model.number="settingsStore.deviceSettings.artFreeTarget"
+                          label="Clean up to this much free (%)"
+                          type="number"
+                          min="6"
+                          max="95"
+                          variant="outlined"
+                          density="compact"
+                          hide-details="auto"
+                        />
+                      </v-col>
+                    </v-row>
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.artCaption"
+                      label="Show a small caption (artist, title, year)"
+                      color="primary"
+                      density="compact"
+                      hide-details
+                      class="mt-2"
+                    />
+                    <div class="text-caption text-medium-emphasis mt-2">
+                      For private use. The pictures come from the museums' open-access services;
+                      the terms of use differ by museum and by work, and you are responsible for
+                      observing them and any credit they ask for.
+                    </div>
+                  </v-card-text>
+                </v-card>
+              </v-expand-transition>
+<!-- #endif -->
 <!-- #if FEATURE_TELEGRAM -->
 
               <v-expand-transition>
