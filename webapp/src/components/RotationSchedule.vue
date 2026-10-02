@@ -11,14 +11,56 @@ import {
   isValidCron,
   DAY_LABELS,
 } from "../utils/cron";
+// #if FEATURE_SCHEDULE_PAGES
+import * as schedulePages from "../utils/schedulePages";
+// #endif
 
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   disabled: { type: Boolean, default: false },
+  // #if FEATURE_SCHEDULE_PAGES
+  // Pages per schedule (the Agenda's schedules): the pages a schedule may draw, as [{ value, title }];
+  // `pages` (a list of name lists) and `holds` (minutes) are per compiled rule, in the order of
+  // modelValue. Without pageItems the editor is the plain one.
+  pageItems: { type: Array, default: () => [] },
+  pages: { type: Array, default: () => [] },
+  holds: { type: Array, default: () => [] },
+  // #endif
 });
+// #if FEATURE_SCHEDULE_PAGES
+const emit = defineEmits(["update:modelValue", "update:pages", "update:holds"]);
+// #else
 const emit = defineEmits(["update:modelValue"]);
+// #endif
 
 const cards = ref(cardsFromCron(props.modelValue));
+// #if FEATURE_SCHEDULE_PAGES
+const withPages = computed(() => props.pageItems.length > 0);
+
+function applyExtras(pages, holds) {
+  schedulePages.applyExtras(cards.value, pages, holds, compileCard);
+}
+const extrasOf = (list) => schedulePages.extrasOf(list, compileCard);
+applyExtras(props.pages, props.holds);
+
+function togglePage(card, name) {
+  if (!Array.isArray(card.pages)) card.pages = [];
+  const i = card.pages.indexOf(name);
+  if (i >= 0) {
+    card.pages.splice(i, 1);
+  } else {
+    card.pages.push(name);
+  }
+}
+
+// A schedule's position is its priority: schedule 1 wins when two overlap.
+function moveCard(idx, step) {
+  const target = idx + step;
+  if (target < 0 || target >= cards.value.length) return;
+  const [card] = cards.value.splice(idx, 1);
+  cards.value.splice(target, 0, card);
+}
+// #endif
 
 // Emit compiled cron whenever the cards change; re-derive cards when the bound
 // value changes externally (e.g. after loading config), guarding against loops.
@@ -34,15 +76,39 @@ watch(
       return;
     }
     emit("update:modelValue", compileCards(cards.value));
+    // #if FEATURE_SCHEDULE_PAGES
+    if (withPages.value) {
+      const extras = extrasOf(cards.value);
+      emit("update:pages", extras.pages);
+      emit("update:holds", extras.holds);
+    }
+    // #endif
   },
   { deep: true }
 );
+// #if FEATURE_SCHEDULE_PAGES
+// The pages and holds arrive after the rules (or alone): take them over without flagging an edit.
+watch(
+  () => [props.pages, props.holds],
+  () => {
+    if (!withPages.value) return;
+    if (schedulePages.extrasDiffer(cards.value, props.pages, props.holds, compileCard)) {
+      syncing = true;
+      applyExtras(props.pages, props.holds);
+    }
+  },
+  { deep: true }
+);
+// #endif
 watch(
   () => props.modelValue,
   (val) => {
     if (JSON.stringify(compileCards(cards.value)) !== JSON.stringify(val || [])) {
       syncing = true;
       cards.value = cardsFromCron(val || []);
+      // #if FEATURE_SCHEDULE_PAGES
+      applyExtras(props.pages, props.holds);
+      // #endif
     }
   }
 );
@@ -119,7 +185,14 @@ function removeTime(card, idx) {
 }
 
 function addCard() {
+  // #if FEATURE_SCHEDULE_PAGES
+  const card = newCard();
+  card.pages = [];
+  card.hold = 0;
+  cards.value.push(card);
+  // #else
   cards.value.push(newCard());
+  // #endif
 }
 function removeCard(idx) {
   cards.value.splice(idx, 1);
@@ -138,6 +211,10 @@ function toggleAdvanced(card) {
       const extras = rules.slice(1).map((r) => {
         const c = newCard();
         c.raw = r;
+        // #if FEATURE_SCHEDULE_PAGES
+        c.pages = [...(card.pages || [])];
+        c.hold = card.hold || 0;
+        // #endif
         return c;
       });
       cards.value.splice(idx + 1, 0, ...extras);
@@ -160,7 +237,30 @@ function rawValid(card) {
         <v-card-text>
           <div class="d-flex align-center mb-2">
             <span class="text-subtitle-2">Schedule {{ idx + 1 }}</span>
+            <!-- #if FEATURE_SCHEDULE_PAGES -->
+            <span v-if="withPages && idx === 0" class="text-caption text-medium-emphasis ml-2">
+              highest priority
+            </span>
+            <!-- #endif -->
             <v-spacer />
+            <!-- #if FEATURE_SCHEDULE_PAGES -->
+            <v-btn
+              v-if="withPages && idx > 0"
+              icon="mdi-arrow-up"
+              variant="text"
+              size="small"
+              title="Higher priority"
+              @click="moveCard(idx, -1)"
+            />
+            <v-btn
+              v-if="withPages && idx < cards.length - 1"
+              icon="mdi-arrow-down"
+              variant="text"
+              size="small"
+              title="Lower priority"
+              @click="moveCard(idx, 1)"
+            />
+            <!-- #endif -->
             <v-btn
               v-if="cards.length > 1"
               icon="mdi-delete"
@@ -300,6 +400,37 @@ function rawValid(card) {
           </template>
 
           <div class="text-caption text-medium-emphasis mt-3">{{ describeCard(card) }}</div>
+
+          <!-- #if FEATURE_SCHEDULE_PAGES -->
+          <div v-if="withPages" class="mt-3">
+            <div class="text-caption text-medium-emphasis mb-1">
+              Pages this schedule draws - none ticked: the shared rotation below
+            </div>
+            <v-chip
+              v-for="p in pageItems"
+              :key="p.value"
+              :color="(card.pages || []).includes(p.value) ? 'primary' : undefined"
+              :variant="(card.pages || []).includes(p.value) ? 'flat' : 'outlined'"
+              size="small"
+              class="mr-1 mb-1"
+              @click="togglePage(card, p.value)"
+            >
+              {{ p.title }}
+            </v-chip>
+            <v-text-field
+              v-model.number="card.hold"
+              type="number"
+              min="0"
+              max="240"
+              label="Keep this display at least (minutes) - 0: the common minimum time"
+              variant="outlined"
+              density="compact"
+              hide-details
+              class="mt-2"
+              style="max-width: 420px"
+            />
+          </div>
+          <!-- #endif -->
 
           <v-btn variant="text" size="x-small" class="mt-1 px-0" @click="toggleAdvanced(card)">
             {{ card.raw !== null ? "Use builder" : "Advanced (cron)" }}

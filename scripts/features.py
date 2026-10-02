@@ -232,6 +232,13 @@ FEATURES = (
         "Smithsonian per rotation, kept in an album for offline wakes, with a small caption",
     ),
     Feature(
+        "schedule-pages",
+        "FEATURE_SCHEDULE_PAGES",
+        (),
+        ("info-screens",),
+        "Pages per Agenda schedule, with priorities and a minimum time between two displays",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),
@@ -275,9 +282,11 @@ BUNDLES = (
             "fuel-prices",
             "market-quotes",
             "artworks",
+            "schedule-pages",
         ),
         "Everything added after the first fork release: webcal, CalDAV calendars and to-dos, "
-        "multi-upload, duplicate detection, glyphs, the information pages and the artworks mode",
+        "multi-upload, duplicate detection, glyphs, the information pages, the artworks mode and "
+        "the pages per schedule",
     ),
 )
 

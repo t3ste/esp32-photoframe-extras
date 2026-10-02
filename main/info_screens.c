@@ -117,6 +117,25 @@ int info_screens_next(bool agenda_has_content)
     return pick;
 }
 
+#if FEATURE_SCHEDULE_PAGES
+int info_screens_next_for(uint32_t mask, int schedule, bool agenda_has_content)
+{
+    mask &= info_screens_compiled_mask();
+    if (!agenda_has_content) {
+        mask &= ~(1u << INFO_SCREEN_AGENDA);
+    }
+    uint32_t counter = config_manager_get_sched_rotation(schedule);
+    int pick = info_rotation_pick(mask, counter, INFO_SCREEN_COUNT);
+    if (pick < 0) {
+        return INFO_SCREEN_AGENDA;
+    }
+    if (info_rotation_size(mask, INFO_SCREEN_COUNT) > 1) {
+        config_manager_set_sched_rotation(schedule, (uint16_t) (counter + 1));
+    }
+    return pick;
+}
+#endif
+
 // Writes the canvas as the file the display shows, and shows it.
 static esp_err_t show_canvas(const canvas_t *canvas)
 {

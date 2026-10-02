@@ -19,6 +19,14 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **Pages per Agenda schedule** (`--with schedule-pages`, [docs/SCHEDULE_PAGES.md](docs/SCHEDULE_PAGES.md); part of `extras`, needs `info-screens`): each schedule of the Agenda can draw
+  its own pages (chips under the schedule card; a rotation counter of its own), so that a schedule at 06:30 always shows the fuel page while the hourly one shows the Agenda. When schedules
+  overlap, **the smaller number wins** (the order of the list is the priority, with up/down arrows), and no display replaces another within the **minimum time between two displays**
+  (15 minutes, adjustable) or the schedule's own **hold time**; the **photo rotation has the lowest priority** and gives way too. A held-off fire does not wake the frame. **Optional:**
+  a schedule with no page ticked behaves as before, and while no schedule has a page nothing of this is in force. Settings: `agenda_cron_pages`, `agenda_cron_hold`, `agenda_gap_min`.
+  New: `sched_pick.c` (pure; 18 host tests, among them a comparison with a literal reference over random schedule sets and across the days the clock changes), `info_screens_next_for()`,
+  `agenda_manager_rotation_seconds_until_next()`; web: `utils/schedulePages.js` (11 tests). Checked on a frame with four overlapping schedules: the three fires that had to draw drew the right
+  pages, the two held-off ones neither drew nor woke the frame.
 - **The markets, exchange-rate and fuel pages say which day their data are from, and the footer is one line.** The header names the trading day of the newest price (`Close 30 Sep`,
   `Schluss 30.09.`; the ECB's rates `Rates 30 Sep`) instead of a bare date that looked like today's, and a small yellow `!` behind it says that day is older than the last trading day
   (weekends counted, holidays not known). The source and the fetch time share one line (`Yahoo Finance, Twelve Data - 30 Sep 14:35`, `tankerkoenig.de, CC BY 4.0 - 30 Sep 14:35`), so the

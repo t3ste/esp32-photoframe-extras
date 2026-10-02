@@ -481,6 +481,23 @@ uint32_t config_manager_get_info_screens_mask(void);
 void config_manager_set_info_screens_mask(uint32_t mask);
 uint32_t config_manager_get_info_screens_rotation(void);
 void config_manager_set_info_screens_rotation(uint32_t counter);
+#if FEATURE_SCHEDULE_PAGES
+// Pages per Agenda schedule (sched_pick.h): for each rule of the agenda schedule (index = the
+// schedule's number - 1) the mask of the pages it draws (0 = not assigned: the shared rotation) and
+// how long its display should stay in minutes (0 = the common gap), the common minimum time between
+// two displays, and a rotation counter per schedule.
+uint16_t config_manager_get_sched_mask(int index);
+uint16_t config_manager_get_sched_hold(int index);
+void config_manager_set_sched_pages(const uint16_t masks[MAX_CRON_RULES],
+                                    const uint16_t holds[MAX_CRON_RULES]);
+int config_manager_get_sched_gap(void);
+void config_manager_set_sched_gap(int minutes);
+uint16_t config_manager_get_sched_rotation(int index);
+void config_manager_set_sched_rotation(int index, uint16_t counter);
+// Whether any of the agenda schedules has pages assigned: only then the priorities, the gap and the
+// holds are in force; otherwise everything behaves as without this option.
+bool config_manager_sched_pages_in_use(void);
+#endif
 const char *config_manager_get_chore_members(void);
 void config_manager_set_chore_members(const char *text);
 const char *config_manager_get_chore_tasks(void);

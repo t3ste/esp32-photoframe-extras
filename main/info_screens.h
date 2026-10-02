@@ -59,6 +59,16 @@ bool info_screens_extra_enabled(void);
  */
 int info_screens_next(bool agenda_has_content);
 
+#if FEATURE_SCHEDULE_PAGES
+/**
+ * @brief info_screens_next() for an agenda schedule that has pages of its own: chooses among the
+ * screens of `mask` (cut to those this firmware has, and without the agenda when it has no
+ * content) with the rotation counter of that schedule (`schedule` = its index in the settings), and
+ * moves that counter on. An empty choice gives the agenda, like info_screens_next().
+ */
+int info_screens_next_for(uint32_t mask, int schedule, bool agenda_has_content);
+#endif
+
 /**
  * @brief Draws one screen (not the agenda) and shows it.
  *

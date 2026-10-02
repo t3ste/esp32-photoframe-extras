@@ -104,6 +104,26 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# Which schedule draws when several overlap (build option schedule-pages; pure, against a brute-force reference)
+add_executable(
+  sched_pick_test
+  test_sched_pick.cpp
+  ../main/sched_pick.c
+  ../main/cron.c
+)
+
+target_link_libraries(
+  sched_pick_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  sched_pick_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Wake-schedule simulation (early-wake re-sleep loop vs. the real cron engine)
 add_executable(
   wake_schedule_test
@@ -863,6 +883,7 @@ target_include_directories(
 # Discover tests
 include(GoogleTest)
 gtest_discover_tests(cron_test)
+gtest_discover_tests(sched_pick_test)
 gtest_discover_tests(wake_schedule_test)
 gtest_discover_tests(http_auth_test)
 gtest_discover_tests(source_auth_test)

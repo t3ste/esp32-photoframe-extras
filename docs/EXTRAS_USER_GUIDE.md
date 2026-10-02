@@ -27,6 +27,7 @@ something does not show up. Each section ends with a link to the detailed page f
 | ... exchange rates of the ECB | `finance-snapshot` | the same box | nothing |
 | ... the cheapest petrol stations (Germany) | `fuel-prices` | the same box | a free Tankerkoenig key and a place |
 | ... stocks, ETFs, indices, crypto, currency pairs | `market-quotes` | the same box | nothing; two free keys are optional |
+| A schedule that always shows one page (the fuel prices at 06:30, the Agenda hourly) | `schedule-pages` | Settings -> Agenda -> Schedule | nothing |
 | A painting, drawing or print from a museum at each rotation | `artworks` | Settings -> Auto Rotate -> mode *Artworks* | nothing; a Smithsonian key is optional |
 | Art albums for your frame | `scripts/fetch_art.py` (a PC helper) | on your computer | Python and Node.js |
 
@@ -155,6 +156,12 @@ is one member of the rotation. A picture of each page: [SCREENSHOTS.md](SCREENSH
 3. **Keep the interval at 3 minutes or more** - a colour panel should not be refreshed more often than its maker allows
    (Waveshare: not more than every 3 minutes). With six pages and `*/3 * *` each page is on the panel for 3 minutes out of 18.
 4. **Save Settings.** The next run of the schedule draws the first page.
+
+**A schedule that always draws the same page** (with `schedule-pages`): under each schedule card tick the pages it should draw. A schedule at
+06:30 can then always show the fuel prices while the hourly one shows the Agenda. When two schedules overlap, the one with the smaller number wins
+(move a schedule with the arrows), and no display replaces another within the **minimum time between two displays** (15 minutes, adjustable; a
+schedule can also have its own **hold time**). The photo rotation gives way to them. A schedule with no page ticked draws the shared rotation as
+before, and while no schedule has a page nothing changes. All rules: [SCHEDULE_PAGES.md](SCHEDULE_PAGES.md).
 
 The pages use the language of the on-display text: **Settings -> Overlays -> Overlay language** (English or German).
 Pages with data from the internet fetch it when they are drawn, so the frame must be online then. If it is not, or the service

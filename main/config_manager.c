@@ -209,6 +209,14 @@ static bool source_auth_allow_http = false;
 #if FEATURE_INFO_SCREENS
 static uint16_t info_screens_mask = 1;  // only the agenda, until a screen is switched on
 static uint16_t info_screens_rotation = 0;
+#if FEATURE_SCHEDULE_PAGES
+static uint16_t sched_masks[MAX_CRON_RULES];
+static uint16_t sched_holds[MAX_CRON_RULES];
+static uint16_t sched_rotation[MAX_CRON_RULES];
+static uint16_t sched_gap = SCHED_GAP_DEFAULT_MIN;
+static void sched_pages_load(const char *text);
+static void sched_rotation_load(const char *text);
+#endif
 static char chore_members[INFO_LIST_MAX_LEN] = {0};
 static char chore_tasks[INFO_LIST_MAX_LEN] = {0};
 #if FEATURE_FINANCE_SNAPSHOT
@@ -1357,6 +1365,21 @@ esp_err_t config_manager_init(void)
         if (nvs_get_u16(nvs_handle, NVS_INFO_ROTATION_KEY, &stored_info_u16) == ESP_OK) {
             info_screens_rotation = stored_info_u16;
         }
+#if FEATURE_SCHEDULE_PAGES
+        char sched_text[MAX_CRON_RULES * 12] = {0};
+        size_t sched_text_len = sizeof(sched_text);
+        if (nvs_get_str(nvs_handle, NVS_SCHED_PAGES_KEY, sched_text, &sched_text_len) == ESP_OK) {
+            sched_pages_load(sched_text);
+        }
+        sched_text_len = sizeof(sched_text);
+        sched_text[0] = '\0';
+        if (nvs_get_str(nvs_handle, NVS_SCHED_ROT_KEY, sched_text, &sched_text_len) == ESP_OK) {
+            sched_rotation_load(sched_text);
+        }
+        if (nvs_get_u16(nvs_handle, NVS_SCHED_GAP_KEY, &stored_info_u16) == ESP_OK) {
+            sched_gap = stored_info_u16 > SCHED_GAP_MAX_MIN ? SCHED_GAP_MAX_MIN : stored_info_u16;
+        }
+#endif
         size_t chore_members_len = sizeof(chore_members);
         nvs_get_str(nvs_handle, NVS_CHORE_MEMBERS_KEY, chore_members, &chore_members_len);
         size_t chore_tasks_len = sizeof(chore_tasks);
@@ -3770,6 +3793,142 @@ bool config_manager_get_agenda_cal_e_enabled(void)
 {
     return agenda_cal_e_enabled;
 }
+
+#if FEATURE_SCHEDULE_PAGES
+// "mask:hold,mask:hold,..." (one pair per agenda schedule) -> the arrays; what cannot be read is 0
+static void sched_pages_load(const char *text)
+{
+    memset(sched_masks, 0, sizeof(sched_masks));
+    memset(sched_holds, 0, sizeof(sched_holds));
+    const char *p = text;
+    for (int i = 0; i < MAX_CRON_RULES && *p; i++) {
+        char *end = NULL;
+        long mask = strtol(p, &end, 10);
+        if (end == p) {
+            break;
+        }
+        long hold = 0;
+        if (*end == ':') {
+            p = end + 1;
+            hold = strtol(p, &end, 10);
+        }
+        sched_masks[i] = (uint16_t) (mask & 0x7F);  // the bits of the information screens
+        sched_holds[i] =
+            (uint16_t) (hold < 0 ? 0 : (hold > SCHED_GAP_MAX_MIN ? SCHED_GAP_MAX_MIN : hold));
+        p = end;
+        if (*p == ',') {
+            p++;
+        }
+    }
+}
+
+static void sched_pages_persist(void)
+{
+    char text[MAX_CRON_RULES * 12];
+    text[0] = '\0';
+    bool any = false;
+    size_t used = 0;
+    for (int i = 0; i < MAX_CRON_RULES; i++) {
+        any = any || sched_masks[i] != 0 || sched_holds[i] != 0;
+        int n = snprintf(text + used, sizeof(text) - used, "%s%u:%u", i ? "," : "",
+                         (unsigned) sched_masks[i], (unsigned) sched_holds[i]);
+        if (n < 0 || (size_t) n >= sizeof(text) - used) {
+            break;
+        }
+        used += (size_t) n;
+    }
+    agenda_nvs_set_str_or_erase(NVS_SCHED_PAGES_KEY, any ? text : "");
+}
+
+static void sched_rotation_load(const char *text)
+{
+    memset(sched_rotation, 0, sizeof(sched_rotation));
+    const char *p = text;
+    for (int i = 0; i < MAX_CRON_RULES && *p; i++) {
+        char *end = NULL;
+        long value = strtol(p, &end, 10);
+        if (end == p) {
+            break;
+        }
+        sched_rotation[i] = (uint16_t) value;
+        p = end;
+        if (*p == ',') {
+            p++;
+        }
+    }
+}
+
+static void sched_rotation_persist(void)
+{
+    char text[MAX_CRON_RULES * 12];
+    size_t used = 0;
+    text[0] = '\0';
+    for (int i = 0; i < MAX_CRON_RULES; i++) {
+        int n = snprintf(text + used, sizeof(text) - used, "%s%u", i ? "," : "",
+                         (unsigned) sched_rotation[i]);
+        if (n < 0 || (size_t) n >= sizeof(text) - used) {
+            break;
+        }
+        used += (size_t) n;
+    }
+    agenda_nvs_set_str(NVS_SCHED_ROT_KEY, text);
+}
+
+uint16_t config_manager_get_sched_mask(int index)
+{
+    return (index >= 0 && index < MAX_CRON_RULES) ? sched_masks[index] : 0;
+}
+
+uint16_t config_manager_get_sched_hold(int index)
+{
+    return (index >= 0 && index < MAX_CRON_RULES) ? sched_holds[index] : 0;
+}
+
+void config_manager_set_sched_pages(const uint16_t masks[MAX_CRON_RULES],
+                                    const uint16_t holds[MAX_CRON_RULES])
+{
+    for (int i = 0; i < MAX_CRON_RULES; i++) {
+        sched_masks[i] = masks[i] & 0x7F;
+        sched_holds[i] = holds[i] > SCHED_GAP_MAX_MIN ? SCHED_GAP_MAX_MIN : holds[i];
+    }
+    sched_pages_persist();
+}
+
+int config_manager_get_sched_gap(void)
+{
+    return sched_gap;
+}
+
+void config_manager_set_sched_gap(int minutes)
+{
+    sched_gap =
+        (uint16_t) (minutes < 0 ? 0 : (minutes > SCHED_GAP_MAX_MIN ? SCHED_GAP_MAX_MIN : minutes));
+    agenda_nvs_set_u16(NVS_SCHED_GAP_KEY, sched_gap);
+}
+
+uint16_t config_manager_get_sched_rotation(int index)
+{
+    return (index >= 0 && index < MAX_CRON_RULES) ? sched_rotation[index] : 0;
+}
+
+void config_manager_set_sched_rotation(int index, uint16_t counter)
+{
+    if (index >= 0 && index < MAX_CRON_RULES) {
+        sched_rotation[index] = counter;
+        sched_rotation_persist();
+    }
+}
+
+bool config_manager_sched_pages_in_use(void)
+{
+    for (int i = 0; i < agenda_cron_rule_count && i < MAX_CRON_RULES; i++) {
+        if (sched_masks[i] != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+#endif
 
 #if FEATURE_INFO_SCREENS
 // Copies a list into its buffer; a text that is too long is cut at a character boundary, so a

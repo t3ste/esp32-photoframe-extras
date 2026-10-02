@@ -315,6 +315,14 @@ export const useSettingsStore = defineStore("settings", () => {
     // Information screens in the Agenda rotation (see docs/INFO_SCREENS.md)
     infoScreens: ["agenda"],
     infoScreensAvailable: ["agenda"],
+// #if FEATURE_SCHEDULE_PAGES
+    // Pages per Agenda schedule (see docs/SCHEDULE_PAGES.md): per schedule the pages it draws
+    // (empty: the shared rotation) and its hold in minutes (0: the common minimum time between
+    // two displays, agendaGapMin)
+    agendaCronPages: [[]],
+    agendaCronHold: [0],
+    agendaGapMin: 15,
+// #endif
 // #if FEATURE_CHORE_WHEEL
     choreMembers: "",
     choreTasks: "",
@@ -715,6 +723,15 @@ export const useSettingsStore = defineStore("settings", () => {
 // #if FEATURE_INFO_SCREENS
       deviceSettings.value.infoScreens = data.info_screens ?? ["agenda"];
       deviceSettings.value.infoScreensAvailable = data.info_screens_available ?? ["agenda"];
+// #if FEATURE_SCHEDULE_PAGES
+      deviceSettings.value.agendaCronPages = Array.isArray(data.agenda_cron_pages)
+        ? data.agenda_cron_pages
+        : [];
+      deviceSettings.value.agendaCronHold = Array.isArray(data.agenda_cron_hold)
+        ? data.agenda_cron_hold
+        : [];
+      deviceSettings.value.agendaGapMin = data.agenda_gap_min ?? 15;
+// #endif
 // #if FEATURE_CHORE_WHEEL
       deviceSettings.value.choreMembers = data.chore_members || "";
       deviceSettings.value.choreTasks = data.chore_tasks || "";
@@ -998,6 +1015,11 @@ export const useSettingsStore = defineStore("settings", () => {
 // #endif
 // #if FEATURE_INFO_SCREENS
       info_screens: deviceSettings.value.infoScreens,
+// #if FEATURE_SCHEDULE_PAGES
+      agenda_cron_pages: deviceSettings.value.agendaCronPages,
+      agenda_cron_hold: deviceSettings.value.agendaCronHold,
+      agenda_gap_min: deviceSettings.value.agendaGapMin,
+// #endif
 // #if FEATURE_CHORE_WHEEL
       chore_members: deviceSettings.value.choreMembers,
       chore_tasks: deviceSettings.value.choreTasks,

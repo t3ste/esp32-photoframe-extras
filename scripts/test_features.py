@@ -166,6 +166,7 @@ class BundleTest(unittest.TestCase):
                 "fuel-prices",
                 "market-quotes",
                 "artworks",
+                "schedule-pages",
             },
         )
 

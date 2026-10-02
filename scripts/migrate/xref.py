@@ -58,6 +58,7 @@ MODULES = {
     "fuel-prices": ["fuel_prices", "screen_fuel"],
     "market-quotes": ["market_quotes", "market_service", "screen_markets"],
     "artworks": ["art_select", "art_caption", "art_sources", "art_store", "art_flow"],
+    "schedule-pages": ["sched_pick"],
     "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }
 ALWAYS_HELPERS = {

@@ -915,6 +915,14 @@ typedef enum {
 // how many have been shown (the rotation counter), and the lists of the chore wheel.
 #define NVS_INFO_SCREENS_KEY "info_screens"
 #define NVS_INFO_ROTATION_KEY "info_rot"
+// schedule-pages feature: per Agenda schedule (rule) the pages it draws ("mask:hold" per rule, the
+// mask in the bits of the info screens, the hold in minutes, 0 = the common gap), the common
+// minimum time between two displays, and a rotation counter per schedule ("n,n,n")
+#define NVS_SCHED_PAGES_KEY "sp_pages"
+#define NVS_SCHED_GAP_KEY "sp_gap"
+#define NVS_SCHED_ROT_KEY "sp_rot"
+#define SCHED_GAP_DEFAULT_MIN 15
+#define SCHED_GAP_MAX_MIN 240
 #define NVS_CHORE_MEMBERS_KEY "chore_members"
 #define NVS_CHORE_TASKS_KEY "chore_tasks"
 // finance-snapshot feature: the currencies of the exchange-rate page, as typed ("USD, GBP")

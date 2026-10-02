@@ -861,9 +861,30 @@ const agendaScheduleDisabled = computed(
     !(
       settingsStore.deviceSettings.agendaTodoEnabled ||
       settingsStore.deviceSettings.agendaCalEnabled ||
+      // #if FEATURE_SCHEDULE_PAGES
+      settingsStore.deviceSettings.agendaCronPages.some((names) => names && names.length) ||
+      // #endif
       settingsStore.deviceSettings.infoScreens.some((name) => name !== "agenda")
     )
 );
+// #if FEATURE_SCHEDULE_PAGES
+// The pages a schedule can be given: the ones this firmware has, with the names of the page list.
+const schedulePageLabels = {
+  agenda: "Agenda",
+  "chore-wheel": "Chore wheel",
+  weather: "Weather",
+  fact: "Fact of the day",
+  finance: "Exchange rates",
+  fuel: "Fuel prices",
+  markets: "Markets",
+};
+const schedulePageItems = computed(() =>
+  settingsStore.deviceSettings.infoScreensAvailable.map((name) => ({
+    value: name,
+    title: schedulePageLabels[name] || name,
+  }))
+);
+// #endif
 // #endif
 // #if FEATURE_FUEL_PRICES
 // Removes the API key of the fuel page from the frame (the key is write-only, there is no way to read it).
@@ -2944,10 +2965,37 @@ async function performFactoryReset() {
               Calendar is enabled.
             </div>
 <!-- #if FEATURE_INFO_SCREENS -->
+<!-- #if FEATURE_SCHEDULE_PAGES -->
+            <RotationSchedule
+              v-model="settingsStore.deviceSettings.agendaCron"
+              v-model:pages="settingsStore.deviceSettings.agendaCronPages"
+              v-model:holds="settingsStore.deviceSettings.agendaCronHold"
+              :page-items="schedulePageItems"
+              :disabled="agendaScheduleDisabled"
+            />
+            <div class="text-caption text-medium-emphasis mt-2 mb-2">
+              Give a schedule pages and the schedules work together: when two overlap, the one with
+              the smaller number wins, and no display replaces another within the minimum time
+              below (a schedule's own hold time replaces it for that schedule). The photo rotation
+              gives way to them too. Without pages on any schedule nothing changes.
+            </div>
+            <v-text-field
+              v-model.number="settingsStore.deviceSettings.agendaGapMin"
+              type="number"
+              min="0"
+              max="240"
+              label="Minimum time between two displays (minutes)"
+              variant="outlined"
+              density="compact"
+              hide-details
+              style="max-width: 420px"
+            />
+<!-- #else -->
             <RotationSchedule
               v-model="settingsStore.deviceSettings.agendaCron"
               :disabled="agendaScheduleDisabled"
             />
+<!-- #endif -->
 
             <v-divider class="mb-4 mt-2" />
 

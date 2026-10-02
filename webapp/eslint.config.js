@@ -11,6 +11,7 @@ export default [
       // parse them as they are; the build strips one variant before Vue sees the file.
       "src/components/AlbumGallery.vue",
       "src/components/ImageUpload.vue",
+      "src/components/RotationSchedule.vue",
       "src/components/SettingsPanel.vue",
       "src/stores/app.js",
       "src/stores/settings.js",

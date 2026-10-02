@@ -2733,6 +2733,27 @@ static esp_err_t config_handler(httpd_req_t *req)
                 }
             }
             cJSON_AddItemToObject(root, "info_screens_available", available);
+#if FEATURE_SCHEDULE_PAGES
+            // per agenda schedule (same order as agenda_cron): the pages it draws (empty = the
+            // shared rotation) and its hold in minutes (0 = the common gap)
+            cJSON *schedule_pages = cJSON_CreateArray();
+            cJSON *schedule_holds = cJSON_CreateArray();
+            for (int i = 0; i < config_manager_get_agenda_cron_rule_count(); i++) {
+                cJSON *names = cJSON_CreateArray();
+                for (int id = 0; id < INFO_SCREEN_COUNT; id++) {
+                    if (((config_manager_get_sched_mask(i) >> id) & 1u) &&
+                        ((info_screens_compiled_mask() >> id) & 1u)) {
+                        cJSON_AddItemToArray(names, cJSON_CreateString(info_screen_name(id)));
+                    }
+                }
+                cJSON_AddItemToArray(schedule_pages, names);
+                cJSON_AddItemToArray(schedule_holds,
+                                     cJSON_CreateNumber(config_manager_get_sched_hold(i)));
+            }
+            cJSON_AddItemToObject(root, "agenda_cron_pages", schedule_pages);
+            cJSON_AddItemToObject(root, "agenda_cron_hold", schedule_holds);
+            cJSON_AddNumberToObject(root, "agenda_gap_min", config_manager_get_sched_gap());
+#endif
 #if FEATURE_CHORE_WHEEL
             cJSON_AddStringToObject(root, "chore_members", config_manager_get_chore_members());
             cJSON_AddStringToObject(root, "chore_tasks", config_manager_get_chore_tasks());

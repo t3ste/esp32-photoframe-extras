@@ -19,6 +19,7 @@ with this option behaves as before until a page is added.
 - Several ticked pages: they take turns in a fixed order (Agenda first, then the others in the order of the list). With a
   schedule of `0 */12 *` and the Agenda plus the chore wheel ticked, the frame shows the Agenda at 00:00 and the chore wheel at 12:00.
 - Nothing ticked: the Agenda (a rotation cannot be empty).
+- With `--with schedule-pages` each schedule can draw pages of its own, with priorities and a minimum time between two displays: [SCHEDULE_PAGES.md](SCHEDULE_PAGES.md).
 - The schedule is active as soon as a page other than the Agenda is ticked, even if neither ToDo nor a calendar is switched on.
   An Agenda without ToDo and calendars has nothing to show and is skipped in the rotation.
 

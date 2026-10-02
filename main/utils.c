@@ -35,6 +35,9 @@
 #include "art_flow.h"
 #include "art_sources.h"
 #endif
+#if FEATURE_SCHEDULE_PAGES
+#include "agenda_manager.h"
+#endif
 #include "cron.h"
 #include "debug_log.h"
 #include "display_flow.h"
@@ -1564,7 +1567,64 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
             }
             config_manager_set_agenda_cron_rules(rules, n);
             power_manager_reset_agenda_timer();
+#if FEATURE_SCHEDULE_PAGES
+            power_manager_reset_rotate_timer();  // the photo rotation gives way to these rules
+#endif
         } while (0);
+#if FEATURE_SCHEDULE_PAGES
+    {
+        // The pages and the hold of every agenda schedule, in the order of agenda_cron (the
+        // schedule's position is its priority), and the common minimum time between two displays.
+        // A client that reorders agenda_cron sends these together with it.
+        cJSON *pages_item = cJSON_GetObjectItem(root, "agenda_cron_pages");
+        cJSON *hold_item = cJSON_GetObjectItem(root, "agenda_cron_hold");
+        bool pages_given = pages_item && cJSON_IsArray(pages_item);
+        bool hold_given = hold_item && cJSON_IsArray(hold_item);
+        if (pages_given || hold_given) {
+            uint16_t masks[MAX_CRON_RULES], holds[MAX_CRON_RULES];
+            for (int i = 0; i < MAX_CRON_RULES; i++) {
+                masks[i] = config_manager_get_sched_mask(i);
+                holds[i] = config_manager_get_sched_hold(i);
+            }
+            if (pages_given) {
+                for (int i = 0; i < MAX_CRON_RULES; i++) {
+                    cJSON *names = cJSON_GetArrayItem(pages_item, i);
+                    uint16_t mask = 0;
+                    cJSON *entry;
+                    cJSON_ArrayForEach(entry, names)
+                    {
+                        int id = cJSON_IsString(entry)
+                                     ? info_screen_id_from_name(cJSON_GetStringValue(entry))
+                                     : -1;
+                        if (id >= 0) {
+                            mask |= (uint16_t) (1u << id);
+                        }
+                    }
+                    masks[i] = mask;  // schedules past the end of the list: not assigned
+                }
+            }
+            if (hold_given) {
+                for (int i = 0; i < MAX_CRON_RULES; i++) {
+                    cJSON *value = cJSON_GetArrayItem(hold_item, i);
+                    int minutes = cJSON_IsNumber(value) ? value->valueint : 0;
+                    holds[i] =
+                        (uint16_t) (minutes < 0 ? 0
+                                                : (minutes > SCHED_GAP_MAX_MIN ? SCHED_GAP_MAX_MIN
+                                                                               : minutes));
+                }
+            }
+            config_manager_set_sched_pages(masks, holds);
+            power_manager_reset_agenda_timer();
+            power_manager_reset_rotate_timer();
+        }
+        item = cJSON_GetObjectItem(root, "agenda_gap_min");
+        if (item && cJSON_IsNumber(item)) {
+            config_manager_set_sched_gap(item->valueint);
+            power_manager_reset_agenda_timer();
+            power_manager_reset_rotate_timer();
+        }
+    }
+#endif
     item = cJSON_GetObjectItem(root, "agenda_stack_layout");
     if (item && cJSON_IsBool(item)) {
         config_manager_set_agenda_stack_layout(cJSON_IsTrue(item));
@@ -2942,6 +3002,13 @@ cJSON *create_battery_json(void)
 
 int get_seconds_until_next_wakeup(void)
 {
+#if FEATURE_SCHEDULE_PAGES
+    // with pages assigned to the agenda schedules the rotation gives way to them
+    int sched_seconds = agenda_manager_rotation_seconds_until_next();
+    if (sched_seconds >= 0) {
+        return sched_seconds;
+    }
+#endif
     time_t now;
     struct tm timeinfo;
     time(&now);

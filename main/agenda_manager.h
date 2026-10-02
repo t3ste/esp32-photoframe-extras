@@ -61,6 +61,16 @@ int agenda_manager_seconds_until_next_wake(void);
  */
 esp_err_t agenda_manager_run(bool wifi_connected);
 
+#if FEATURE_SCHEDULE_PAGES
+/**
+ * @brief Seconds from now until the photo rotation next draws, when pages are assigned to the
+ * agenda schedules (sched_pick.h: the rotation is the lowest priority and gives way to the agenda
+ * schedules within the minimum time between two displays). -1 when that does not apply - no page
+ * assigned, or no rotation rule - and the caller keeps its own cron computation.
+ */
+int agenda_manager_rotation_seconds_until_next(void);
+#endif
+
 #else  // !FEATURE_AGENDA: hooks that shared code calls are no-ops
 #include <limits.h>
 #include <stdbool.h>
