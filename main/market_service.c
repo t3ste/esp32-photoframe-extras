@@ -199,6 +199,10 @@ void market_service_load(markets_screen_data_t *out, bool wifi_connected)
                 memcpy(series->currency, old->currency, sizeof(series->currency));
             }
             any_fresh = true;
+            // the newest day of each chart, to see in the log how late an answer was
+            ESP_LOGI(TAG, "%s from %s: %d points, the newest of %s", symbols[i],
+                     market_provider_name(series->provider), series->count,
+                     series->dates[series->count - 1]);
         } else if (old) {
             *series = *old;
             series->stale = true;

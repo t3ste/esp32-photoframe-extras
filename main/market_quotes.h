@@ -128,6 +128,10 @@ market_parse_status_t market_parse_answer(market_provider_t provider, int http_s
  */
 float market_change_percent(const market_series_t *series);
 
+/** @brief Change of the last point against the first one, in percent: what the line chart covers (0
+ * with fewer than two points or a first point that is not above zero). */
+float market_period_change_percent(const market_series_t *series);
+
 /**
  * @brief The price as text: no decimals from 10000, two from 1, four below 1 and six below 0.01; a
  * currency pair ("EURUSD=X") gets four decimals up to 20 (1.1355), the usual two above (USD/JPY).

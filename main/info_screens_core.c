@@ -68,6 +68,120 @@ void info_format_span(int days, bool german, char *out, size_t out_len)
     }
 }
 
+bool info_format_stamp_short(bool german, int year, int month, int day, int hour, int minute,
+                             char *out, size_t out_len)
+{
+    if (out_len == 0) {
+        return false;
+    }
+    out[0] = '\0';
+    if (year < 2024 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 ||
+        hour > 23 || minute < 0 || minute > 59) {
+        return false;
+    }
+    if (german) {
+        snprintf(out, out_len, "%02d.%02d. %02d:%02d", day, month, hour, minute);
+    } else {
+        snprintf(out, out_len, "%d %.3s %02d:%02d", day, info_month_name(month, false), hour,
+                 minute);
+    }
+    return true;
+}
+
+bool info_format_stamp_short_now(const info_now_t *now, char *out, size_t out_len)
+{
+    return info_format_stamp_short(now->german, now->year, now->month, now->day, now->hour,
+                                   now->minute, out, out_len);
+}
+
+void info_format_day_label(info_day_kind_t kind, bool german, const char *iso_date, bool with_word,
+                           char *out, size_t out_len)
+{
+    if (out_len == 0) {
+        return;
+    }
+    out[0] = '\0';
+    int year = 0, month = 0, day = 0;
+    if (!iso_date || sscanf(iso_date, "%4d-%2d-%2d", &year, &month, &day) != 3 || year < 1900 ||
+        month < 1 || month > 12 || day < 1 || day > 31) {
+        return;
+    }
+    const char *word = "";
+    if (with_word) {
+        if (kind == INFO_DAY_RATE) {
+            word = german ? "Kurse " : "Rates ";
+        } else {
+            word = german ? "Schluss " : "Close ";
+        }
+    }
+    if (german) {
+        snprintf(out, out_len, "%s%02d.%02d.", word, day, month);
+    } else {
+        snprintf(out, out_len, "%s%d %.3s", word, day, info_month_name(month, false));
+    }
+}
+
+int info_trading_days_behind(const char *iso_date, const info_now_t *now)
+{
+    int year, month, day;
+    if (!iso_date || !now || sscanf(iso_date, "%4d-%2d-%2d", &year, &month, &day) != 3 ||
+        year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) {
+        return -1;
+    }
+    long from = days_from_civil(year, month, day);
+    long to = days_from_civil(now->year, now->month, now->day);
+    if (to <= from) {
+        return 0;
+    }
+    if (to - from > 3660) {
+        return 3660;  // years old: far behind, whatever the exact count
+    }
+    int weekdays = 0;
+    bool today_is_weekday = false;
+    for (long d = from + 1; d <= to; d++) {
+        long w = (d + 4) % 7;  // 1970-01-01 was a Thursday (4); 0 = Sunday .. 6 = Saturday
+        if (w < 0) {
+            w += 7;
+        }
+        bool weekday = (w != 0 && w != 6);
+        weekdays += weekday ? 1 : 0;
+        today_is_weekday = (d == to) && weekday;
+    }
+    // today's session may not have closed: on a weekday the price of the day before is not late
+    if (today_is_weekday && weekdays > 0) {
+        weekdays--;
+    }
+    return weekdays;
+}
+
+int info_span_labels(int days, bool have_change, float period_change_percent, bool german,
+                     char out[][INFO_SPAN_LABEL_LEN])
+{
+    char span[16];  // "9999 T" at the longest
+    info_format_span(days, german, span, sizeof(span));
+    bool have_span = span[0] != '\0';
+    // a change is only worth showing if it is a number a person can read
+    have_change =
+        have_change && period_change_percent > -1000.0f && period_change_percent < 100000.0f;
+    int n = 0;
+    if (have_change) {
+        // the whole-number form is the shorter way of writing the same change
+        char one[16], zero[16];
+        snprintf(one, sizeof(one), "%+.1f%%", (double) period_change_percent);
+        snprintf(zero, sizeof(zero), "%+.0f%%", (double) period_change_percent);
+        if (have_span) {
+            snprintf(out[n++], INFO_SPAN_LABEL_LEN, "%s %s", span, one);
+            snprintf(out[n++], INFO_SPAN_LABEL_LEN, "%s %s", span, zero);
+        }
+        snprintf(out[n++], INFO_SPAN_LABEL_LEN, "%s", one);
+        snprintf(out[n++], INFO_SPAN_LABEL_LEN, "%s", zero);
+    }
+    if (have_span) {
+        snprintf(out[n++], INFO_SPAN_LABEL_LEN, "%s", span);
+    }
+    return n;
+}
+
 int info_weekday(int year, int month, int day)
 {
     long days = days_from_civil(year, month, day);

@@ -140,4 +140,38 @@ void canvas_text_from_utf8(const char *utf8, char *out, size_t out_len);
 int canvas_text_wrap(const char *text, int max_width, int scale, char lines[][CANVAS_WRAP_LINE_MAX],
                      int max_lines);
 
+/**
+ * @brief Draws the first of `texts` that is at most `max_width` wide at a scale, with its top left
+ * corner at (x, y); the texts run from the most to the least informative. Returns the index drawn,
+ * or -1 if none fits (nothing is drawn).
+ */
+int canvas_text_first_fit(canvas_t *canvas, int x, int y, int max_width, int scale,
+                          canvas_color_t color, const char *const *texts, int count);
+
+/** @brief The width of a header label with its "late" marker (see canvas_header_label()). */
+int canvas_header_label_width(const char *label, bool late, int scale);
+
+/**
+ * @brief The label at the right end of a header band, ending at `right_x`: in `color`, and when
+ * `late` a yellow "!" behind it (the data are older than they should be).
+ */
+void canvas_header_label(canvas_t *canvas, int right_x, int y, int scale, const char *label,
+                         bool late, canvas_color_t color);
+
+#define CANVAS_NOTE_LINES_MAX 3
+
+/**
+ * @brief The note at the foot of a page with data from the internet: where the data come from and
+ * when they were fetched, on ONE line if they fit (`source - stamp`), else the source on its own
+ * line (wrapped to two if need be) and the stamp under it. `sources` are the wordings of the
+ * source, the fullest first ("Source: Yahoo Finance", "Yahoo Finance"); `stamp_long` and
+ * `stamp_short` the stamp ("Updated 30 Sep 14:35", "30 Sep 14:35"). Of the one-line forms the first
+ * that fits wins, trying each source with the long stamp, then the short one. Either part may be
+ * missing (NULL or empty): the note is then the other alone. `lines` takes CANVAS_NOTE_LINES_MAX
+ * lines; returns how many were written (0 if there is nothing to say).
+ */
+int canvas_note_lines(const char *const *sources, int source_count, const char *stamp_long,
+                      const char *stamp_short, int max_width, int scale,
+                      char lines[][CANVAS_WRAP_LINE_MAX]);
+
 #endif

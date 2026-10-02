@@ -419,3 +419,113 @@ TEST(ScreenCanvas, SparklineOfEqualValuesIsAFlatLineInTheMiddle)
     EXPECT_GT(bottom, 28);
     EXPECT_LT(bottom - top, 12);
 }
+
+// ---------------------------------------------------------------------------------------------
+// The note at the foot of a page: source and time on one line when they fit
+
+namespace
+{
+std::vector<std::string> note(std::vector<const char *> sources, const char *stamp_long,
+                              const char *stamp_short, int max_chars)
+{
+    char lines[CANVAS_NOTE_LINES_MAX][CANVAS_WRAP_LINE_MAX];
+    int n = canvas_note_lines(sources.data(), (int) sources.size(), stamp_long, stamp_short,
+                              max_chars * 17, 1, lines);
+    std::vector<std::string> result;
+    for (int i = 0; i < n; i++) {
+        result.push_back(lines[i]);
+    }
+    return result;
+}
+}  // namespace
+
+TEST(ScreenCanvas, NoteIsOneLineWhenSourceAndStampFit)
+{
+    auto lines = note({"Source: Yahoo Finance", "Yahoo Finance"}, "Updated 30 Sep 14:35",
+                      "30 Sep 14:35", 44);
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0], "Source: Yahoo Finance - Updated 30 Sep 14:35");  // exactly 44 characters
+}
+
+TEST(ScreenCanvas, NoteLeavesOutWordsBeforeItGoesToASecondLine)
+{
+    // 41 characters: the long source wording and the long stamp do not fit, the short ones do
+    auto lines = note({"Source: Yahoo Finance, Twelve Data", "Yahoo Finance, Twelve Data"},
+                      "Updated 30 Sep 14:35", "30 Sep 14:35", 41);
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0], "Yahoo Finance, Twelve Data - 30 Sep 14:35");
+}
+
+TEST(ScreenCanvas, NoteTriesEachSourceWithBothStampsInOrder)
+{
+    // the first source with the long stamp, then the first with the short one, then the next source
+    auto lines = note({"AAAA BBBB", "AAAA"}, "LLLL LLLL LLLL", "SSSS", 18);
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0], "AAAA BBBB - SSSS");  // 16 characters: the long stamp (26) does not fit
+    lines = note({"AAAA BBBB", "AAAA"}, "LLLL LLLL LLLL", "SSSS", 12);
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0], "AAAA - SSSS");  // the second source with the short stamp
+}
+
+TEST(ScreenCanvas, NoteFallsBackToTwoLinesOnANarrowPanel)
+{
+    auto lines = note({"Source: Yahoo Finance", "Yahoo Finance"}, "Updated 30 Sep 14:35",
+                      "30 Sep 14:35", 24);
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_EQ(lines[0], "Source: Yahoo Finance");  // the fullest wording that fits a line
+    EXPECT_EQ(lines[1], "Updated 30 Sep 14:35");   // the long stamp
+}
+
+TEST(ScreenCanvas, NoteWrapsASourceThatDoesNotFitALine)
+{
+    auto lines = note({"Yahoo Finance, Twelve Data, Alpha Vantage"}, "Updated 30 Sep 14:35",
+                      "30 Sep 14:35", 22);
+    ASSERT_EQ(lines.size(), 3u);
+    EXPECT_EQ(lines[0], "Yahoo Finance, Twelve");
+    EXPECT_EQ(lines[1], "Data, Alpha Vantage");
+    EXPECT_EQ(lines[2], "Updated 30 Sep 14:35");
+}
+
+TEST(ScreenCanvas, NoteWithOnlyASourceOrOnlyAStamp)
+{
+    auto lines = note({"Source: ECB reference rates", "ECB reference rates"}, "", "", 44);
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0], "Source: ECB reference rates");
+    lines = note({"ECB reference rates"}, nullptr, nullptr, 10);  // too narrow: wrapped, cut with ~
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_EQ(lines[0], "ECB");
+    EXPECT_EQ(lines[1].back(), '~');
+    lines = note({}, "Updated 30 Sep 14:35", "30 Sep 14:35", 44);
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0], "Updated 30 Sep 14:35");
+    lines = note({}, "Updated 30 Sep 14:35", "30 Sep 14:35",
+                 14);  // the short one when the long is too wide
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0], "30 Sep 14:35");
+    lines = note({""}, nullptr, "30 Sep 14:35", 44);  // only a short stamp
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0], "30 Sep 14:35");
+}
+
+TEST(ScreenCanvas, NoteWithNothingToSayIsEmpty)
+{
+    EXPECT_TRUE(note({}, nullptr, nullptr, 44).empty());
+    EXPECT_TRUE(note({"", nullptr}, "", "", 44).empty());
+}
+
+TEST(ScreenCanvas, NoteNeverWritesPastItsBuffersWhateverItIsGiven)
+{
+    std::string huge(400, 'x');
+    char lines[CANVAS_NOTE_LINES_MAX][CANVAS_WRAP_LINE_MAX];
+    const char *sources[] = {huge.c_str()};
+    int n = canvas_note_lines(sources, 1, huge.c_str(), huge.c_str(), 600, 1, lines);
+    EXPECT_GE(n, 1);
+    EXPECT_LE(n, CANVAS_NOTE_LINES_MAX);
+    for (int i = 0; i < n; i++) {
+        EXPECT_LT(strlen(lines[i]), (size_t) CANVAS_WRAP_LINE_MAX);
+    }
+    n = canvas_note_lines(sources, 1, "a", "b", 0, 1, lines);  // no room at all
+    EXPECT_LE(n, CANVAS_NOTE_LINES_MAX);
+    n = canvas_note_lines(nullptr, 0, "Updated", nullptr, 600, 1, lines);
+    EXPECT_EQ(n, 1);
+}

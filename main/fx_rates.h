@@ -71,6 +71,10 @@ int fx_drop_stale(fx_series_t *series, int count, int year, int month, int day, 
  */
 float fx_change_percent(const fx_series_t *series);
 
+/** @brief Change of the last rate against the first one, in percent: what the line chart covers (0
+ * with fewer than two points or a first rate that is not above zero). */
+float fx_period_change_percent(const fx_series_t *series);
+
 /**
  * @brief The rate as text with a sensible number of decimals: 4 below 10, 3 below 100, 2 above
  * (1.1355 -> "1.1355", 162.34 -> "162.34").

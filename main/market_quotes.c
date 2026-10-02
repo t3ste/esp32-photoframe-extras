@@ -405,6 +405,22 @@ market_parse_status_t market_parse_yahoo(const char *json, market_series_t *out)
         date_from_seconds((long long) stamp->valuedouble + gmt_offset, date);
         append_point(out, date, (float) close->valuedouble);
     }
+    // The newest price Yahoo knows (the live price, or after the close the official one) can be
+    // newer than the last daily bar: a bar without a close is skipped above, and the bar of a day
+    // that has just ended may not be complete yet. Taken as the last point when it is of a later
+    // day.
+    const cJSON *market_time =
+        cJSON_GetObjectItemCaseSensitive((cJSON *) meta, "regularMarketTime");
+    const cJSON *market_price =
+        cJSON_GetObjectItemCaseSensitive((cJSON *) meta, "regularMarketPrice");
+    if (cJSON_IsNumber(market_time) && cJSON_IsNumber(market_price) &&
+        plausible_seconds(market_time->valuedouble) && plausible_price(market_price->valuedouble)) {
+        char date[MARKET_DATE_LEN];
+        date_from_seconds((long long) market_time->valuedouble + gmt_offset, date);
+        if (out->count == 0 || strcmp(date, out->dates[out->count - 1]) > 0) {
+            append_point(out, date, (float) market_price->valuedouble);
+        }
+    }
     const char *symbol = string_of(meta, "symbol");
     const char *name = string_of(meta, "longName");
     if (!name) {
@@ -647,6 +663,16 @@ market_parse_status_t market_parse_answer(market_provider_t provider, int http_s
             from_body == MARKET_PARSE_NOT_FOUND)
                ? from_body
                : MARKET_PARSE_BAD;
+}
+
+float market_period_change_percent(const market_series_t *series)
+{
+    if (!series || series->count < 2) {
+        return 0.0f;
+    }
+    float first = series->values[0];
+    float last = series->values[series->count - 1];
+    return first > 0.0f ? (last - first) / first * 100.0f : 0.0f;
 }
 
 float market_change_percent(const market_series_t *series)

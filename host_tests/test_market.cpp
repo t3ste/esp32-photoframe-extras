@@ -286,6 +286,109 @@ TEST(MarketYahoo, NullClosesAreSkipped)
     EXPECT_EQ(s.count, 22);  // 23 timestamps, one without a price
 }
 
+namespace
+{
+// The AAPL answer with a word changed (the test fails if the word is not in it)
+std::string yahoo_aapl_with(const std::string &from, const std::string &to)
+{
+    std::string json = fixture("yahoo-aapl.json");
+    size_t at = json.find(from);
+    EXPECT_NE(at, std::string::npos) << from;
+    if (at != std::string::npos) {
+        json.replace(at, from.size(), to);
+    }
+    return json;
+}
+}  // namespace
+
+TEST(MarketYahoo, TheNewestPriceOfTheMetaIsTakenWhenItIsOfALaterDay)
+{
+    // the last bar is 2026-09-29; the meta says the market traded a day later at 335.50
+    // (1790712000 is 2026-09-29 16:00 UTC, one day later 1790798400)
+    std::string json =
+        yahoo_aapl_with("\"regularMarketTime\":1790712000", "\"regularMarketTime\":1790798400");
+    json.replace(json.find("\"regularMarketPrice\":329.4"), 26, "\"regularMarketPrice\":335.5");
+    market_series_t s;
+    ASSERT_EQ(market_parse_yahoo(json.c_str(), &s), MARKET_PARSE_OK);
+    expect_well_formed(s);
+    EXPECT_EQ(s.count, 22);
+    EXPECT_STREQ(s.dates[s.count - 1], "2026-09-30");
+    EXPECT_NEAR(s.values[s.count - 1], 335.5f, 0.001f);
+    EXPECT_STREQ(s.dates[s.count - 2], "2026-09-29");  // the bars before it are as they were
+    EXPECT_NEAR(s.values[s.count - 2], 329.4f, 0.01f);
+}
+
+TEST(MarketYahoo, ABarWithoutACloseDoesNotHideTheNewestDay)
+{
+    // the last bar has no close (not complete yet): it is skipped, the meta's price of that day
+    // stands in for it, so the newest day is still there
+    std::string json = fixture("yahoo-aapl.json");
+    size_t close = json.find("\"close\":[");
+    ASSERT_NE(close, std::string::npos);
+    size_t last = json.find("329.3999938964844]", close);
+    ASSERT_NE(last, std::string::npos);
+    json.replace(last, 17, "null");
+    market_series_t s;
+    ASSERT_EQ(market_parse_yahoo(json.c_str(), &s), MARKET_PARSE_OK);
+    expect_well_formed(s);
+    EXPECT_EQ(s.count, 21);
+    EXPECT_STREQ(s.dates[s.count - 1], "2026-09-29");
+    EXPECT_NEAR(s.values[s.count - 1], 329.4f, 0.001f);  // the meta's regularMarketPrice
+}
+
+TEST(MarketYahoo, AMetaOfTheSameOrAnEarlierDayAddsNothing)
+{
+    market_series_t s;
+    ASSERT_EQ(market_parse_yahoo(fixture("yahoo-aapl.json").c_str(), &s), MARKET_PARSE_OK);
+    EXPECT_EQ(s.count, 21);  // the meta is of the day of the last bar
+    std::string older =
+        yahoo_aapl_with("\"regularMarketTime\":1790712000", "\"regularMarketTime\":1790625600");
+    ASSERT_EQ(market_parse_yahoo(older.c_str(), &s), MARKET_PARSE_OK);
+    EXPECT_EQ(s.count, 21);
+    EXPECT_STREQ(s.dates[s.count - 1], "2026-09-29");
+}
+
+TEST(MarketYahoo, ANonsenseMetaIsIgnored)
+{
+    market_series_t s;
+    for (const char *price : {"-3.0", "0", "1e30", "\"x\"", "null"}) {
+        std::string json = fixture("yahoo-aapl.json");
+        size_t at = json.find("\"regularMarketPrice\":329.4");
+        ASSERT_NE(at, std::string::npos);
+        json.replace(at, 26, std::string("\"regularMarketPrice\":") + price);
+        json.replace(json.find("\"regularMarketTime\":1790712000"), 30,
+                     "\"regularMarketTime\":1790798400");
+        ASSERT_EQ(market_parse_yahoo(json.c_str(), &s), MARKET_PARSE_OK) << price;
+        EXPECT_EQ(s.count, 21) << price;
+    }
+    for (const char *stamp : {"-5", "9999999999999", "\"x\"", "null"}) {
+        std::string json = yahoo_aapl_with("\"regularMarketTime\":1790712000",
+                                           std::string("\"regularMarketTime\":") + stamp);
+        ASSERT_EQ(market_parse_yahoo(json.c_str(), &s), MARKET_PARSE_OK) << stamp;
+        EXPECT_EQ(s.count, 21) << stamp;
+    }
+    // a meta without the two fields at all
+    std::string json = fixture("yahoo-aapl.json");
+    json.replace(json.find("\"regularMarketTime\""), 19, "\"regularMarketTimeX\"");
+    ASSERT_EQ(market_parse_yahoo(json.c_str(), &s), MARKET_PARSE_OK);
+    EXPECT_EQ(s.count, 21);
+}
+
+TEST(MarketYahoo, AnAnswerThatIsOnlyTheMetaStillHasNoPoints)
+{
+    // no bars at all: the meta alone does not make a chart of one point... but it is a price
+    const char *json =
+        "{\"chart\":{\"result\":[{\"meta\":{\"symbol\":\"X\",\"currency\":\"EUR\",\"gmtoffset\":"
+        "7200,"
+        "\"regularMarketTime\":1790798400,\"regularMarketPrice\":12.5},\"timestamp\":[],"
+        "\"indicators\":{\"quote\":[{\"close\":[]}]}}],\"error\":null}}";
+    market_series_t s;
+    ASSERT_EQ(market_parse_yahoo(json, &s), MARKET_PARSE_OK);
+    EXPECT_EQ(s.count, 1);
+    EXPECT_STREQ(s.dates[0], "2026-09-30");
+    EXPECT_NEAR(s.values[0], 12.5f, 0.001f);
+}
+
 TEST(MarketYahoo, IndexFutureCrypto)
 {
     market_series_t s;
@@ -572,6 +675,28 @@ TEST(MarketFigures, ChangePercent)
     EXPECT_NEAR(market_change_percent(&s), 5.0f, 0.001f);
     s.values[0] = 0.0f;  // cannot happen with parsed data, must not divide by zero
     EXPECT_FLOAT_EQ(market_change_percent(&s), 0.0f);
+}
+
+TEST(MarketFigures, PeriodChangePercent)
+{
+    market_series_t s;
+    memset(&s, 0, sizeof(s));
+    EXPECT_FLOAT_EQ(market_period_change_percent(&s), 0.0f);
+    EXPECT_FLOAT_EQ(market_period_change_percent(nullptr), 0.0f);
+    s.count = 1;
+    s.values[0] = 10.0f;
+    EXPECT_FLOAT_EQ(market_period_change_percent(&s), 0.0f);  // one point: no period
+    s.count = 4;
+    s.values[0] = 100.0f;
+    s.values[1] = 150.0f;
+    s.values[2] = 90.0f;
+    s.values[3] = 110.0f;
+    EXPECT_NEAR(market_period_change_percent(&s), 10.0f, 0.001f);  // first to last, not the daily
+    EXPECT_NEAR(market_change_percent(&s), 22.222f, 0.01f);
+    s.values[3] = 80.0f;
+    EXPECT_NEAR(market_period_change_percent(&s), -20.0f, 0.001f);
+    s.values[0] = 0.0f;  // cannot happen with parsed data, must not divide by zero
+    EXPECT_FLOAT_EQ(market_period_change_percent(&s), 0.0f);
 }
 
 TEST(MarketFigures, Price)

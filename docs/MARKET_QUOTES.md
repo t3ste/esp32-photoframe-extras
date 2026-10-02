@@ -58,15 +58,33 @@ three times - this feature uses its own, which asks again only when the server d
 
 ## What the page shows
 
-- A blue header with `MARKETS` (`KURSE`) and the date of the newest price.
+- A blue header with `MARKETS` (`KURSE`) and **the trading day of the newest price**, named so that it is not taken for today's date: `Close 30 Sep` (`Schluss 30.09.`;
+  on a narrow panel just `30 Sep`). When every line covers the same time, the header says so after the heading: `MARKETS  41 d` (`KURSE  41 T`).
+- A small yellow **`!`** behind the day says that the newest price is **older than the last trading day**: on Friday a price of Wednesday or older, on Monday one of Thursday or
+  older (a bank holiday can show it too - the frame does not know the holidays).
 - One row per symbol: the symbol big with its name under it (Yahoo gives the name; the other two do not, the last known one is kept), the price with its
-  currency, the change in percent with an arrow, and the line of up to 30 days (the newest point is a dot in the colour of the trend). All symbols use the same
-  symbol size, the biggest at which the longest one fits.
+  currency, the change against the day before in percent with an arrow, and the line of up to 30 days (the newest point is a dot in the colour of the trend) with **the
+  change over the whole line** under it (`+6.9%`; the time it covers is in the header). All symbols use the same symbol size, the biggest at which the longest one fits.
 - A symbol nobody could serve gets a row with `n/a`.
-- A footer naming the sources the shown prices came from and, under it, when they were fetched (`Updated 30 Sep 14:35`; for a page drawn from the kept prices the time of the newest fetch).
-- Under each line the time it covers in calendar days (`41 d`).
+- **One footer line** with the sources the shown prices came from and when they were fetched: `Yahoo Finance, Twelve Data - 30 Sep 14:35` (`Quelle: ... - Stand 30.09. 14:35` where
+  there is room; for a page drawn from the kept prices the time of the newest fetch). On a narrow panel it takes two or three lines. The lines are not shorter than that: the
+  frame has one font size.
+- If the lines of a page do not all cover the same time, each line says it itself under its chart (`29 d +10.2%`, as far as there is room).
 - **Blue prices** are the last known ones: the fetch failed (or there was no network on this wake), so the price is taken from the last good answer that the frame kept
   on its storage (a text file, `.markets.txt`; answers older than 14 days are dropped). The footer then says `Blue = last known`.
+
+### The newest price
+
+Yahoo's daily bars sometimes lag behind: a bar without a close (a thinly traded ETF that did not trade) is left out, and the bar of a day that has just ended may not be complete.
+So the frame also reads the **latest price Yahoo states for the symbol** (its `regularMarketPrice` and the time of it) and takes it as the newest point when that is of a later day
+than the last bar - the close of the day before is then there at midnight, and during the day it is the live price. The page is drawn right after the fetch, so nothing older than
+the fetch is shown; the log line `<symbol> from Yahoo Finance: 30 points, the newest of 2026-10-01` tells which day each chart ended on.
+
+When a chart still ends on an older day, the yellow `!` says so:
+
+<img src="screens/info-markets-late.png" width="480" alt="The markets page on a Friday with prices of Wednesday: a yellow ! behind Close 30 Sep">
+
+*Friday 2 October, fetched at midnight, newest prices of Wednesday 30 September.*
 
 If there is nothing to show the page says why: no network on this wake (and nothing kept), no source (Yahoo off and no key), or no source gave a price for any symbol.
 

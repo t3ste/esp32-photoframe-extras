@@ -18,11 +18,11 @@ const Page kPages[] = {kWeather, kFinance, kFuel, kMarkets};
 
 // Draws a page of the made-up sample data at a moment; `year` 1970 is a clock that was never set.
 std::string draw(Page page, int w, int h, bool german, int year = 2026, int minute = 35,
-                 bool guards = true)
+                 bool guards = true, int month = 9, int day = 30)
 {
     GuardedCanvas cv(w, h);
     info_now_t now;
-    info_now_from_date(year, 9, 30, german, &now);
+    info_now_from_date(year, month, day, german, &now);
     now.hour = 14;
     now.minute = minute;
     switch (page) {
@@ -108,15 +108,19 @@ TEST(InfoNotes, TheTimeOfTheNoteFollowsTheClock)
 
 TEST(InfoNotes, WithoutAClockThereIsNoNoteAtAll)
 {
-    // the footer text of a page is the same with and without the note, only one line higher with
-    // it: so the last line without a clock looks like the line above the note with a clock
+    // no clock, no time on the page: the minute makes no difference then (with a clock it does, see
+    // above), and the footer is still there
     for (Page page : {kFinance, kFuel, kMarkets}) {
         for (const auto &size : kSizes) {
-            std::string with_clock = draw(page, size[0], size[1], false);
-            std::string without_clock = draw(page, size[0], size[1], false, 1970);
-            EXPECT_EQ(ink_in_last_line(without_clock, size[0], size[1]),
-                      ink_in_last_line(with_clock, size[0], size[1], 1))
-                << page << " " << size[0] << "x" << size[1];
+            for (bool german : {false, true}) {
+                EXPECT_EQ(draw(page, size[0], size[1], german, 1970, 35),
+                          draw(page, size[0], size[1], german, 1970, 36))
+                    << page << " " << size[0] << "x" << size[1];
+                EXPECT_GT(
+                    ink_in_last_line(draw(page, size[0], size[1], german, 1970), size[0], size[1]),
+                    50)
+                    << page << " " << size[0] << "x" << size[1];  // the source stays
+            }
         }
     }
     // and the weather page keeps its bottom margin blank either way
@@ -130,6 +134,20 @@ TEST(InfoNotes, WithoutAClockThereIsNoNoteAtAll)
                 ASSERT_TRUE(p[0] == 255 && p[1] == 255 && p[2] == 255);
             }
         }
+    }
+}
+
+TEST(InfoNotes, SourceAndTimeShareOneLineWhereTheyFit)
+{
+    // on an 800 x 480 panel the footer is one line with the time and one line without it: the pages
+    // are the same above the last line, so the rows have not moved
+    for (Page page : {kFinance, kFuel, kMarkets}) {
+        std::string with_clock = draw(page, 800, 480, false);
+        std::string without_clock = draw(page, 800, 480, false, 1970);
+        size_t above_the_footer = (size_t) (480 - 12 - 24) * 800 * 3;
+        EXPECT_EQ(with_clock.substr(0, above_the_footer), without_clock.substr(0, above_the_footer))
+            << page;
+        EXPECT_NE(with_clock, without_clock) << page;  // but the last line has the time
     }
 }
 
@@ -217,4 +235,80 @@ TEST(InfoNotes, MarketsFourFooterLinesStillFit)
                       100);
         }
     }
+}
+
+namespace
+{
+// Pixels of exactly the yellow of the late marker inside the header band of a page
+int yellow_in_header(const std::string &picture, int w, int h)
+{
+    int u = (w < h ? w : h) / 40;
+    int scale = (w < h ? w : h) >= 1000 ? 3 : 1;
+    int band = 24 * scale + 2 * u;
+    int count = 0;
+    for (int y = 0; y < band; y++) {
+        for (int x = 0; x < w; x++) {
+            const unsigned char *p =
+                (const unsigned char *) picture.data() + ((size_t) y * w + x) * 3;
+            count += (p[0] == 255 && p[1] == 255 && p[2] == 0) ? 1 : 0;
+        }
+    }
+    return count;
+}
+}  // namespace
+
+TEST(InfoNotes, TheHeaderMarksDataOlderThanATradingDay)
+{
+    // the sample charts end on Wednesday 2026-09-30
+    struct Moment {
+        int month, day;
+        bool late;
+        const char *what;
+    };
+    const Moment moments[] = {
+        {9, 30, false, "the same day"},
+        {10, 1, false, "the next day, still no later close"},
+        {10, 2, true, "Friday: Thursday's close is missing"},
+        {10, 3, true, "Saturday"},
+        {10, 5, true, "Monday"},
+    };
+    for (Page page : {kFinance, kMarkets}) {
+        for (const auto &size : kSizes) {
+            for (const Moment &moment : moments) {
+                std::string picture =
+                    draw(page, size[0], size[1], false, 2026, 35, true, moment.month, moment.day);
+                int yellow = yellow_in_header(picture, size[0], size[1]);
+                if (moment.late) {
+                    EXPECT_GT(yellow, 10)
+                        << page << " " << size[0] << "x" << size[1] << " " << moment.what;
+                } else {
+                    EXPECT_EQ(yellow, 0)
+                        << page << " " << size[0] << "x" << size[1] << " " << moment.what;
+                }
+            }
+        }
+    }
+}
+
+TEST(InfoNotes, WithoutAClockNothingIsLate)
+{
+    // a clock that was never set says 1970: every price is "in the future" then, none is late
+    for (Page page : {kFinance, kMarkets}) {
+        for (bool german : {false, true}) {
+            std::string picture = draw(page, 800, 480, german, 1970, 35, true, 10, 2);
+            EXPECT_EQ(yellow_in_header(picture, 800, 480), 0) << page;
+        }
+    }
+}
+
+TEST(InfoNotes, TheHeaderNamesTheDayOfTheData)
+{
+    // the day label changes with the language and with the date of the newest point
+    std::string en = draw(kMarkets, 800, 480, false);
+    std::string de = draw(kMarkets, 800, 480, true);
+    EXPECT_NE(en, de);
+    // another "now" with the same data differs in the late marker only, so equal otherwise when the
+    // marker is not drawn: the 30th and the 1st give the same page
+    EXPECT_EQ(draw(kMarkets, 800, 480, false, 2026, 35, true, 9, 30),
+              draw(kMarkets, 800, 480, false, 2026, 35, true, 10, 1));
 }

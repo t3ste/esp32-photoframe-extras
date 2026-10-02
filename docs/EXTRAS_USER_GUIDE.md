@@ -159,12 +159,15 @@ The pages use the language of the on-display text: **Settings -> Overlays -> Ove
 Pages with data from the internet fetch it when they are drawn, so the frame must be online then. If it is not, or the service
 does not answer, the page says so instead of drawing an empty picture, and the next turn of the rotation tries again.
 
-### Two small notes you will see
+### Small notes you will see
 
 - **When the data were fetched.** Pages with online data (weather, exchange rates, fuel prices, markets) end with
-  `Updated 30 Sep 14:35` (German: `Stand 30.09. 14:35`), in the frame's local time. A frame whose clock was never set draws no note.
-- **How long a chart runs.** Under each line of the exchange-rate and markets pages, `41 d` (German `41 T`) says how many
-  calendar days the line covers.
+  the time, in the frame's local time: `Updated 30 Sep 14:35` (German: `Stand 30.09. 14:35`) on the weather page, and on the same line as the source
+  on the others (`Yahoo Finance, Twelve Data - 30 Sep 14:35`). A frame whose clock was never set draws no time.
+- **Which day the data are from.** The exchange-rate and markets pages name the day of the newest price in the header (`Close 30 Sep`, German `Schluss 30.09.`),
+  so it is not mistaken for today's date. A small yellow **`!`** behind it says that day is older than the last trading day.
+- **How long a chart runs, and what it did.** The header says how many calendar days the lines cover (`MARKETS  41 d`, German `41 T`), and under each line is
+  the change over that time (`+6.9%`) next to the change of the last day.
 
 ### Chore wheel
 

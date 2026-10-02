@@ -48,22 +48,6 @@ static void message(canvas_t *canvas, const info_now_t *now, markets_screen_stat
     }
 }
 
-// "Tue 29 Sep" for an ISO date, as display text.
-static void date_text(const info_now_t *now, const char *iso_date, char *out, size_t out_len)
-{
-    int year = 0, month = 0, day = 0;
-    if (sscanf(iso_date, "%d-%d-%d", &year, &month, &day) != 3) {
-        out[0] = '\0';
-        return;
-    }
-    char weekday[16], month_name[24], month_short[8];
-    canvas_text_from_utf8(info_weekday_short(info_weekday(year, month, day), now->german), weekday,
-                          sizeof(weekday));
-    canvas_text_from_utf8(info_month_name(month, now->german), month_name, sizeof(month_name));
-    snprintf(month_short, sizeof(month_short), "%.3s", month_name);
-    snprintf(out, out_len, "%s %d%s %s", weekday, day, now->german ? "." : "", month_short);
-}
-
 // The trend of a series: colour of the change text and whether an arrow is drawn.
 static canvas_color_t trend_color(float change, bool *up, bool *down)
 {
@@ -85,6 +69,38 @@ static void draw_change(canvas_t *canvas, int right_x, int y, float change, canv
     if (up || down) {
         canvas_arrow(canvas, right_x - text_w - u, y + text_h / 2, text_h * 6 / 10, up, trend);
     }
+}
+
+// The width the daily change takes at the right of a row: its text, the arrow and a gap.
+static int change_width(const canvas_t *canvas, float change)
+{
+    int s = canvas_text_scale(canvas, 1);
+    char percent[16];
+    snprintf(percent, sizeof(percent), "%+.2f%%", (double) change);
+    return canvas_text_width(percent, s) + canvas_unit(canvas) + canvas_text_height(s) * 6 / 10;
+}
+
+// The days a chart covers (-1 if it has no dates to say so).
+static int span_days(const market_series_t *series)
+{
+    return series->count > 0 ? info_days_between(series->dates[0], series->dates[series->count - 1])
+                             : -1;
+}
+
+// The note beside the chart - the span and the change over it - in the most informative form that
+// fits `max_w`. With `span_in_header` the span is not repeated here: only the change.
+static void draw_chart_label(canvas_t *canvas, int x, int y, int max_w, bool german,
+                             const market_series_t *series, bool span_in_header)
+{
+    char labels[INFO_SPAN_LABELS_MAX][INFO_SPAN_LABEL_LEN];
+    int n = info_span_labels(span_in_header ? 0 : span_days(series), series->count >= 2,
+                             market_period_change_percent(series), german, labels);
+    const char *texts[INFO_SPAN_LABELS_MAX];
+    for (int i = 0; i < n; i++) {
+        texts[i] = labels[i];
+    }
+    canvas_text_first_fit(canvas, x, y, max_w, canvas_text_scale(canvas, 1), CANVAS_BLACK, texts,
+                          n);
 }
 
 // The width of the column that holds the symbol and the name of a row of `w` by `h` pixels.
@@ -137,7 +153,7 @@ static void draw_price(canvas_t *canvas, int x, int y, int h, int max_w, int max
 }
 
 static void draw_row(canvas_t *canvas, int x, int y, int w, int h, int sym_scale, bool german,
-                     const market_series_t *series)
+                     bool span_in_header, const market_series_t *series)
 {
     int u = canvas_unit(canvas);
     int s = canvas_text_scale(canvas, 1);
@@ -159,9 +175,6 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, int sym_scale
     float change = market_change_percent(series);
     bool up, down;
     canvas_color_t trend = trend_color(change, &up, &down);
-    char span[16];  // the time the line covers: "42 d"
-    info_format_span(info_days_between(series->dates[0], series->dates[series->count - 1]), german,
-                     span, sizeof(span));
     canvas_color_t price_color = series->stale ? CANVAS_BLUE : CANVAS_BLACK;
 
     if (wide) {
@@ -176,7 +189,9 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, int sym_scale
         int spark_x = x + w - u - spark_w;
         canvas_sparkline(canvas, spark_x, y + pad, spark_w, h - 2 * pad - text_h - pad / 2,
                          series->values, series->count, trend);
-        canvas_text(canvas, spark_x, y + h - pad - text_h, span, s, CANVAS_BLACK);
+        draw_chart_label(canvas, spark_x, y + h - pad - text_h,
+                         spark_w - change_width(canvas, change) - u / 2, german, series,
+                         span_in_header);
         draw_change(canvas, x + w - u, y + h - pad - text_h, change, trend, up, down);
     } else {
         int top_h = h * 52 / 100;
@@ -193,14 +208,16 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, int sym_scale
         int text_w = canvas_text_width(percent, s) + 3 * u;
         canvas_sparkline(canvas, x + u, bottom_y, w - 2 * u - text_w, bottom_h - text_h,
                          series->values, series->count, trend);
-        canvas_text(canvas, x + u, bottom_y + bottom_h - text_h, span, s, CANVAS_BLACK);
+        draw_chart_label(canvas, x + u, bottom_y + bottom_h - text_h,
+                         w - 2 * u - change_width(canvas, change) - 2 * u, german, series,
+                         span_in_header);
         draw_change(canvas, x + w - u, bottom_y + (bottom_h - text_h) / 2, change, trend, up, down);
     }
 }
 
-// The footer lines: "Source: Yahoo Finance, Twelve Data" from the sources of the rows that have
-// data (wrapped to two lines at most), and a line explaining the blue prices if a row is from the
-// cache. Returns the number of lines written.
+// The footer lines: the sources of the rows that have data and when they were fetched on one line
+// ("Yahoo Finance, Twelve Data - 30 Sep 14:35"; wrapped over more lines on a narrow panel), and a
+// line explaining the blue prices if a row is from the cache. Returns the number of lines written.
 static int footer_lines(const info_now_t *now, const markets_screen_data_t *data, int rows,
                         int max_width, int scale, char lines[][CANVAS_WRAP_LINE_MAX])
 {
@@ -212,28 +229,32 @@ static int footer_lines(const info_now_t *now, const markets_screen_data_t *data
             stale = stale || data->series[i].stale;
         }
     }
-    char text[CANVAS_WRAP_LINE_MAX], display[CANVAS_WRAP_LINE_MAX];
-    size_t n = (size_t) snprintf(text, sizeof(text), "%s", now->german ? "Quelle: " : "Source: ");
-    bool first = true;
-    for (int p = 0; p < MARKET_PROVIDER_COUNT && n < sizeof(text); p++) {
+    char names[CANVAS_WRAP_LINE_MAX], with_word[CANVAS_WRAP_LINE_MAX];
+    size_t n = 0;
+    names[0] = '\0';
+    for (int p = 0; p < MARKET_PROVIDER_COUNT && n < sizeof(names); p++) {
         if (used[p]) {
-            n += (size_t) snprintf(text + n, sizeof(text) - n, "%s%s", first ? "" : ", ",
+            n += (size_t) snprintf(names + n, sizeof(names) - n, "%s%s", n > 0 ? ", " : "",
                                    market_provider_name((market_provider_t) p));
-            first = false;
         }
     }
-    canvas_text_from_utf8(text, display, sizeof(display));
-    int count = canvas_text_wrap(display, max_width, scale, lines, 2);
-    if (stale) {
-        canvas_text_from_utf8(now->german ? "Blau = zuletzt bekannt" : "Blue = last known", display,
-                              sizeof(display));
-        canvas_text_fit(display, max_width, scale, lines[count], CANVAS_WRAP_LINE_MAX);
-        count++;
-    }
-    char stamp[40];
-    if (info_format_stamp(now->german, data->updated_year, data->updated_month, data->updated_day,
-                          data->updated_hour, data->updated_minute, stamp, sizeof(stamp))) {
-        canvas_text_fit(stamp, max_width, scale, lines[count], CANVAS_WRAP_LINE_MAX);
+    snprintf(with_word, sizeof(with_word), "%s%s", now->german ? "Quelle: " : "Source: ", names);
+    char long_stamp[40], short_stamp[40];
+    long_stamp[0] = short_stamp[0] = '\0';
+    info_format_stamp(now->german, data->updated_year, data->updated_month, data->updated_day,
+                      data->updated_hour, data->updated_minute, long_stamp, sizeof(long_stamp));
+    info_format_stamp_short(now->german, data->updated_year, data->updated_month, data->updated_day,
+                            data->updated_hour, data->updated_minute, short_stamp,
+                            sizeof(short_stamp));
+    char display[2][CANVAS_WRAP_LINE_MAX];
+    canvas_text_from_utf8(with_word, display[0], sizeof(display[0]));
+    canvas_text_from_utf8(names, display[1], sizeof(display[1]));
+    const char *sources[2] = {display[0], display[1]};
+    int count = canvas_note_lines(sources, 2, long_stamp, short_stamp, max_width, scale, lines);
+    if (stale && count < 4) {
+        canvas_text_from_utf8(now->german ? "Blau = zuletzt bekannt" : "Blue = last known",
+                              display[0], sizeof(display[0]));
+        canvas_text_fit(display[0], max_width, scale, lines[count], CANVAS_WRAP_LINE_MAX);
         count++;
     }
     return count;
@@ -257,11 +278,23 @@ void markets_screen_render(canvas_t *canvas, const info_now_t *now,
     int line = canvas_text_height(s);
     canvas_fill(canvas, CANVAS_WHITE);
 
-    // the header band, with the date of the newest price
+    // the header band, with the trading day of the newest price (named, so that it is not taken for
+    // today's date) and a yellow "!" when that day is older than the last trading day
     int band_h = line + 2 * u;
     canvas_rect(canvas, 0, 0, canvas->width, band_h, CANVAS_BLUE);
     char heading[CANVAS_WRAP_LINE_MAX], date[CANVAS_WRAP_LINE_MAX], fitted[CANVAS_WRAP_LINE_MAX];
-    canvas_text_from_utf8(now->german ? "KURSE" : "MARKETS", heading, sizeof(heading));
+    // all charts cover the same time: said once in the header ("MARKETS 41 d"), not in every row
+    int common_span = -1;
+    for (int i = 0; i < rows; i++) {
+        if (data->series[i].count < 1) {
+            continue;
+        }
+        int days = span_days(&data->series[i]);
+        common_span = (common_span == -1 || common_span == days) ? days : -2;
+        if (common_span == -2) {
+            break;
+        }
+    }
     const char *newest = NULL;
     for (int i = 0; i < rows; i++) {
         const market_series_t *series = &data->series[i];
@@ -270,14 +303,36 @@ void markets_screen_render(canvas_t *canvas, const info_now_t *now,
             newest = series->dates[series->count - 1];
         }
     }
-    date[0] = '\0';
+    // the heading names the span of the charts if they all share it and it fits beside the date;
+    // the date has its word ("Close") if that fits too
+    char span_text[16], date_short[CANVAS_WRAP_LINE_MAX];
+    info_format_span(common_span > 0 ? common_span : 0, now->german, span_text, sizeof(span_text));
+    snprintf(heading, sizeof(heading), "%s", now->german ? "KURSE" : "MARKETS");
+    date[0] = date_short[0] = '\0';
+    bool late = false;
     if (newest) {
-        date_text(now, newest, date, sizeof(date));
+        late = info_trading_days_behind(newest, now) >= 1;
+        info_format_day_label(INFO_DAY_CLOSE, now->german, newest, false, date_short,
+                              sizeof(date_short));
+        info_format_day_label(INFO_DAY_CLOSE, now->german, newest, true, date, sizeof(date));
     }
-    int date_w = canvas_text_width(date, s);
+    int avail = canvas->width - 5 * u;
+    char with_span[CANVAS_WRAP_LINE_MAX + 24];  // the heading, two blanks and the span
+    snprintf(with_span, sizeof(with_span), "%s  %s", heading, span_text);
+    bool span_in_header =
+        span_text[0] &&
+        canvas_text_width(with_span, s) + canvas_header_label_width(date_short, late, s) <= avail;
+    if (span_in_header) {
+        snprintf(heading, sizeof(heading), "%.*s", (int) sizeof(heading) - 1, with_span);
+    }
+    if (canvas_text_width(heading, s) + canvas_header_label_width(date, late, s) > avail) {
+        snprintf(date, sizeof(date), "%s",
+                 date_short);  // a narrow panel: the date without the word
+    }
+    int date_w = canvas_header_label_width(date, late, s);
     canvas_text_fit(heading, canvas->width - 5 * u - date_w, s, fitted, sizeof(fitted));
     canvas_text(canvas, 2 * u, u, fitted, s, CANVAS_WHITE);
-    canvas_text_right(canvas, canvas->width - 2 * u, u, date, s, CANVAS_WHITE);
+    canvas_header_label(canvas, canvas->width - 2 * u, u, s, date, late, CANVAS_WHITE);
 
     // the footer
     char footer[4][CANVAS_WRAP_LINE_MAX];
@@ -310,6 +365,6 @@ void markets_screen_render(canvas_t *canvas, const info_now_t *now,
 
     for (int i = 0; i < rows; i++) {
         draw_row(canvas, 2 * u, top + i * (row_h + gap), row_w, row_h, sym_scale, now->german,
-                 &data->series[i]);
+                 span_in_header, &data->series[i]);
     }
 }

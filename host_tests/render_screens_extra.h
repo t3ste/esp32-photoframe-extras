@@ -183,7 +183,7 @@ inline void draw_fact_long(canvas_t *canvas)
     memset(&fact, 0, sizeof(fact));
     // 63 characters into a 48-byte field: truncated, not overrun (a plain strcpy wrote 16 bytes
     // into fact.text, which only the strncpy below hid)
-    snprintf(fact.title, sizeof(fact.title), "%s",
+    snprintf(fact.title, sizeof(fact.title), "%.*s", (int) sizeof(fact.title) - 1,
              "A rather long topic that does not fit its pill on a small panel");
     std::string text, question;
     while (text.size() < FACT_TEXT_MAX - 14) {
@@ -417,6 +417,21 @@ inline void draw_markets_small_price(canvas_t *canvas)
     markets_screen_render(canvas, &now, &data);
 }
 
+// The data of the sample page end on 30 September; on Friday 2 October the close of Thursday is
+// missing: a yellow "!" behind the date in the header
+inline void draw_markets_late(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 10, 2, false, &now);
+    markets_screen_data_t data = markets_sample(4);
+    data.updated_year = 2026;  // fetched at midnight, like the page on the frame
+    data.updated_month = 10;
+    data.updated_day = 2;
+    data.updated_hour = 0;
+    data.updated_minute = 0;
+    markets_screen_render(canvas, &now, &data);
+}
+
 inline void draw_markets_offline(canvas_t *canvas)
 {
     info_now_t now;
@@ -475,6 +490,7 @@ inline const std::vector<RenderCase> &render_cases()
         {"markets-de", draw_markets_german},
         {"markets-single", draw_markets_single},
         {"markets-small-price", draw_markets_small_price},
+        {"markets-late", draw_markets_late},
         {"markets-offline", draw_markets_offline},
         {"markets-no-source", draw_markets_no_source},
         {"markets-failed", draw_markets_failed},

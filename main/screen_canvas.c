@@ -1,6 +1,7 @@
 #include "screen_canvas.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "feature_config.h"
@@ -465,4 +466,100 @@ int canvas_text_wrap(const char *text, int max_width, int scale, char lines[][CA
         lines[count - 1][len + 1] = '\0';
     }
     return count;
+}
+
+int canvas_note_lines(const char *const *sources, int source_count, const char *stamp_long,
+                      const char *stamp_short, int max_width, int scale,
+                      char lines[][CANVAS_WRAP_LINE_MAX])
+{
+    bool has_stamp = (stamp_long && stamp_long[0]) || (stamp_short && stamp_short[0]);
+    const char *stamps[2] = {stamp_long, stamp_short};
+    // the stamp for a line of its own: the long one if there is one
+    const char *own_stamp = (stamp_long && stamp_long[0]) ? stamp_long : stamp_short;
+    int usable_sources = 0;
+    for (int i = 0; i < source_count; i++) {
+        usable_sources += (sources && sources[i] && sources[i][0]) ? 1 : 0;
+    }
+
+    if (usable_sources == 0) {
+        if (!has_stamp) {
+            return 0;
+        }
+        // the stamp alone: the long one if it fits, else the short one, else cut
+        const char *pick = own_stamp;
+        if (canvas_text_width(own_stamp, scale) > max_width && stamp_short && stamp_short[0]) {
+            pick = stamp_short;
+        }
+        canvas_text_fit(pick, max_width, scale, lines[0], CANVAS_WRAP_LINE_MAX);
+        return 1;
+    }
+
+    if (has_stamp) {
+        for (int i = 0; i < source_count; i++) {
+            if (!sources[i] || !sources[i][0]) {
+                continue;
+            }
+            for (int k = 0; k < 2; k++) {
+                if (!stamps[k] || !stamps[k][0]) {
+                    continue;
+                }
+                char joined[2 * CANVAS_WRAP_LINE_MAX + 4];
+                snprintf(joined, sizeof(joined), "%s - %s", sources[i], stamps[k]);
+                if (strlen(joined) < CANVAS_WRAP_LINE_MAX &&
+                    canvas_text_width(joined, scale) <= max_width) {
+                    memcpy(lines[0], joined, strlen(joined) + 1);
+                    return 1;
+                }
+            }
+        }
+    }
+
+    // not on one line: the source (the first wording that fits a line, else the last one wrapped)
+    int count = 0;
+    const char *fallback = NULL;
+    for (int i = 0; i < source_count && count == 0; i++) {
+        if (!sources[i] || !sources[i][0]) {
+            continue;
+        }
+        fallback = sources[i];
+        if (canvas_text_width(sources[i], scale) <= max_width) {
+            canvas_text_fit(sources[i], max_width, scale, lines[0], CANVAS_WRAP_LINE_MAX);
+            count = 1;
+        }
+    }
+    if (count == 0) {
+        count = canvas_text_wrap(fallback, max_width, scale, lines, 2);
+    }
+    if (has_stamp && count < CANVAS_NOTE_LINES_MAX) {
+        canvas_text_fit(own_stamp, max_width, scale, lines[count], CANVAS_WRAP_LINE_MAX);
+        count++;
+    }
+    return count;
+}
+
+int canvas_text_first_fit(canvas_t *canvas, int x, int y, int max_width, int scale,
+                          canvas_color_t color, const char *const *texts, int count)
+{
+    for (int i = 0; texts && i < count; i++) {
+        if (texts[i] && texts[i][0] && canvas_text_width(texts[i], scale) <= max_width) {
+            canvas_text(canvas, x, y, texts[i], scale, color);
+            return i;
+        }
+    }
+    return -1;
+}
+
+int canvas_header_label_width(const char *label, bool late, int scale)
+{
+    return canvas_text_width(label, scale) + (late ? canvas_text_width(" !", scale) : 0);
+}
+
+void canvas_header_label(canvas_t *canvas, int right_x, int y, int scale, const char *label,
+                         bool late, canvas_color_t color)
+{
+    if (late) {
+        canvas_text(canvas, right_x - canvas_text_width("!", scale), y, "!", scale, CANVAS_YELLOW);
+        right_x -= canvas_text_width(" !", scale);
+    }
+    canvas_text_right(canvas, right_x, y, label, scale, color);
 }

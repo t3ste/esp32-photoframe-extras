@@ -238,6 +238,184 @@ TEST(InfoCore, StampInBothLanguages)
     EXPECT_STREQ(text, "Updated 1 Jan 00:00");
 }
 
+TEST(InfoCore, ShortStampWithoutItsWord)
+{
+    char text[40];
+    ASSERT_TRUE(info_format_stamp_short(false, 2026, 9, 30, 14, 35, text, sizeof(text)));
+    EXPECT_STREQ(text, "30 Sep 14:35");
+    ASSERT_TRUE(info_format_stamp_short(true, 2026, 9, 30, 14, 35, text, sizeof(text)));
+    EXPECT_STREQ(text, "30.09. 14:35");
+    ASSERT_TRUE(info_format_stamp_short(false, 2026, 3, 4, 7, 5, text, sizeof(text)));
+    EXPECT_STREQ(text, "4 Mar 07:05");
+    ASSERT_TRUE(info_format_stamp_short(true, 2026, 3, 4, 7, 5, text, sizeof(text)));
+    EXPECT_STREQ(text, "04.03. 07:05");
+    info_now_t now;
+    info_now_from_date(2026, 10, 2, true, &now);
+    now.hour = 0;
+    now.minute = 0;
+    ASSERT_TRUE(info_format_stamp_short_now(&now, text, sizeof(text)));
+    EXPECT_STREQ(text, "02.10. 00:00");
+    // the same rules as the long stamp: no clock, no stamp
+    char kept[40] = "x";
+    EXPECT_FALSE(info_format_stamp_short(false, 1970, 1, 1, 0, 0, kept, sizeof(kept)));
+    EXPECT_STREQ(kept, "");
+    EXPECT_FALSE(info_format_stamp_short(false, 2026, 13, 1, 0, 0, kept, sizeof(kept)));
+    EXPECT_FALSE(info_format_stamp_short(false, 2026, 9, 30, 24, 0, kept, sizeof(kept)));
+    EXPECT_FALSE(info_format_stamp_short(false, 2026, 9, 30, 0, 0, kept, 0));
+}
+
+TEST(InfoCore, TheDayLabelNamesWhatTheDateIsTheDateOf)
+{
+    char text[40];
+    info_format_day_label(INFO_DAY_CLOSE, false, "2026-09-30", true, text, sizeof(text));
+    EXPECT_STREQ(text, "Close 30 Sep");
+    info_format_day_label(INFO_DAY_CLOSE, true, "2026-09-30", true, text, sizeof(text));
+    EXPECT_STREQ(text, "Schluss 30.09.");
+    info_format_day_label(INFO_DAY_RATE, false, "2026-10-01", true, text, sizeof(text));
+    EXPECT_STREQ(text, "Rates 1 Oct");
+    info_format_day_label(INFO_DAY_RATE, true, "2026-10-01", true, text, sizeof(text));
+    EXPECT_STREQ(text, "Kurse 01.10.");
+    // for a narrow panel: the date alone
+    info_format_day_label(INFO_DAY_CLOSE, false, "2026-09-30", false, text, sizeof(text));
+    EXPECT_STREQ(text, "30 Sep");
+    info_format_day_label(INFO_DAY_CLOSE, true, "2026-09-30", false, text, sizeof(text));
+    EXPECT_STREQ(text, "30.09.");
+    // a date with a time behind it (Yahoo, Twelve Data) counts by its first ten characters
+    info_format_day_label(INFO_DAY_CLOSE, true, "2026-09-30 17:30:00", true, text, sizeof(text));
+    EXPECT_STREQ(text, "Schluss 30.09.");
+}
+
+TEST(InfoCore, TheDayLabelIsEmptyForADateThatCannotBeRead)
+{
+    char text[40] = "x";
+    for (const char *bad :
+         {"", "junk", "2026-13-01", "2026-00-10", "2026-09-00", "2026-09-32", "1800-01-01"}) {
+        info_format_day_label(INFO_DAY_CLOSE, false, bad, true, text, sizeof(text));
+        EXPECT_STREQ(text, "") << bad;
+        text[0] = 'x';
+    }
+    info_format_day_label(INFO_DAY_CLOSE, false, nullptr, true, text, sizeof(text));
+    EXPECT_STREQ(text, "");
+    char tiny[6];
+    info_format_day_label(INFO_DAY_CLOSE, true, "2026-09-30", true, tiny, sizeof(tiny));
+    EXPECT_LT(strlen(tiny), sizeof(tiny));  // cut, never past the buffer
+    info_format_day_label(INFO_DAY_CLOSE, true, "2026-09-30", true, tiny, 0);
+}
+
+namespace
+{
+info_now_t on(int year, int month, int day)
+{
+    info_now_t now;
+    info_now_from_date(year, month, day, false, &now);
+    return now;
+}
+}  // namespace
+
+TEST(InfoCore, TradingDaysBehind)
+{
+    // 2026-10-02 is a Friday
+    info_now_t friday = on(2026, 10, 2);
+    EXPECT_EQ(info_trading_days_behind("2026-10-02", &friday), 0);  // today
+    EXPECT_EQ(info_trading_days_behind("2026-10-01", &friday), 0);  // the day before: not late
+    EXPECT_EQ(info_trading_days_behind("2026-09-30", &friday), 1);  // the day before that
+    EXPECT_EQ(info_trading_days_behind("2026-09-28", &friday), 3);  // Monday: three behind
+    EXPECT_EQ(info_trading_days_behind("2026-09-30 17:30", &friday), 1);  // a time behind the date
+}
+
+TEST(InfoCore, TradingDaysBehindOverAWeekend)
+{
+    info_now_t saturday = on(2026, 10, 3);
+    EXPECT_EQ(info_trading_days_behind("2026-10-02", &saturday), 0);  // Friday's close on Saturday
+    EXPECT_EQ(info_trading_days_behind("2026-10-01", &saturday), 1);  // Thursday's is a day late
+    info_now_t sunday = on(2026, 10, 4);
+    EXPECT_EQ(info_trading_days_behind("2026-10-02", &sunday), 0);
+    info_now_t monday = on(2026, 10, 5);
+    EXPECT_EQ(info_trading_days_behind("2026-10-02", &monday), 0);  // Friday's close on Monday
+    EXPECT_EQ(info_trading_days_behind("2026-10-01", &monday), 1);  // Thursday's on Monday
+    info_now_t tuesday = on(2026, 10, 6);
+    EXPECT_EQ(info_trading_days_behind("2026-10-02", &tuesday), 1);  // Friday's on Tuesday
+}
+
+TEST(InfoCore, TradingDaysBehindAcrossMonthsAndYears)
+{
+    info_now_t new_year = on(2027, 1, 4);  // a Monday
+    EXPECT_EQ(info_trading_days_behind("2026-12-31", &new_year),
+              1);                       // Thursday's close: 1, 4 Jan Mon
+    info_now_t jan_2 = on(2027, 1, 2);  // a Saturday
+    EXPECT_EQ(info_trading_days_behind("2026-12-31", &jan_2), 1);
+    info_now_t march = on(2024, 3, 1);  // after a leap day, a Friday
+    EXPECT_EQ(info_trading_days_behind("2024-02-29", &march), 0);
+}
+
+TEST(InfoCore, TradingDaysBehindForOddInput)
+{
+    info_now_t friday = on(2026, 10, 2);
+    EXPECT_EQ(info_trading_days_behind("2026-10-05", &friday), 0);  // in the future
+    EXPECT_EQ(info_trading_days_behind("", &friday), -1);
+    EXPECT_EQ(info_trading_days_behind("junk", &friday), -1);
+    EXPECT_EQ(info_trading_days_behind("2026-13-01", &friday), -1);
+    EXPECT_EQ(info_trading_days_behind(nullptr, &friday), -1);
+    EXPECT_EQ(info_trading_days_behind("2026-10-01", nullptr), -1);
+    EXPECT_EQ(info_trading_days_behind("1990-01-01", &friday), 3660);  // years old: capped
+}
+
+TEST(InfoCore, SpanLabelsFromTheMostToTheLeastInformative)
+{
+    char labels[INFO_SPAN_LABELS_MAX][INFO_SPAN_LABEL_LEN];
+    int n = info_span_labels(29, true, 10.24f, true, labels);
+    ASSERT_EQ(n, 5);
+    EXPECT_STREQ(labels[0], "29 T +10.2%");
+    EXPECT_STREQ(labels[1], "29 T +10%");
+    EXPECT_STREQ(labels[2], "+10.2%");
+    EXPECT_STREQ(labels[3], "+10%");
+    EXPECT_STREQ(labels[4], "29 T");
+    n = info_span_labels(41, true, -3.5f, false, labels);
+    ASSERT_EQ(n, 5);
+    EXPECT_STREQ(labels[0], "41 d -3.5%");
+    EXPECT_STREQ(labels[1], "41 d -4%");  // rounded half away from zero by printf: -3.5 -> -4
+    EXPECT_STREQ(labels[4], "41 d");
+}
+
+TEST(InfoCore, SpanLabelsKeepTheShorterFormOfAWholeNumber)
+{
+    char labels[INFO_SPAN_LABELS_MAX][INFO_SPAN_LABEL_LEN];
+    int n = info_span_labels(29, true, 10.0f, false, labels);
+    ASSERT_EQ(n, 5);
+    EXPECT_STREQ(labels[0], "29 d +10.0%");
+    EXPECT_STREQ(labels[1], "29 d +10%");  // the same change, two characters shorter
+    EXPECT_STREQ(labels[2], "+10.0%");
+    EXPECT_STREQ(labels[3], "+10%");
+    EXPECT_STREQ(labels[4], "29 d");
+}
+
+TEST(InfoCore, SpanLabelsWithoutASpanOrWithoutAChange)
+{
+    char labels[INFO_SPAN_LABELS_MAX][INFO_SPAN_LABEL_LEN];
+    int n = info_span_labels(0, true, 2.0f, false, labels);  // under a day: no span
+    ASSERT_EQ(n, 2);
+    EXPECT_STREQ(labels[0], "+2.0%");
+    EXPECT_STREQ(labels[1], "+2%");
+    n = info_span_labels(29, false, 0.0f, false, labels);
+    ASSERT_EQ(n, 1);
+    EXPECT_STREQ(labels[0], "29 d");
+    EXPECT_EQ(info_span_labels(0, false, 0.0f, false, labels), 0);
+    // a nonsense change is not shown
+    n = info_span_labels(29, true, 1e9f, false, labels);
+    ASSERT_EQ(n, 1);
+    EXPECT_STREQ(labels[0], "29 d");
+    n = info_span_labels(29, true, -5000.0f, false, labels);
+    ASSERT_EQ(n, 1);
+    // never more than the buffer holds, whatever the numbers
+    for (float change : {0.0f, -0.04f, 99999.0f, -999.0f, 1234.5f}) {
+        n = info_span_labels(9999, true, change, true, labels);
+        EXPECT_LE(n, INFO_SPAN_LABELS_MAX);
+        for (int i = 0; i < n; i++) {
+            EXPECT_LT(strlen(labels[i]), (size_t) INFO_SPAN_LABEL_LEN);
+        }
+    }
+}
+
 TEST(InfoCore, NoStampWithoutAClockOrWithNonsense)
 {
     char text[40] = "x";

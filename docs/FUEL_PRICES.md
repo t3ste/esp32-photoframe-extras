@@ -31,7 +31,8 @@ longitude); nothing is entered twice. The frame must be online when the page is 
 - A yellow header with the fuel type and the radius.
 - One row per station, the cheapest first - at the same price the nearer one (green bar and a green number for the cheapest): brand (or name), street and town, the distance in
   kilometres, and the price in euros per litre.
-- The attribution the licence asks for - `tankerkoenig.de, CC BY 4.0` - and under it the date and time the prices were fetched (`Updated 30 Sep 14:35`), at the bottom.
+- One line at the bottom with the attribution the licence asks for - `tankerkoenig.de, CC BY 4.0` - and the date and time the prices were fetched: `tankerkoenig.de, CC BY 4.0 - 30 Sep 14:35`.
+  On a narrow panel it takes two lines (the attribution, then `Updated 30 Sep 14:35`), and the attribution is shortened only as far as it has to be.
 
 A station without a price is never shown as 0. If there is nothing to show the page says why: no key, no place, no network on this wake, the
 service did not answer, the service refused the request (with its own words, for instance for a wrong key), or no open station with a price in the

@@ -69,11 +69,15 @@ not renumber) and `info_screens.c`, its own build option that requires `info-scr
 
 ## Notes on the pages
 
-Pages whose data come from the internet (weather, exchange rates, fuel prices, markets) end with a small note that says **when the data were fetched**:
-`Updated 30 Sep 14:35` (English) or `Stand 30.09. 14:35` (German), in the frame's local time. The markets page shows the time of its newest fetch, so a page
-drawn from the kept prices (blue) tells how old they are. A frame whose clock was never set draws no note: a wrong time is worse than none.
-The pages with a line chart (exchange rates, markets) write **how long the line runs** under it, in calendar days from its first to its last point:
-`41 d` (German `41 T`).
+Pages whose data come from the internet (weather, exchange rates, fuel prices, markets) end with a small note that says **when the data were fetched**, in the frame's local time:
+`Updated 30 Sep 14:35` (English) or `Stand 30.09. 14:35` (German) on the weather page; on the exchange-rate, fuel and markets pages the note shares the line of the
+source - `Yahoo Finance, Twelve Data - 30 Sep 14:35` - and takes a second line only where the panel is too narrow for both. The markets page shows the time of its newest fetch,
+so a page drawn from the kept prices (blue) tells how old they are. A frame whose clock was never set draws no note: a wrong time is worse than none.
+
+The pages with a line chart (exchange rates, markets) name the **day of the newest data point** in the header - `Close 30 Sep` (`Schluss 30.09.`) for prices, `Rates 30 Sep`
+(`Kurse 30.09.`) for the ECB's rates - so that it cannot be taken for today's date, and put a small yellow **`!`** behind it when that day is **older than the last trading day**.
+They write **how long the lines run**, in calendar days from the first to the last point (`41 d`, German `41 T`), once after the heading when all lines run the same time
+(`MARKETS  41 d`), and under each chart the **change over the whole line** (`+6.9%`) next to the change of the last day.
 
 ## Limits
 

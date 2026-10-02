@@ -332,6 +332,28 @@ TEST(FxNumbers, ChangeAgainstTheDayBefore)
     EXPECT_EQ(fx_change_percent(nullptr), 0.0f);
 }
 
+TEST(FxNumbers, ChangeOverTheWholeLine)
+{
+    fx_series_t s;
+    memset(&s, 0, sizeof(s));
+    EXPECT_EQ(fx_period_change_percent(&s), 0.0f);
+    EXPECT_EQ(fx_period_change_percent(nullptr), 0.0f);
+    s.count = 1;
+    s.values[0] = 1.0f;
+    EXPECT_EQ(fx_period_change_percent(&s), 0.0f);  // one point: no period
+    s.count = 4;
+    s.values[0] = 1.00f;
+    s.values[1] = 1.30f;
+    s.values[2] = 0.90f;
+    s.values[3] = 1.10f;
+    EXPECT_NEAR(fx_period_change_percent(&s), 10.0f, 1e-3);  // first to last
+    EXPECT_NEAR(fx_change_percent(&s), 22.222f, 1e-2);       // not the change of the last day
+    s.values[3] = 0.80f;
+    EXPECT_NEAR(fx_period_change_percent(&s), -20.0f, 1e-3);
+    s.values[0] = 0.0f;  // cannot happen with parsed data, must not divide by zero
+    EXPECT_EQ(fx_period_change_percent(&s), 0.0f);
+}
+
 TEST(FxNumbers, RatesGetASensibleNumberOfDecimals)
 {
     char text[24];

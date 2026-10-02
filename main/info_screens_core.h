@@ -70,6 +70,54 @@ bool info_format_stamp_now(const info_now_t *now, char *out, size_t out_len);
 void info_format_span(int days, bool german, char *out, size_t out_len);
 
 /**
+ * @brief info_format_stamp() without its word, for a foot line that also names the source:
+ * "30 Sep 14:35", in German "30.09. 14:35". Same rules (false and an empty string if the clock was
+ * never set).
+ */
+bool info_format_stamp_short(bool german, int year, int month, int day, int hour, int minute,
+                             char *out, size_t out_len);
+
+/** @brief info_format_stamp_short() for the moment of `now`. */
+bool info_format_stamp_short_now(const info_now_t *now, char *out, size_t out_len);
+
+// What a date in the header band is the date of
+typedef enum {
+    INFO_DAY_CLOSE = 0,  // the trading day of the newest price: "Close 30 Sep", "Schluss 30.09."
+    INFO_DAY_RATE = 1,   // the day of the newest reference rate: "Rates 30 Sep", "Kurse 30.09."
+} info_day_kind_t;
+
+/**
+ * @brief The date of the newest data point for the header band, named so that it cannot be taken
+ * for today's date: "Close 30 Sep" / "Schluss 30.09.". With `with_word` false only the date ("30
+ * Sep", "30.09.") - for a panel too narrow for the word. An empty string if the ISO date cannot be
+ * read.
+ */
+void info_format_day_label(info_day_kind_t kind, bool german, const char *iso_date, bool with_word,
+                           char *out, size_t out_len);
+
+/**
+ * @brief How many trading days the newest data point is behind: the weekdays (Monday to Friday)
+ * after `iso_date` up to and including today, less one when today is a weekday (its session may not
+ * have closed, so the price of the day before is not late). 0 for a price of today or of the last
+ * session before today (a Friday's on the weekend and on Monday); a Thursday's price on Monday or
+ * on Saturday is 1. Holidays are not known, so a day without trading can show as 1. -1 if the date
+ * cannot be read; 0 for a date in the future.
+ */
+int info_trading_days_behind(const char *iso_date, const info_now_t *now);
+
+#define INFO_SPAN_LABELS_MAX 5
+#define INFO_SPAN_LABEL_LEN 40
+
+/**
+ * @brief The notes that can stand beside a line chart, the most informative first, for the room
+ * there is: "29 T +10.2%", "29 T +10%", "+10.2%", "+10%", "29 T" (German; "29 d" in English). Only
+ * the span if `days` is under one, only the changes if `have_change` is false. The caller takes the
+ * first that fits. Returns how many were written.
+ */
+int info_span_labels(int days, bool have_change, float period_change_percent, bool german,
+                     char out[][INFO_SPAN_LABEL_LEN]);
+
+/**
  * @brief The `counter`-th (counting from 0, wrapping) set bit of `mask`, looking at the lowest
  * `bit_count` bits: which screen is next when the screens of the rotation are shown one after the
  * other. -1 if no bit is set.

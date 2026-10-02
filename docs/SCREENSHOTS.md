@@ -94,7 +94,7 @@ build-host/render_screens out                              # every case in five 
 | Picture in `docs/screens/` | `render_screens` case |
 | --- | --- |
 | `info-chore-wheel.png`, `info-weather.png`, `info-fact.png`, `info-fact-de.png` | `chore-wheel-en`, `weather-en`, `fact-en`, `fact-de` |
-| `info-exchange-rates.png`, `info-fuel-prices.png`, `info-markets.png` | `finance-en`, `fuel-en`, `markets-en` |
+| `info-exchange-rates.png`, `info-fuel-prices.png`, `info-markets.png`, `info-markets-late.png` | `finance-en`, `fuel-en`, `markets-en`, `markets-late` |
 
 The program knows more cases than are shown here (German variants, empty and error pages).
 

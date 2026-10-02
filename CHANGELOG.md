@@ -19,6 +19,12 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **The markets, exchange-rate and fuel pages say which day their data are from, and the footer is one line.** The header names the trading day of the newest price (`Close 30 Sep`,
+  `Schluss 30.09.`; the ECB's rates `Rates 30 Sep`) instead of a bare date that looked like today's, and a small yellow `!` behind it says that day is older than the last trading day
+  (weekends counted, holidays not known). The source and the fetch time share one line (`Yahoo Finance, Twelve Data - 30 Sep 14:35`, `tankerkoenig.de, CC BY 4.0 - 30 Sep 14:35`), so the
+  rows get a line more; a narrow panel keeps two lines. The time the charts cover is said once in the header (`MARKETS  41 d`) when all lines share it, and every line shows the change over
+  its whole chart (`+6.9%`) next to the change of the last day. New pure helpers: `info_format_stamp_short()`, `info_format_day_label()`, `info_trading_days_behind()`,
+  `info_span_labels()`, `canvas_note_lines()`, `canvas_text_first_fit()`, `canvas_header_label()`, `market_period_change_percent()`, `fx_period_change_percent()`.
 - **Artworks** (`--with artworks`, [docs/ARTWORKS.md](docs/ARTWORKS.md); part of `extras`): a rotation mode that shows a painting, a drawing or a print from a museum. Each
   rotation draws the kind of work first, then a random work of the Rijksmuseum, SMK (Denmark) or the Smithsonian American Art Museum whose record says public domain or
   CC0, loads the smallest picture that covers the panel (IIIF fit; baseline JPEG only), makes it display-ready, keeps it in the album `Art` and shows it with a small
@@ -138,6 +144,9 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Fixed
 
+- **Markets: the chart could end a day early.** Yahoo's daily bars lag: a bar without a close is left out, and the bar of a day that has just ended may not be complete, so a frame that
+  fetched at midnight could still show the close of the day before yesterday. The page now also takes the latest price Yahoo states for the symbol (`regularMarketPrice` at
+  `regularMarketTime`) as the newest point when that is of a later day than the last bar, and the log says which day each chart ended on (`<symbol> from Yahoo Finance: 30 points, the newest of 2026-10-01`).
 - **Host render harness: the `fact-long` case overran a buffer.** It copied a 63-character title into the 48-byte title of the fact with a plain `strcpy`, which wrote 16 bytes into the text field after it (hidden only
   because the text was written over it afterwards; a fortified build aborted). It truncates now. Only test code - the firmware's own title handling was not involved.
 - **Agenda: with the frame awake (USB power) the next render came about 25 s too early, and a second one followed at once.** After a render the seconds to the next cron match come from the wall clock, but

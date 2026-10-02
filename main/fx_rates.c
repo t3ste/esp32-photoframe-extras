@@ -289,6 +289,16 @@ int fx_drop_stale(fx_series_t *series, int count, int year, int month, int day, 
     return kept;
 }
 
+float fx_period_change_percent(const fx_series_t *series)
+{
+    if (!series || series->count < 2) {
+        return 0.0f;
+    }
+    float first = series->values[0];
+    float last = series->values[series->count - 1];
+    return first > 0.0f ? (last - first) / first * 100.0f : 0.0f;
+}
+
 float fx_change_percent(const fx_series_t *series)
 {
     if (!series || series->count < 2) {

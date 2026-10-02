@@ -212,31 +212,27 @@ void fuel_screen_render(canvas_t *canvas, const info_now_t *now, const fuel_scre
     canvas_text(canvas, 2 * u, u, fitted, s, CANVAS_BLACK);
     canvas_text_right(canvas, canvas->width - 2 * u, u, radius, s, CANVAS_BLACK);
 
-    // the footer: the attribution the licence asks for and, under it, when the prices were fetched
-    char footer[CANVAS_WRAP_LINE_MAX], footer_raw[CANVAS_WRAP_LINE_MAX], stamp[40];
-    bool has_stamp = info_format_stamp_now(now, stamp, sizeof(stamp));
-    for (int variant = 0; variant < 4; variant++) {
-        if (variant == 0) {
-            snprintf(footer_raw, sizeof(footer_raw), "%s tankerkoenig.de, CC BY 4.0",
-                     now->german ? "Daten:" : "Data:");
-        } else if (variant == 1) {
-            snprintf(footer_raw, sizeof(footer_raw), "tankerkoenig.de CC BY 4.0");
-        } else if (variant == 2) {
-            snprintf(footer_raw, sizeof(footer_raw), "tankerkoenig.de CC BY");
-        } else {
-            snprintf(footer_raw, sizeof(footer_raw), "tankerkoenig.de");
-        }
-        if (canvas_text_width(footer_raw, s) <= canvas->width - 4 * u) {
-            break;
-        }
-    }
-    canvas_text_from_utf8(footer_raw, footer, sizeof(footer));
-    int footer_y = canvas->height - u - (has_stamp ? 2 : 1) * line;
-    canvas_text_centered(canvas, canvas->width / 2, footer_y, footer, s, CANVAS_BLACK);
-    if (has_stamp) {
-        char fitted_stamp[CANVAS_WRAP_LINE_MAX];
-        canvas_text_fit(stamp, canvas->width - 4 * u, s, fitted_stamp, sizeof(fitted_stamp));
-        canvas_text_centered(canvas, canvas->width / 2, footer_y + line, fitted_stamp, s,
+    // the footer: the attribution the licence asks for and when the prices were fetched, on one
+    // line if they fit (the fullest wording of the attribution that leaves room for the time)
+    char long_stamp[40], short_stamp[40];
+    info_format_stamp_now(now, long_stamp, sizeof(long_stamp));
+    info_format_stamp_short_now(now, short_stamp, sizeof(short_stamp));
+    char wordings[5][CANVAS_WRAP_LINE_MAX];
+    char with_word[CANVAS_WRAP_LINE_MAX];
+    snprintf(with_word, sizeof(with_word), "%s tankerkoenig.de, CC BY 4.0",
+             now->german ? "Daten:" : "Data:");
+    canvas_text_from_utf8(with_word, wordings[0], sizeof(wordings[0]));
+    canvas_text_from_utf8("tankerkoenig.de, CC BY 4.0", wordings[1], sizeof(wordings[1]));
+    canvas_text_from_utf8("tankerkoenig.de CC BY 4.0", wordings[2], sizeof(wordings[2]));
+    canvas_text_from_utf8("tankerkoenig.de CC BY", wordings[3], sizeof(wordings[3]));
+    canvas_text_from_utf8("tankerkoenig.de", wordings[4], sizeof(wordings[4]));
+    const char *sources[5] = {wordings[0], wordings[1], wordings[2], wordings[3], wordings[4]};
+    char footer[CANVAS_NOTE_LINES_MAX][CANVAS_WRAP_LINE_MAX];
+    int footer_n =
+        canvas_note_lines(sources, 5, long_stamp, short_stamp, canvas->width - 4 * u, s, footer);
+    int footer_y = canvas->height - u - footer_n * line;
+    for (int i = 0; i < footer_n; i++) {
+        canvas_text_centered(canvas, canvas->width / 2, footer_y + i * line, footer[i], s,
                              CANVAS_BLACK);
     }
 
