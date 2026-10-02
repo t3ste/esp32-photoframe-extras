@@ -13,6 +13,9 @@ static const char *const PICTURE_EXTENSIONS[] = {".epdgz", ".png", ".bmp", ".jpg
                                                  ART_CAPTION_SUFFIX};
 #define PICTURE_EXTENSION_COUNT (sizeof(PICTURE_EXTENSIONS) / sizeof(PICTURE_EXTENSIONS[0]))
 
+// Left-over caption files of deleted pictures that one scan cleans up (the rest follows next time)
+#define ART_ORPHANS_PER_SCAN 8
+
 void art_store_clamp_limits(int *free_min_pct, int *free_target_pct)
 {
     if (*free_min_pct < 5) {
@@ -209,6 +212,8 @@ int art_store_scan(const char *dir, art_item_t *items, int max_items)
         return 0;
     }
     int count = 0;
+    char orphans[ART_ORPHANS_PER_SCAN][ART_BASE_MAX];
+    int orphan_count = 0;
     size_t suffix_len = strlen(ART_CAPTION_SUFFIX);
     struct dirent *entry;
     while (count < max_items && (entry = readdir(handle)) != NULL) {
@@ -230,6 +235,19 @@ int art_store_scan(const char *dir, art_item_t *items, int max_items)
             continue;  // not a caption file of this option: not ours, never listed
         }
         const cJSON *seq = cJSON_GetObjectItemCaseSensitive(root, "n");
+        uint64_t picture_bytes = 0;  // the display-ready file: without it there is no picture
+        for (size_t i = 0; i < 3; i++) {
+            picture_bytes += file_size(dir, base, PICTURE_EXTENSIONS[i]);
+        }
+        if (picture_bytes == 0) {
+            // The picture was deleted (in the web gallery, say): its caption file and thumbnail are
+            // left behind and no picture any more. Removed after the walk, not while it runs.
+            if (orphan_count < ART_ORPHANS_PER_SCAN) {
+                snprintf(orphans[orphan_count++], ART_BASE_MAX, "%s", base);
+            }
+            cJSON_Delete(root);
+            continue;
+        }
         art_item_t *item = &items[count++];
         snprintf(item->base, sizeof(item->base), "%s", base);
         item->seq =
@@ -241,6 +259,9 @@ int art_store_scan(const char *dir, art_item_t *items, int max_items)
         cJSON_Delete(root);
     }
     closedir(handle);
+    for (int i = 0; i < orphan_count; i++) {
+        art_store_remove(dir, orphans[i]);
+    }
     qsort(items, (size_t) count, sizeof(art_item_t), compare_items);
     return count;
 }

@@ -942,6 +942,56 @@ TEST(ArtStore, ThePicturesAreListedOldestFirstWithAllTheirBytes)
     rmdir(dir.c_str());
 }
 
+TEST(ArtStore, ThePicturesDeletedByTheUserLeaveNothingBehind)
+{
+    std::string dir = make_temp_dir();
+    art_work_t kept = work_of("kept"), gone = work_of("gone"), thumb_only = work_of("thumb");
+    ASSERT_TRUE(art_store_write_caption(dir.c_str(), "rijks-kept", 3, &kept, "K"));
+    write_file(dir + "/rijks-kept.epdgz", 400);
+    // the picture was deleted in the web gallery: its caption file (and maybe the thumbnail) stay
+    ASSERT_TRUE(art_store_write_caption(dir.c_str(), "rijks-gone", 1, &gone, "G"));
+    ASSERT_TRUE(art_store_write_caption(dir.c_str(), "rijks-thumb", 2, &thumb_only, "T"));
+    write_file(dir + "/rijks-thumb.jpg", 100);  // only the preview is left: no picture either
+    write_file(dir + "/user-photo.epdgz", 900);
+    art_item_t items[8];
+    ASSERT_EQ(art_store_scan(dir.c_str(), items, 8), 1);
+    EXPECT_STREQ(items[0].base, "rijks-kept");
+    EXPECT_FALSE(exists(dir + "/rijks-gone.caption.json"));
+    EXPECT_FALSE(exists(dir + "/rijks-thumb.caption.json"));
+    EXPECT_FALSE(exists(dir + "/rijks-thumb.jpg"));
+    EXPECT_TRUE(exists(dir + "/rijks-kept.caption.json"));  // what is there stays
+    EXPECT_TRUE(exists(dir + "/rijks-kept.epdgz"));
+    EXPECT_TRUE(exists(dir + "/user-photo.epdgz"));
+    art_store_remove(dir.c_str(), "rijks-kept");
+    unlink((dir + "/user-photo.epdgz").c_str());
+    rmdir(dir.c_str());
+}
+
+TEST(ArtStore, ManyLeftOversAreCleanedUpOverSeveralScans)
+{
+    std::string dir = make_temp_dir();
+    for (int i = 0; i < 20; i++) {
+        art_work_t work = work_of("x");
+        std::string base = "rijks-orphan" + std::to_string(i);
+        ASSERT_TRUE(art_store_write_caption(dir.c_str(), base.c_str(), (uint32_t) i, &work, "O"));
+    }
+    art_item_t items[4];
+    auto left = [&dir]() {
+        int n = 0;
+        for (int i = 0; i < 20; i++) {
+            n += exists(dir + "/rijks-orphan" + std::to_string(i) + ".caption.json") ? 1 : 0;
+        }
+        return n;
+    };
+    EXPECT_EQ(art_store_scan(dir.c_str(), items, 4), 0);
+    EXPECT_EQ(left(), 12);  // eight per scan
+    EXPECT_EQ(art_store_scan(dir.c_str(), items, 4), 0);
+    EXPECT_EQ(left(), 4);
+    EXPECT_EQ(art_store_scan(dir.c_str(), items, 4), 0);
+    EXPECT_EQ(left(), 0);
+    rmdir(dir.c_str());
+}
+
 TEST(ArtStore, RemovingAPictureTakesAllItsFilesAndNothingElse)
 {
     std::string dir = make_temp_dir();

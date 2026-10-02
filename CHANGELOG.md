@@ -25,7 +25,7 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   caption (white text, one-pixel black border, no bar, from a caption file next to the picture). No network or any failure: a random picture of the album. Before a
   new picture is kept and the free space is at or below 20 %, the oldest pictures this mode saved - only those with a caption file, only in that album - are deleted
   until 30 % is free (both settable); if that is not enough the picture is shown and not kept. Settings in the Auto Rotate tab and `/api/config` (the Smithsonian
-  key is write-only). New: `art_select`/`art_caption`/`art_sources`/`art_store` (pure, host-tested against real answers of the three services, 60 tests, a byte-flip run
+  key is write-only). New: `art_select`/`art_caption`/`art_sources`/`art_store` (pure, host-tested against real answers of the three services, 62 tests, a byte-flip run
   under ASan/UBSan), `art_flow` (the device side), `image_processor_draw_caption_outlined()`, `display_manager_rotate_from_album()`; `http_fetch_get_once()` is built
   for it as well. Compiled for every board; **not yet run on a frame**.
 - **Pictures of the display** ([docs/SCREENSHOTS.md](docs/SCREENSHOTS.md), `docs/screens/`): the Agenda in its layouts (7-day grid A and B, ToDo and Calendar stacked and side by side) and in a colour profile, and every
