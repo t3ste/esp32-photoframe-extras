@@ -78,8 +78,10 @@ ToDo file can't show "due today" matching the date you actually try it.
 
 ## Status
 
-The example files are served from this project's GitHub Pages site
-(`https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/`); every deploy of the
+The example files are served from this project's GitHub Pages site, each under its own address:
+[demo-config-url.json](https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/demo-config-url.json),
+[demo-config-storage.json](https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/demo-config-storage.json), `https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/todo.txt`,
+`https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/calendars/calendar-a.ics` and so on (the folder address itself has no page, so there is nothing to open there); every deploy of the
 site copies the whole `examples/` tree and checks that the URLs the two configs use answer `200`. GitHub's CDN can
 keep serving a cached `404` for up to ten minutes after a file first appears, so an import made right after a
 deploy may need a **Refresh now** for calendars C-E. See [MAINTAINING.md](MAINTAINING.md) for how it is deployed
