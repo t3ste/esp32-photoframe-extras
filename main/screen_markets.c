@@ -229,7 +229,8 @@ static int footer_lines(const info_now_t *now, const markets_screen_data_t *data
             stale = stale || data->series[i].stale;
         }
     }
-    char names[CANVAS_WRAP_LINE_MAX], with_word[CANVAS_WRAP_LINE_MAX];
+    char names[CANVAS_WRAP_LINE_MAX],
+        with_word[CANVAS_WRAP_LINE_MAX + 16];  // the word and the names
     size_t n = 0;
     names[0] = '\0';
     for (int p = 0; p < MARKET_PROVIDER_COUNT && n < sizeof(names); p++) {

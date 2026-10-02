@@ -63,3 +63,6 @@ docs/diagrams/
 
 # Local helper files and programs of the assistant: kept on this machine only, never published
 /local-tools/
+
+# Drafts that are kept local until the maintainer publishes them
+/docs/REPOS_AND_BRANCHES.md
