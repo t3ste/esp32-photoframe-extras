@@ -47,6 +47,40 @@ int art_select_sources(unsigned source_mask, art_type_t type, art_source_t out[A
 /** @brief A year from ART_YEAR_MIN to ART_YEAR_MAX. */
 int art_select_year(uint32_t rnd);
 
+// How a picture is put on the panel: the whole picture with bars where it does not fill the panel
+// (fit), or the panel filled with the edges cut off (cover). Its own setting of this option, not
+// the frame's general picture setting.
+typedef enum {
+    ART_SCALE_FIT = 0,
+    ART_SCALE_COVER = 1,
+} art_scale_t;
+
+const char *art_scale_name(art_scale_t scale);      // "fit", "cover"
+art_scale_t art_scale_from_name(const char *name);  // anything but "cover" is fit
+
+/**
+ * @brief The size of the picture area as the viewer sees it, in the orientation the frame is set to
+ * (`want_landscape`): the longer side of the panel is the width of a landscape frame, the height of
+ * a portrait one - the same rule the frame's picture pipeline follows.
+ */
+void art_panel_box(int native_w, int native_h, bool want_landscape, int *box_w, int *box_h);
+
+/**
+ * @brief Whether a picture of `w` x `h` pixels has the orientation of the frame: a square picture
+ * and a picture of unknown size (a side of 0 or less) fit both.
+ */
+bool art_orientation_matches(int w, int h, bool want_landscape);
+
+/**
+ * @brief Which of `count` pictures to show: from the entry `start_rnd` picks, up to `probes`
+ * entries in a row (wrapping round) are asked whether they match, and the first one that does is
+ * the answer
+ * (`*matched` is then true); if none does, the entry it started at (`*matched` false). -1 when
+ * `count` is 0. `matches` may be NULL (the start wins at once); `matched` may be NULL.
+ */
+int art_pick_matching(int count, uint32_t start_rnd, int probes,
+                      bool (*matches)(int index, void *context), void *context, bool *matched);
+
 const char *art_type_name(art_type_t type);        // "painting", "drawing", "print"
 const char *art_source_name(art_source_t source);  // "Rijksmuseum", "SMK", "Smithsonian"
 const char *art_source_tag(art_source_t source);   // "rijks", "smk", "si" - file name prefix

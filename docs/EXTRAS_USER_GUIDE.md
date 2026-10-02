@@ -125,8 +125,9 @@ with the number of pictures - it is someone else's free service. More: [ART_FETC
 
 With `artworks` the frame itself fetches one work per rotation: **Settings -> Auto Rotate -> mode Artworks**. The kind of work
 (painting, drawing, print) is drawn first, then a random work of the Rijksmuseum, SMK or the Smithsonian that is public domain
-or CC0; its picture is loaded in the smallest size that covers the panel, shown with a small caption (artist, title, year) and
-kept in the album `Art`. With no network - or when anything fails - a random picture of that album is shown. The oldest pictures
+or CC0; its picture is loaded in the smallest size that fits the panel, shown whole (*Fit*, the default) or filling the panel
+(*Cover*) with a small caption (artist, title, year) and kept in the album `Art`. Pictures of the frame's orientation are preferred
+(switchable). With no network - or when anything fails - a picture of that album is shown, also when the album is switched off in the Gallery. The oldest pictures
 are deleted to keep free space (by default it keeps 20 % free and cleans up to 30 %), and only pictures this mode made. Nothing
 to sign up for; a Smithsonian key is optional. For private use: you are responsible for the terms of use of the pictures. All of it,
 including the settings, the free-space rule and the rights hint: [ARTWORKS.md](ARTWORKS.md). Run on one frame in a short session only.

@@ -1045,3 +1045,275 @@ TEST(ArtStore, ThePlanDeletesWhatTheScanListedOldestFirst)
     art_store_remove(dir.c_str(), "rijks-new");
     rmdir(dir.c_str());
 }
+
+// ---------------------------------------------------------------------------------------------
+// The scale mode and the orientation
+
+TEST(ArtScale, FitIsTheDefaultAndOnlyCoverIsCover)
+{
+    EXPECT_EQ(art_scale_from_name("cover"), ART_SCALE_COVER);
+    EXPECT_EQ(art_scale_from_name("fit"), ART_SCALE_FIT);
+    EXPECT_EQ(art_scale_from_name(""), ART_SCALE_FIT);
+    EXPECT_EQ(art_scale_from_name("Cover"), ART_SCALE_FIT);  // exact names only
+    EXPECT_EQ(art_scale_from_name("covers"), ART_SCALE_FIT);
+    EXPECT_EQ(art_scale_from_name(nullptr), ART_SCALE_FIT);
+    EXPECT_STREQ(art_scale_name(ART_SCALE_FIT), "fit");
+    EXPECT_STREQ(art_scale_name(ART_SCALE_COVER), "cover");
+    EXPECT_EQ(art_scale_from_name(art_scale_name(ART_SCALE_COVER)), ART_SCALE_COVER);
+}
+
+TEST(ArtOrientation, ThePanelBoxFollowsTheFramesOrientation)
+{
+    int w = 0, h = 0;
+    art_panel_box(800, 480, true, &w, &h);  // a landscape panel set to landscape
+    EXPECT_EQ(w, 800);
+    EXPECT_EQ(h, 480);
+    art_panel_box(800, 480, false, &w, &h);  // the same panel set to portrait
+    EXPECT_EQ(w, 480);
+    EXPECT_EQ(h, 800);
+    art_panel_box(480, 800, true, &w, &h);  // a panel that is portrait by itself
+    EXPECT_EQ(w, 800);
+    EXPECT_EQ(h, 480);
+    art_panel_box(480, 800, false, &w, &h);
+    EXPECT_EQ(w, 480);
+    EXPECT_EQ(h, 800);
+    art_panel_box(1200, 1200, false, &w, &h);  // a square one has no orientation
+    EXPECT_EQ(w, 1200);
+    EXPECT_EQ(h, 1200);
+}
+
+TEST(ArtOrientation, APictureMatchesWhenItsLongerSideIsTheFramesLongerSide)
+{
+    EXPECT_TRUE(art_orientation_matches(1600, 900, true));
+    EXPECT_FALSE(art_orientation_matches(1600, 900, false));
+    EXPECT_TRUE(art_orientation_matches(322, 480, false));
+    EXPECT_FALSE(art_orientation_matches(322, 480, true));
+    EXPECT_TRUE(art_orientation_matches(1000, 1000, true));  // a square one fits both
+    EXPECT_TRUE(art_orientation_matches(1000, 1000, false));
+    EXPECT_TRUE(art_orientation_matches(801, 800, true));  // by the pixel, no tolerance
+}
+
+TEST(ArtOrientation, AnUnknownSizeFitsEverything)
+{
+    for (bool landscape : {true, false}) {
+        EXPECT_TRUE(art_orientation_matches(0, 0, landscape));
+        EXPECT_TRUE(art_orientation_matches(0, 480, landscape));
+        EXPECT_TRUE(art_orientation_matches(800, 0, landscape));
+        EXPECT_TRUE(art_orientation_matches(-1, -1, landscape));
+    }
+}
+
+namespace
+{
+struct Probe {
+    std::vector<bool> match;
+    std::vector<int> asked;
+};
+
+bool probe_matches(int index, void *context)
+{
+    Probe *probe = static_cast<Probe *>(context);
+    probe->asked.push_back(index);
+    return probe->match[index];
+}
+}  // namespace
+
+TEST(ArtPick, NothingToPickFromGivesNone)
+{
+    EXPECT_EQ(art_pick_matching(0, 5, 24, nullptr, nullptr, nullptr), -1);
+    EXPECT_EQ(art_pick_matching(-3, 5, 24, nullptr, nullptr, nullptr), -1);
+}
+
+TEST(ArtPick, WithoutAQuestionTheRandomStartWins)
+{
+    bool matched = true;
+    EXPECT_EQ(art_pick_matching(10, 23, 24, nullptr, nullptr, &matched), 3);
+    EXPECT_FALSE(matched);  // nobody was asked
+    Probe probe{{true, true, true}, {}};
+    EXPECT_EQ(art_pick_matching(3, 7, 0, probe_matches, &probe, nullptr),
+              1);  // no probes: the start
+    EXPECT_TRUE(probe.asked.empty());
+}
+
+TEST(ArtPick, TheFirstMatchingEntryFromTheStartWins)
+{
+    Probe probe{{false, false, true, false, true, false}, {}};
+    bool matched = false;
+    EXPECT_EQ(art_pick_matching(6, 3, 24, probe_matches, &probe, &matched), 4);  // 3 no, 4 yes
+    EXPECT_TRUE(matched);
+    EXPECT_EQ(probe.asked, (std::vector<int>{3, 4}));
+}
+
+TEST(ArtPick, TheSearchWrapsRound)
+{
+    Probe probe{{true, false, false, false}, {}};
+    bool matched = false;
+    EXPECT_EQ(art_pick_matching(4, 2, 24, probe_matches, &probe, &matched), 0);  // 2, 3 no, 0 yes
+    EXPECT_TRUE(matched);
+    EXPECT_EQ(probe.asked, (std::vector<int>{2, 3, 0}));
+}
+
+TEST(ArtPick, WhenNothingMatchesTheStartWins)
+{
+    Probe probe{{false, false, false}, {}};
+    bool matched = true;  // set to false by the call
+    EXPECT_EQ(art_pick_matching(3, 1, 24, probe_matches, &probe, &matched), 1);
+    EXPECT_FALSE(matched);
+    EXPECT_EQ(probe.asked.size(), 3u);  // every entry was asked once, none twice
+}
+
+TEST(ArtPick, OnlyTheGivenNumberOfEntriesIsAsked)
+{
+    Probe probe{std::vector<bool>(100, false), {}};
+    probe.match[60] = true;  // out of reach of 24 probes from 10
+    bool matched = true;
+    EXPECT_EQ(art_pick_matching(100, 10, 24, probe_matches, &probe, &matched), 10);
+    EXPECT_FALSE(matched);
+    EXPECT_EQ(probe.asked.size(), 24u);
+}
+
+TEST(ArtPick, AHugeRandomNumberStaysInRange)
+{
+    Probe probe{{false, false, false, false, false}, {}};
+    int pick = art_pick_matching(5, 0xFFFFFFFFu, 24, probe_matches, &probe, nullptr);
+    EXPECT_EQ(pick, (int) (0xFFFFFFFFu % 5u));
+}
+
+TEST(ArtImage, TheSizeComesFromTheFrameHeader)
+{
+    auto baseline = jpeg_with(0xC0);
+    int w = 0, h = 0;
+    ASSERT_TRUE(art_jpeg_size(baseline.data(), baseline.size(), &w, &h));
+    EXPECT_EQ(w, 16);
+    EXPECT_EQ(h, 16);
+
+    // a portrait picture: height 480 = 0x01E0, width 322 = 0x0142
+    auto portrait = jpeg_with(0xC0);
+    portrait[23] = 0x01;
+    portrait[24] = 0xE0;
+    portrait[25] = 0x01;
+    portrait[26] = 0x42;
+    ASSERT_TRUE(art_jpeg_size(portrait.data(), portrait.size(), &w, &h));
+    EXPECT_EQ(w, 322);
+    EXPECT_EQ(h, 480);
+
+    // any coding has a size, also the ones the frame cannot decode
+    auto progressive = jpeg_with(0xC2);
+    ASSERT_TRUE(art_jpeg_size(progressive.data(), progressive.size(), &w, &h));
+    EXPECT_EQ(w, 16);
+}
+
+TEST(ArtImage, NoSizeFromWhatIsNotAJpegOrCutOff)
+{
+    int w = 7, h = 7;
+    std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    EXPECT_FALSE(art_jpeg_size(png.data(), png.size(), &w, &h));
+    EXPECT_FALSE(art_jpeg_size(nullptr, 100, &w, &h));
+    auto good = jpeg_with(0xC0);
+    for (size_t cut = 0; cut < 27; cut++) {  // the size is the 9th byte of the frame header
+        EXPECT_FALSE(art_jpeg_size(good.data(), cut, &w, &h)) << cut;
+    }
+    EXPECT_EQ(w, 7);  // the refused ones left the answer alone
+    EXPECT_EQ(h, 7);
+    EXPECT_TRUE(art_jpeg_size(good.data(), 27, &w, &h));  // the size is the last thing it needs
+    EXPECT_EQ(w, 16);
+    auto zero = jpeg_with(0xC0);
+    zero[23] = zero[24] = zero[25] = zero[26] = 0;  // a picture of 0 x 0 is no size
+    w = h = 7;
+    EXPECT_FALSE(art_jpeg_size(zero.data(), zero.size(), &w, &h));
+    EXPECT_EQ(h, 7);
+    auto short_header = jpeg_with(0xC0);
+    short_header[21] = 0x05;  // a frame header too short to hold a size
+    EXPECT_FALSE(art_jpeg_size(short_header.data(), short_header.size(), &w, &h));
+}
+
+TEST(ArtSmk, TheSizeOfTheOriginalComesWithTheRecord)
+{
+    std::string json = fixture("smk-item-painting.json");
+    art_work_t work;
+    ASSERT_TRUE(art_smk_parse_item(json.c_str(), json.size(), &work));
+    EXPECT_EQ(work.width, 5493);
+    EXPECT_EQ(work.height, 6937);
+    EXPECT_FALSE(art_orientation_matches(work.width, work.height, true));  // a portrait work
+    EXPECT_TRUE(art_orientation_matches(work.width, work.height, false));
+
+    json = fixture("smk-item-print.json");
+    ASSERT_TRUE(art_smk_parse_item(json.c_str(), json.size(), &work));
+    EXPECT_EQ(work.width, 4992);
+    EXPECT_EQ(work.height, 6287);
+}
+
+TEST(ArtSmk, ARecordWithoutASizeLeavesItUnknown)
+{
+    std::string json = fixture("smk-item-painting.json");
+    std::string no_height = replaced(json, "\"image_height\"", "\"image_hoejde\"");
+    art_work_t work;
+    memset(&work, 0x5A, sizeof(work));
+    ASSERT_TRUE(art_smk_parse_item(no_height.c_str(), no_height.size(), &work));
+    EXPECT_EQ(work.width, 0);  // both or none
+    EXPECT_EQ(work.height, 0);
+    EXPECT_TRUE(art_orientation_matches(work.width, work.height, true));
+
+    std::string text = replaced(json, "\"image_width\":5493", "\"image_width\":\"wide\"");
+    ASSERT_TRUE(art_smk_parse_item(text.c_str(), text.size(), &work));
+    EXPECT_EQ(work.width, 0);
+    std::string negative = replaced(json, "\"image_width\":5493", "\"image_width\":-5");
+    ASSERT_TRUE(art_smk_parse_item(negative.c_str(), negative.size(), &work));
+    EXPECT_EQ(work.width, 0);
+    EXPECT_EQ(work.height, 0);
+}
+
+TEST(ArtStore, TheSizeOfTheOriginalIsKeptInTheCaptionFile)
+{
+    std::string dir = make_temp_dir();
+    art_work_t work = work_of("200100988");
+    work.width = 322;
+    work.height = 480;
+    ASSERT_TRUE(art_store_write_caption(dir.c_str(), "rijks-200100988", 7, &work, "x"));
+    int w = 0, h = 0;
+    ASSERT_TRUE(art_store_read_size((dir + "/rijks-200100988.epdgz").c_str(), &w, &h));
+    EXPECT_EQ(w, 322);
+    EXPECT_EQ(h, 480);
+    ASSERT_TRUE(art_store_read_size((dir + "/rijks-200100988.jpg").c_str(), &w, &h));  // same file
+    EXPECT_EQ(h, 480);
+    char text[ART_CAPTION_TEXT_MAX];
+    ASSERT_TRUE(art_store_read_caption((dir + "/rijks-200100988.png").c_str(), text, sizeof(text)));
+    EXPECT_STREQ(text, "x");  // the caption reads as before
+    art_store_remove(dir.c_str(), "rijks-200100988");
+    rmdir(dir.c_str());
+}
+
+TEST(ArtStore, NoSizeWhereNoneWasKnownOrThereIsNoCaptionFile)
+{
+    std::string dir = make_temp_dir();
+    art_work_t work = work_of("200100989");  // width and height 0: unknown
+    ASSERT_TRUE(art_store_write_caption(dir.c_str(), "rijks-200100989", 8, &work, "x"));
+    int w = 11, h = 12;
+    EXPECT_FALSE(art_store_read_size((dir + "/rijks-200100989.epdgz").c_str(), &w, &h));
+    EXPECT_EQ(w, 11);  // the answer is left alone
+    EXPECT_EQ(h, 12);
+    EXPECT_FALSE(art_store_read_size((dir + "/other.epdgz").c_str(), &w, &h));  // no caption file
+    EXPECT_FALSE(art_store_read_size(nullptr, &w, &h));
+
+    // a caption file of an older version of this option (no size) still reads
+    char text[ART_CAPTION_TEXT_MAX];
+    EXPECT_TRUE(
+        art_store_read_caption((dir + "/rijks-200100989.epdgz").c_str(), text, sizeof(text)));
+
+    // a file of another kind, or a size that is no number, gives none
+    std::ofstream(dir + "/foreign.caption.json")
+        << "{\"kind\":\"other\",\"v\":1,\"w\":10,\"h\":20}";
+    EXPECT_FALSE(art_store_read_size((dir + "/foreign.epdgz").c_str(), &w, &h));
+    std::ofstream(dir + "/odd.caption.json")
+        << "{\"kind\":\"art\",\"v\":1,\"text\":\"x\",\"w\":\"10\",\"h\":20}";
+    EXPECT_FALSE(art_store_read_size((dir + "/odd.epdgz").c_str(), &w, &h));
+    std::ofstream(dir + "/neg.caption.json")
+        << "{\"kind\":\"art\",\"v\":1,\"text\":\"x\",\"w\":-10,\"h\":20}";
+    EXPECT_FALSE(art_store_read_size((dir + "/neg.epdgz").c_str(), &w, &h));
+
+    art_store_remove(dir.c_str(), "rijks-200100989");
+    unlink((dir + "/foreign.caption.json").c_str());
+    unlink((dir + "/odd.caption.json").c_str());
+    unlink((dir + "/neg.caption.json").c_str());
+    rmdir(dir.c_str());
+}

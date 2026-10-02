@@ -49,6 +49,9 @@
 #if FEATURE_MARKET_QUOTES
 #include "market_quotes.h"
 #endif
+#if FEATURE_ARTWORKS
+#include "art_select.h"
+#endif
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
@@ -2320,6 +2323,9 @@ static esp_err_t config_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(root, "art_free_min", config_manager_get_art_free_min());
         cJSON_AddNumberToObject(root, "art_free_target", config_manager_get_art_free_target());
         cJSON_AddBoolToObject(root, "art_caption", config_manager_get_art_caption());
+        cJSON_AddStringToObject(root, "art_scale_mode",
+                                art_scale_name((art_scale_t) config_manager_get_art_scale()));
+        cJSON_AddBoolToObject(root, "art_match_orient", config_manager_get_art_match_orient());
         // the key is write-only: only whether there is one
         cJSON_AddBoolToObject(root, "art_si_key_configured",
                               config_manager_get_art_si_key()[0] != '\0');

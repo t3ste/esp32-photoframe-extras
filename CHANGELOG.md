@@ -28,12 +28,16 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   Checked on a frame (Waveshare PhotoPainter 7.3", 2026-10-02): the markets page took the newest day (the close of the same day) and both pages drew the one-line footer.
 - **Artworks** (`--with artworks`, [docs/ARTWORKS.md](docs/ARTWORKS.md); part of `extras`): a rotation mode that shows a painting, a drawing or a print from a museum. Each
   rotation draws the kind of work first, then a random work of the Rijksmuseum, SMK (Denmark) or the Smithsonian American Art Museum whose record says public domain or
-  CC0, loads the smallest picture that covers the panel (IIIF fit; baseline JPEG only), makes it display-ready, keeps it in the album `Art` and shows it with a small
-  caption (white text, one-pixel black border, no bar, from a caption file next to the picture). No network or any failure: a random picture of the album. Before a
+  CC0, loads the smallest picture that fits the panel (IIIF fit; baseline JPEG only), makes it display-ready, keeps it in the album `Art` and shows it with a small
+  caption (white text, one-pixel black border, no bar, from a caption file next to the picture). The picture is put on the panel **whole (Fit, the default) or
+  filling it (Cover)** by this mode's own setting, and pictures of the frame's orientation (Display Orientation) are **preferred**: a work of the other format is
+  turned down - before loading if the record has its size (SMK), else from the picture's header - and another asked for, up to three times, the last one taken as it
+  comes (switchable). No network or any failure: a picture of the album - **also when the album is switched off in the Gallery**, a not yet shown one of the right
+  orientation if there is one. Before a
   new picture is kept and the free space is at or below 20 %, the oldest pictures this mode saved - only those with a caption file, only in that album - are deleted
   until 30 % is free (both settable); if that is not enough the picture is shown and not kept. Settings in the Auto Rotate tab and `/api/config` (the Smithsonian
-  key is write-only). New: `art_select`/`art_caption`/`art_sources`/`art_store` (pure, host-tested against real answers of the three services, 62 tests, a byte-flip run
-  under ASan/UBSan), `art_flow` (the device side), `image_processor_draw_caption_outlined()`, `display_manager_rotate_from_album()`; `http_fetch_get_once()` is built
+  key is write-only). New: `art_select`/`art_caption`/`art_sources`/`art_store` (pure, host-tested against real answers of the three services, 79 tests, a byte-flip run
+  under ASan/UBSan), `art_flow` (the device side), `image_processor_draw_caption_outlined()`; `http_fetch_get_once()` is built
   for it as well. Compiled for every board; run on one frame (Waveshare PhotoPainter 7.3", all three museums, one session) - a day of rotation, a full card and a lost network are not seen yet.
 - **Pictures of the display** ([docs/SCREENSHOTS.md](docs/SCREENSHOTS.md), `docs/screens/`): the Agenda in its layouts (7-day grid A and B, ToDo and Calendar stacked and side by side) and in a colour profile, and every
   information page, with made-up sample data (no real names, places or calendars); also in the user guide to the extras, the page of each option, the README and the demo package. The information pages are drawn

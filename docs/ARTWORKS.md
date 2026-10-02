@@ -9,8 +9,8 @@
 
 A rotation mode that shows **a painting, a drawing or a print from a museum**. At each Auto Rotate turn the frame picks the kind of
 work first (equal chance among the kinds you allow), then a random work of that kind from the museum's open-access service, loads the
-smallest picture that covers the panel, shows it with a small caption and keeps it in an album, so that it is still there when there
-is no network.
+smallest picture that fits the panel, shows it **whole** (or filling the panel, as you choose) with a small caption and keeps it in an
+album, so that it is still there when there is no network. Pictures of the frame's orientation - landscape for a landscape frame - are preferred.
 
 > **Usage rights.** This firmware is intended for private use. The pictures come from the open-access services of museums and
 > collections. Their terms of use differ by museum and by work: public domain or CC0 in most cases, but some works or services ask for
@@ -36,20 +36,42 @@ schedule as usual (Auto Rotate's own), and fill in the card that appears:
 | Keep at least this much free (%) | 20 | The free space of the frame's storage that is not touched (5-80) |
 | Clean up to this much free (%) | 30 | Where the clean-up stops; above the first level, at most 95 |
 | Show a small caption | on | Artist, title and year at the bottom left |
+| Picture on the panel | Fit | **Fit**: the whole picture, with bars (the frame's background colour, white by default) where it does not fill the panel. **Cover**: the panel is filled and the edges are cut off - a portrait picture on a landscape frame then shows only its middle. This is the setting of this mode alone; the picture setting of the frame's other modes is not touched. It applies to pictures made from now on, not to those already in the album |
+| Prefer pictures that match the frame's orientation | on | Landscape pictures for a landscape frame, portrait ones for a portrait frame - by the frame's **Display Orientation** setting. See below |
 
 ## What one rotation does
 
 1. Pick the kind of work, then the first source that has works of that kind (the Smithsonian has no prints).
 2. Ask it for a random work (a few small requests, see below) and check that the picture is public domain or CC0.
-3. Load the picture in the smallest size that covers the panel: the museum's IIIF server fits it into the panel's box, the Smithsonian
-   takes the longer side. A JPEG of about 50-250 KB; it must be a baseline JPEG (the frame cannot decode progressive ones) and at most 1.5 MB.
-4. Make it display-ready with the frame's usual picture settings (dithering, scale mode), keep a thumbnail for the web gallery and a
-   caption file, show it.
+3. Check the orientation (see below); then load the picture in the smallest size that fits the panel as the frame is set (the box is 800 x 480
+   on a landscape frame, 480 x 800 on a portrait one): the museum's IIIF server fits it into the box, the Smithsonian takes the longer side. A JPEG of about
+   50-250 KB; it must be a baseline JPEG (the frame cannot decode progressive ones) and at most 1.5 MB.
+4. Make it display-ready with the frame's dithering and **this mode's own picture setting** (Fit or Cover), keep a thumbnail for the web gallery and a
+   caption file (which also keeps the picture's size, i.e. whether it is landscape or portrait), show it.
 5. If the free space is at or below the first level, **delete the oldest pictures this mode saved** until it is back at the second level
    (see below) - before keeping the new one.
 
-**No network, or anything fails** (no work found, a refused picture, a museum that does not answer): the frame shows **a random picture
-of the album** instead; with an empty album it keeps the picture on the panel. The Web UI's last fetch error says why.
+### Landscape and portrait
+
+With *Prefer pictures that match the frame's orientation* on, the frame looks at the format of a work before it takes it. The orientation is the
+frame's **Display Orientation** setting (Settings -> General; the rotation of the panel by 0 or 180 degrees changes nothing about it). A picture is landscape when it
+is wider than high, portrait when it is higher than wide; a square one fits both.
+
+- The SMK's record tells the size of the picture, so a work of the wrong format is turned down **before** anything is loaded. For the Rijksmuseum and the
+  Smithsonian the format is read from the header of the picture after loading it (a few seconds), and the picture is dropped if it does not fit.
+- The frame asks for up to **three works** this way. The **third is taken whatever its format**, so the preference never leaves the frame without a new
+  picture; with *Fit* it is then shown whole, with bars.
+- Off: every work is taken as it comes (one request, no turning down).
+- A turned-down work costs its requests: with the Smithsonian's demo key (10 an hour) three tries per rotation use up the hour quickly on a short schedule.
+
+**No network, or anything fails** (no work found, a refused picture, a museum that does not answer): the frame shows **a picture of the album**
+instead; with an empty album it keeps the picture on the panel. The Web UI's last fetch error says why.
+
+- The album is used **whether or not it is switched on in the Gallery**. That switch only decides whether the *Storage* mode's Auto Rotate draws from it.
+- The picture is a random one that has **not been shown in this cycle** of the display history (when the history is on); when all have been shown the cycle starts anew.
+- With the orientation preferred, a picture of the frame's orientation is chosen (the frame looks at up to 24 pictures from a random start): first one not shown
+  yet, then - if all of those are of the other orientation - one that was shown before, and a picture of the other orientation only when the album has none of
+  the right one. A picture whose size is not known (made by an earlier version, or put there by you) counts as fitting.
 
 ## Sources
 
@@ -69,8 +91,8 @@ firmware and the repository it was built for. The museums see the frame's IP add
 
 New pictures are kept in the album `Art` (a folder like any other album): `<source>-<id>.epdgz` (or `.png`), its thumbnail `.jpg`, and
 `<source>-<id>.caption.json`. The album is created on first use and **switched on for the storage mode's Auto Rotate**, so a frame that
-has no network - or that you switch to the *Storage* mode - shows these pictures with the others; switch the album off in the Gallery if
-you do not want that.
+you switch to the *Storage* mode shows these pictures with the others; switch the album off in the Gallery if
+you do not want that - the artworks mode itself still takes its fallback pictures from it.
 
 The rule that keeps the free space (both levels are settings):
 
@@ -112,7 +134,8 @@ the picture when the picture is shown - so it also appears when Auto Rotate show
 ## Settings in the API
 
 `GET/PATCH /api/config`: `rotation_mode` (`"artworks"`), `art_types` and `art_sources` (bit masks: kinds 1 painting, 2 drawing, 4 print;
-sources 1 Rijksmuseum, 2 SMK, 4 Smithsonian), `art_save`, `art_album`, `art_free_min`, `art_free_target`, `art_caption`, and the key as
+sources 1 Rijksmuseum, 2 SMK, 4 Smithsonian), `art_save`, `art_album`, `art_free_min`, `art_free_target`, `art_caption`, `art_scale_mode`
+(`"fit"` - the default - or `"cover"`), `art_match_orient` (boolean, default true), and the key as
 `art_si_key` (write-only: `GET` answers only `art_si_key_configured`; `art_si_key_clear: true` removes it; the export with credentials
 includes it).
 
@@ -120,6 +143,9 @@ includes it).
 
 Pure code (choice of kind and source, caption text, the readers of the three services, the album rule) is host-tested against real answers
 of the museums recorded on 2026-10-01 (`host_tests/data/art/`), with a run that changes bytes of those answers under ASan/UBSan; the caption
-drawing is tested on a canvas with guard bytes. The firmware compiles for every board. On a real frame (Waveshare PhotoPainter 7.3", 2026-10-02) each museum was asked once: the picture came, was converted and kept
+drawing is tested on a canvas with guard bytes; the choice of orientation (the box of the panel, landscape or portrait, the pick among the pictures of the album) and the readers of the picture's
+size are host-tested too. The firmware compiles for every board. On a real frame (Waveshare PhotoPainter 7.3", 2026-10-02) each museum was asked once: the picture came, was converted and kept
 in the album, and the frame drew it with its caption; a request for a print to the Smithsonian alone found no source and showed a picture of the album, as designed.
-The panel itself was not photographed, and the frame's own picture setting *cover* crops a portrait picture hard (a portrait drawing showed about two fifths of itself).
+Later the same day, with *Fit*: the log shows the picture whole (`fit: content 374x480 at (213,0)`), works of the wrong orientation were turned down and another asked for, in a
+landscape and in a portrait setting of the frame (box 800 x 480 and 480 x 800), and the fallback took pictures from the album while it was switched off in the Gallery and kept
+away from the one portrait picture in a landscape frame. The panel itself was not photographed.

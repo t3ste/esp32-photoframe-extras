@@ -354,6 +354,10 @@ export const useSettingsStore = defineStore("settings", () => {
     artFreeMin: 20,
     artFreeTarget: 30,
     artCaption: true,
+    // how a picture is put on the panel ("fit": all of it, with bars; "cover": fills the panel,
+    // cuts the edges) and whether pictures of the frame's orientation are preferred
+    artScaleMode: "fit",
+    artMatchOrient: true,
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
     // Duplicate detection at upload (see docs/UPLOAD_DEDUP.md)
@@ -743,6 +747,8 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.artFreeMin = data.art_free_min ?? 20;
       deviceSettings.value.artFreeTarget = data.art_free_target ?? 30;
       deviceSettings.value.artCaption = data.art_caption !== false;
+      deviceSettings.value.artScaleMode = data.art_scale_mode === "cover" ? "cover" : "fit";
+      deviceSettings.value.artMatchOrient = data.art_match_orient !== false;
 // #endif
 // #if FEATURE_UPLOAD_DEDUP
       deviceSettings.value.dedupMode = data.dedup_mode ?? "skip";
@@ -1030,6 +1036,8 @@ export const useSettingsStore = defineStore("settings", () => {
       art_free_min: deviceSettings.value.artFreeMin,
       art_free_target: deviceSettings.value.artFreeTarget,
       art_caption: deviceSettings.value.artCaption,
+      art_scale_mode: deviceSettings.value.artScaleMode,
+      art_match_orient: deviceSettings.value.artMatchOrient,
       // write-only: sent only when something valid was typed (an empty value means "not touched")
       ...(isArtKey(deviceSettings.value.artSiKey)
         ? { art_si_key: deviceSettings.value.artSiKey }

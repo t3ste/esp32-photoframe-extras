@@ -917,6 +917,10 @@ function artMaskModel(field, bit) {
     },
   });
 }
+const artScaleOptions = [
+  { title: "Fit - the whole picture, with bars where it does not fill the panel", value: "fit" },
+  { title: "Cover - fill the panel, cut off the edges", value: "cover" },
+];
 const artPaintingModel = artMaskModel("artTypes", 1);
 const artDrawingModel = artMaskModel("artTypes", 2);
 const artPrintModel = artMaskModel("artTypes", 4);
@@ -1986,7 +1990,8 @@ async function performFactoryReset() {
                       Each rotation shows a painting, drawing or print from a museum's open-access
                       service: the kind of work is chosen first, then a random work that is public
                       domain or CC0. Without network, or when something fails, a picture of the
-                      album below is shown instead.
+                      album below is shown instead - also when that album is switched off in the
+                      gallery.
                     </div>
                     <div class="text-subtitle-2 mb-1">Kinds of work</div>
                     <v-checkbox
@@ -2107,6 +2112,36 @@ async function performFactoryReset() {
                       hide-details
                       class="mt-2"
                     />
+                    <v-select
+                      v-model="settingsStore.deviceSettings.artScaleMode"
+                      :items="artScaleOptions"
+                      item-title="title"
+                      item-value="value"
+                      label="Picture on the panel"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      class="mt-4"
+                    />
+                    <div class="text-caption text-medium-emphasis mt-1">
+                      Applies to the pictures this mode makes from now on, not to the ones already
+                      in the album. It is separate from the picture setting of the frame's other
+                      modes.
+                    </div>
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.artMatchOrient"
+                      label="Prefer pictures that match the frame's orientation"
+                      color="primary"
+                      density="compact"
+                      hide-details
+                      class="mt-2"
+                    />
+                    <div class="text-caption text-medium-emphasis mt-1">
+                      Landscape pictures for a landscape frame, portrait ones for a portrait frame
+                      (the Display Orientation setting). The frame asks for up to three works to find one,
+                      and takes the last whatever its format; a picture from the album shown instead
+                      is chosen the same way. Off: every work is taken as it comes.
+                    </div>
                     <div class="text-caption text-medium-emphasis mt-2">
                       For private use. The pictures come from the museums' open-access services;
                       the terms of use differ by museum and by work, and you are responsible for

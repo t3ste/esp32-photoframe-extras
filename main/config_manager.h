@@ -546,6 +546,10 @@ int config_manager_get_art_free_target(void);
 void config_manager_set_art_free_limits(int free_min_pct, int free_target_pct);
 bool config_manager_get_art_caption(void);
 void config_manager_set_art_caption(bool enabled);
+int config_manager_get_art_scale(void);  // an art_scale_t (art_select.h), fit by default
+void config_manager_set_art_scale(int scale);
+bool config_manager_get_art_match_orient(void);  // prefer pictures of the frame's orientation
+void config_manager_set_art_match_orient(bool enabled);
 uint32_t config_manager_next_art_seq(void);
 #endif
 

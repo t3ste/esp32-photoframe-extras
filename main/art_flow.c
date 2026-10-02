@@ -1,8 +1,10 @@
 #include "art_flow.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -20,6 +22,9 @@
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_vfs_fat.h"
+#if FEATURE_DISPLAY_HISTORY
+#include "history_manager.h"
+#endif
 #include "http_fetch.h"
 #include "image_processor.h"
 #include "processing_settings.h"
@@ -43,6 +48,10 @@ static const char *TAG = "art_flow";
 #define ART_ITEMS_MAX 1000            // pictures of this option an album keeps at most
 #define ART_CAPTION_CHARS 60          // the caption is cut to the panel's width when it is drawn
 #define ART_TEMP_BASE ".art_current"  // the picture of a rotation that is not kept
+#define ART_ORIENTATION_TRIES \
+    3                          // works asked for per rotation to find one of the right orientation
+#define ART_ALBUM_PROBES 24    // pictures of the album looked at for the right orientation
+#define ART_ALBUM_NAME_MAX 80  // a file name of the album
 
 // The works the Smithsonian is known to have per kind (American Art Museum, 2026): a start inside
 // always has a hit, so one request is enough (the demo key allows 10 an hour)
@@ -215,17 +224,21 @@ static bool fetch_work(art_work_t *work)
     return false;
 }
 
-// The smallest picture that covers the panel (the panel as the frame is mounted)
-static bool download_picture(const art_work_t *work, char **data, size_t *len)
+// Whether the frame is set to landscape: the picture pipeline processes every picture at the
+// orientation of that setting (the rotation of the panel is only 0 or 180 degrees and changes
+// nothing about it)
+static bool frame_is_landscape(void)
 {
-    int width = BOARD_HAL_DISPLAY_WIDTH;
-    int height = BOARD_HAL_DISPLAY_HEIGHT;
-    int rotation = config_manager_get_display_rotation_deg() % 360;
-    if (rotation == 90 || rotation == 270 || rotation == -90 || rotation == -270) {
-        int swap = width;
-        width = height;
-        height = swap;
-    }
+    return config_manager_get_display_orientation() == DISPLAY_ORIENTATION_LANDSCAPE;
+}
+
+// The smallest picture that fits the panel as the frame is set (the IIIF servers fit it into the
+// box)
+static bool download_picture(const art_work_t *work, bool want_landscape, char **data, size_t *len)
+{
+    int width, height;
+    art_panel_box(BOARD_HAL_DISPLAY_WIDTH, BOARD_HAL_DISPLAY_HEIGHT, want_landscape, &width,
+                  &height);
     char url[ART_URL_MAX + 48];
     if (!art_image_url(work, width, height, url, sizeof(url))) {
         return false;
@@ -362,9 +375,13 @@ static bool make_picture(const art_work_t *work, const char *data, size_t len, c
         return false;
     }
 
+    // the scale mode is this option's own setting, whatever the frame's general one is
     image_format_t actual = IMAGE_FORMAT_EPD_GZ;
-    esp_err_t err = image_processor_process_fmt(
-        jpg, path, processing_settings_get_dithering_algorithm(), IMAGE_FORMAT_EPD_GZ, &actual);
+    int scale_mode =
+        config_manager_get_art_scale() == ART_SCALE_COVER ? SCALE_MODE_COVER : SCALE_MODE_FIT;
+    esp_err_t err =
+        image_processor_render_variant(jpg, path, processing_settings_get_dithering_algorithm(),
+                                       IMAGE_FORMAT_EPD_GZ, &actual, scale_mode, NULL);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Processing failed: %s", esp_err_to_name(err));
         art_store_remove(dir, base);
@@ -391,9 +408,23 @@ static bool make_picture(const art_work_t *work, const char *data, size_t len, c
     return true;
 }
 
-// The work is chosen: show its picture - the stored one, or a new one made from `data`
-static bool show_new_work(const art_work_t *work)
+typedef enum {
+    ART_PICTURE_SHOWN,
+    ART_PICTURE_SKIPPED,  // of the other orientation: ask for another work
+    ART_PICTURE_FAILED,
+} art_picture_result_t;
+
+// The work is chosen: show its picture - the stored one, or a new one made from the download. With
+// `strict` a picture of the other orientation than the frame's is not taken.
+static art_picture_result_t show_new_work(art_work_t *work, bool want_landscape, bool strict)
 {
+    // the record may tell the size (SMK): then the picture need not be loaded to be turned down
+    if (strict && !art_orientation_matches(work->width, work->height, want_landscape)) {
+        ESP_LOGI(TAG, "%s is %s, the frame is %s: asking for another work", work->id,
+                 want_landscape ? "portrait" : "landscape",
+                 want_landscape ? "landscape" : "portrait");
+        return ART_PICTURE_SKIPPED;
+    }
     bool keep_wanted = config_manager_get_art_save() && storage_has_persistent_storage();
     char dir[256];
     char base[ART_BASE_MAX];
@@ -409,27 +440,161 @@ static bool show_new_work(const art_work_t *work)
     if (keep_wanted && stored_picture(dir, base, path, sizeof(path))) {
         ESP_LOGI(TAG, "Already in the album: %s", path);
         display_manager_show_album_file(path);
-        return true;
+        return ART_PICTURE_SHOWN;
     }
 
     char *data = NULL;
     size_t len = 0;
-    if (!download_picture(work, &data, &len)) {
-        return false;
+    if (!download_picture(work, want_landscape, &data, &len)) {
+        return ART_PICTURE_FAILED;
+    }
+    // the size of the picture as loaded (the museum's server keeps the proportions): the
+    // orientation of the work, which the caption file keeps for the album
+    int loaded_w = 0, loaded_h = 0;
+    if (art_jpeg_size((const uint8_t *) data, len, &loaded_w, &loaded_h)) {
+        work->width = loaded_w;
+        work->height = loaded_h;
+    }
+    if (strict && !art_orientation_matches(work->width, work->height, want_landscape)) {
+        ESP_LOGI(TAG, "%s is %dx%d, the frame is %s: asking for another work", work->id,
+                 work->width, work->height, want_landscape ? "landscape" : "portrait");
+        free(data);
+        return ART_PICTURE_SKIPPED;
     }
     art_store_remove(FS_MOUNT_POINT, ART_TEMP_BASE);  // what a rotation that was cut short left
     bool made =
         make_picture(work, data, len, dir, base, config_manager_next_art_seq(), path, sizeof(path));
     free(data);
     if (!made) {
-        return false;
+        return ART_PICTURE_FAILED;
     }
     bool keep = keep_wanted && make_room(dir, base);
     display_manager_show_album_file(path);
     if (!keep) {
         art_store_remove(dir, base);  // shown, not kept
     }
-    return true;
+    return ART_PICTURE_SHOWN;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The album as the fallback
+
+typedef struct {
+    const char (*names)[ART_ALBUM_NAME_MAX];
+    const int *pool;  // the pictures to choose from: indices into `names`
+    const char *dir;
+    bool want_landscape;
+} album_probe_t;
+
+// Does the picture have the frame's orientation? One whose size is not known (not made by this
+// option) is taken for one that does.
+static bool album_picture_matches(int index, void *context)
+{
+    const album_probe_t *probe = (const album_probe_t *) context;
+    char path[256 + ART_ALBUM_NAME_MAX];
+    snprintf(path, sizeof(path), "%s/%s", probe->dir, probe->names[probe->pool[index]]);
+    int w = 0, h = 0;
+    return !art_store_read_size(path, &w, &h) ||
+           art_orientation_matches(w, h, probe->want_landscape);
+}
+
+// A random picture of the art album: not one of this display-history cycle if the history knows
+// them, and with `prefer_match` one of the frame's orientation if the album has one among the
+// first it looks at. The album is used whether or not it is switched on in the gallery - that
+// switch only decides whether the rotation of the storage mode draws from it. False when there is
+// no storage, no album or no picture in it.
+static bool show_album_picture(bool want_landscape, bool prefer_match)
+{
+    const char *album = config_manager_get_art_album();
+    char dir[256];
+    if (!storage_has_persistent_storage() || !album_manager_album_exists(album) ||
+        album_manager_get_album_path(album, dir, sizeof(dir)) != ESP_OK) {
+        return false;
+    }
+    char(*names)[ART_ALBUM_NAME_MAX] =
+        heap_caps_malloc((size_t) ART_ITEMS_MAX * ART_ALBUM_NAME_MAX, MALLOC_CAP_SPIRAM);
+    int *pool = heap_caps_malloc((size_t) ART_ITEMS_MAX * sizeof(int), MALLOC_CAP_SPIRAM);
+    DIR *folder = opendir(dir);
+    if (!names || !pool || !folder) {
+        if (folder) {
+            closedir(folder);
+        }
+        heap_caps_free(names);
+        heap_caps_free(pool);
+        return false;
+    }
+    int count = 0;
+    struct dirent *entry;
+    while ((entry = readdir(folder)) != NULL && count < ART_ITEMS_MAX) {
+        const char *ext = strrchr(entry->d_name, '.');
+        // the pictures; the thumbnails and caption files next to them are not
+        if (entry->d_type != DT_REG || (entry->d_name[0] == '.' && entry->d_name[1] == '_') ||
+            !ext || strlen(entry->d_name) >= ART_ALBUM_NAME_MAX ||
+            !(strcasecmp(ext, ".epdgz") == 0 || strcasecmp(ext, ".png") == 0 ||
+              strcasecmp(ext, ".bmp") == 0)) {
+            continue;
+        }
+        snprintf(names[count++], ART_ALBUM_NAME_MAX, "%.*s", ART_ALBUM_NAME_MAX - 1, entry->d_name);
+    }
+    closedir(folder);
+
+    bool shown = false;
+    if (count > 0) {
+        int pool_count = 0;
+#if FEATURE_DISPLAY_HISTORY
+        for (int i = 0; i < count; i++) {
+            char path[256 + ART_ALBUM_NAME_MAX];
+            snprintf(path, sizeof(path), "%s/%s", dir, names[i]);
+            if (!history_manager_has_shown(path)) {
+                pool[pool_count++] = i;
+            }
+        }
+        if (pool_count == 0) {
+            ESP_LOGI(TAG, "Display history cycle complete - starting a new cycle");
+            history_manager_clear();
+        }
+#endif
+        if (pool_count == 0) {
+            for (int i = 0; i < count; i++) {
+                pool[pool_count++] = i;
+            }
+        }
+        album_probe_t probe = {.names = (const char(*)[ART_ALBUM_NAME_MAX]) names,
+                               .pool = pool,
+                               .dir = dir,
+                               .want_landscape = want_landscape};
+        int probes = prefer_match ? ART_ALBUM_PROBES : 0;
+        bool matched = false;
+        int pick = art_pick_matching(pool_count, esp_random(), probes, album_picture_matches,
+                                     &probe, &matched);
+        int chosen = pick >= 0 ? pool[pick] : -1;
+        if (prefer_match && !matched && pool_count < count) {
+            // the pictures not shown yet are all of the other orientation: one of the album that
+            // was shown before and has the right one is better than one that has not
+            for (int i = 0; i < count; i++) {
+                pool[i] = i;
+            }
+            int again = art_pick_matching(count, esp_random(), probes, album_picture_matches,
+                                          &probe, &matched);
+            if (matched) {
+                chosen = again;
+            }
+        }
+        if (chosen >= 0) {
+            char path[256 + ART_ALBUM_NAME_MAX];
+            snprintf(path, sizeof(path), "%s/%s", dir, names[chosen]);
+            if (prefer_match && !matched) {
+                ESP_LOGI(TAG, "No picture of the album is %s among the ones looked at",
+                         want_landscape ? "landscape" : "portrait");
+            }
+            ESP_LOGI(TAG, "Showing a picture of album %s: %s", album, names[chosen]);
+            display_manager_show_album_file(path);
+            shown = true;
+        }
+    }
+    heap_caps_free(names);
+    heap_caps_free(pool);
+    return shown;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -437,24 +602,40 @@ static bool show_new_work(const art_work_t *work)
 esp_err_t art_flow_rotate(void)
 {
     const char *reason = "No new artwork";
+    bool want_landscape = frame_is_landscape();
+    bool match_orient = config_manager_get_art_match_orient();
     if (!wifi_manager_is_connected()) {
         reason = "WiFi unavailable";
     } else {
-        art_work_t work;
-        memset(&work, 0, sizeof(work));
-        bool fetched = fetch_work(&work);
-        if (fetched && show_new_work(&work)) {
-            utils_record_internet_attempt(true);
-            utils_set_last_fetch_error(NULL);
-            return ESP_OK;
+        // With the orientation preferred, a work of the other orientation is turned down and
+        // another one asked for - up to ART_ORIENTATION_TRIES works; the last one is taken whatever
+        // its orientation, so that the preference never leaves the frame without a new picture
+        int tries = match_orient ? ART_ORIENTATION_TRIES : 1;
+        for (int attempt = 0; attempt < tries; attempt++) {
+            art_work_t work;
+            memset(&work, 0, sizeof(work));
+            if (!fetch_work(&work)) {
+                reason = "No artwork found";
+                break;
+            }
+            art_picture_result_t result =
+                show_new_work(&work, want_landscape, match_orient && attempt < tries - 1);
+            if (result == ART_PICTURE_SHOWN) {
+                utils_record_internet_attempt(true);
+                utils_set_last_fetch_error(NULL);
+                return ESP_OK;
+            }
+            if (result == ART_PICTURE_FAILED) {
+                reason = "Artwork picture failed";
+                break;
+            }
         }
         utils_record_internet_attempt(false);
-        reason = fetched ? "Artwork picture failed" : "No artwork found";
     }
 
     // No network or anything failed: a picture of the album instead
     ESP_LOGW(TAG, "%s - showing a picture of the album", reason);
-    if (display_manager_rotate_from_album(config_manager_get_art_album())) {
+    if (show_album_picture(want_landscape, match_orient)) {
         utils_set_last_fetch_error(reason);
         return ESP_OK;
     }

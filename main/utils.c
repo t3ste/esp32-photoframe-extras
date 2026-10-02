@@ -1262,6 +1262,14 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     if (item && cJSON_IsBool(item)) {
         config_manager_set_art_caption(cJSON_IsTrue(item));
     }
+    item = cJSON_GetObjectItem(root, "art_scale_mode");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_art_scale(art_scale_from_name(cJSON_GetStringValue(item)));
+    }
+    item = cJSON_GetObjectItem(root, "art_match_orient");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_art_match_orient(cJSON_IsTrue(item));
+    }
     cJSON *art_free_min = cJSON_GetObjectItem(root, "art_free_min");
     cJSON *art_free_target = cJSON_GetObjectItem(root, "art_free_target");
     if ((art_free_min && cJSON_IsNumber(art_free_min)) ||

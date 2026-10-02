@@ -1125,7 +1125,9 @@ typedef enum {
 // the sources that may be asked (bit 0 Rijksmuseum, 1 SMK, 2 Smithsonian), the Smithsonian key
 // (empty = the public DEMO_KEY; a write-only credential), whether the pictures are kept in an album
 // and its name, the free space to keep and the free space to clean up to (percent of the storage),
-// the caption, and the counter that tells which saved picture is the oldest
+// the caption, how a picture is put on the panel (fit or cover, art_select.h), whether pictures of
+// the frame's orientation are preferred, and the counter that tells which saved picture is the
+// oldest
 #define NVS_ART_TYPES_KEY "art_types"
 #define NVS_ART_SOURCES_KEY "art_sources"
 #define NVS_ART_SI_KEY "art_si_key"
@@ -1134,6 +1136,8 @@ typedef enum {
 #define NVS_ART_FREE_MIN_KEY "art_free_min"
 #define NVS_ART_FREE_TO_KEY "art_free_to"
 #define NVS_ART_CAPTION_KEY "art_caption"
+#define NVS_ART_SCALE_KEY "art_scale"
+#define NVS_ART_ORIENT_KEY "art_orient"
 #define NVS_ART_SEQ_KEY "art_seq"
 #define ART_SI_KEY_MAX_LEN 65
 #define ART_ALBUM_NAME_MAX_LEN 32

@@ -118,6 +118,10 @@ bool art_store_write_caption(const char *dir, const char *base, uint32_t seq,
     cJSON_AddStringToObject(root, "source", art_source_tag(work->source));
     cJSON_AddStringToObject(root, "id", work->id);
     cJSON_AddStringToObject(root, "rights", work->rights);
+    if (work->width > 0 && work->height > 0) {
+        cJSON_AddNumberToObject(root, "w", work->width);
+        cJSON_AddNumberToObject(root, "h", work->height);
+    }
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (!body) {
@@ -182,6 +186,27 @@ bool art_store_read_caption(const char *picture_path, char *text, size_t text_le
     bool ok = cJSON_IsString(value) && value->valuestring && value->valuestring[0] != '\0';
     if (ok) {
         snprintf(text, text_len, "%s", value->valuestring);
+    }
+    cJSON_Delete(root);
+    return ok;
+}
+
+bool art_store_read_size(const char *picture_path, int *width, int *height)
+{
+    char path[256];
+    if (!art_store_caption_path(picture_path, path, sizeof(path))) {
+        return false;
+    }
+    cJSON *root = read_caption_file(path);
+    if (!root) {
+        return false;
+    }
+    const cJSON *w = cJSON_GetObjectItemCaseSensitive(root, "w");
+    const cJSON *h = cJSON_GetObjectItemCaseSensitive(root, "h");
+    bool ok = cJSON_IsNumber(w) && cJSON_IsNumber(h) && w->valueint > 0 && h->valueint > 0;
+    if (ok) {
+        *width = w->valueint;
+        *height = h->valueint;
     }
     cJSON_Delete(root);
     return ok;

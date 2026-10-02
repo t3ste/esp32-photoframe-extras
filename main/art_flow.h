@@ -13,10 +13,14 @@
 /**
  * @brief The rotation of the artworks mode. The kind of work is chosen first, then the sources are
  * asked in their fixed order (at most two per rotation) for a work that is public domain or CC0;
- * its picture is loaded in the smallest size that covers the panel, made display-ready, kept in the
- * album (the oldest pictures made by this option are deleted to keep the free space the settings
- * name) and shown with its caption. Without network, or when anything fails, a random picture of
- * the album is shown instead; when there is none the panel keeps its picture.
+ * its picture is loaded in the smallest size that fits the panel as the frame is set (landscape or
+ * portrait), made display-ready (whole or filling the panel, by this option's own setting), kept in
+ * the album (the oldest pictures made by this option are deleted to keep the free space the
+ * settings name) and shown with its caption. With the orientation preferred, a work of the other
+ * orientation is turned down and another asked for (up to three works, the last is taken as it
+ * comes). Without network, or when anything fails, a picture of the album is shown instead - the
+ * album is used whether or not it is switched on in the gallery; when there is none the panel keeps
+ * its picture.
  *
  * @return ESP_OK when a picture was shown (a new one or one of the album), ESP_FAIL when not.
  */

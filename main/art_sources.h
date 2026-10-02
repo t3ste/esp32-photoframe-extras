@@ -33,6 +33,8 @@ typedef struct {
     char title[160];
     char year[16];
     char rights[8];  // "PDM" (public domain mark), "CC0" or "PD"
+    int width;       // the size of the original in pixels when the record tells it (SMK), else 0
+    int height;
 } art_work_t;
 
 /** @brief The public demo key of api.data.gov: 10 requests an hour for everybody. */
@@ -97,8 +99,9 @@ bool art_si_parse_row(const char *json, size_t len, art_work_t *work);
 // --- The picture ---------------------------------------------------------------------------
 
 /**
- * @brief The address of the smallest picture that covers a panel of `max_w` x `max_h` pixels: the
- * IIIF servers fit it into the box (`!w,h`), the Smithsonian takes the longer side.
+ * @brief The address of the smallest picture that fits a box of `max_w` x `max_h` pixels (the panel
+ * as the frame is set): the IIIF servers fit it into the box (`!w,h`), the Smithsonian takes the
+ * longer side.
  */
 bool art_image_url(const art_work_t *work, int max_w, int max_h, char *out, size_t out_len);
 
@@ -107,5 +110,11 @@ bool art_image_url(const art_work_t *work, int max_w, int max_h, char *out, size
  * progressive and not lossless. Looks at the markers up to the frame header only.
  */
 bool art_jpeg_is_baseline(const uint8_t *data, size_t len);
+
+/**
+ * @brief The size in pixels from the frame header of a JPEG (any coding). False when the bytes are
+ * not a JPEG or end before the frame header.
+ */
+bool art_jpeg_size(const uint8_t *data, size_t len, int *width, int *height);
 
 #endif

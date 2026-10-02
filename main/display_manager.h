@@ -25,12 +25,6 @@ void display_manager_initialize_paint(void);
  * bookkeeping of what was shown.
  */
 void display_manager_show_album_file(const char *path);
-
-/**
- * @brief Shows a random picture of one album, whether or not that album is enabled for rotation.
- * Returns false (and shows nothing) when there is no storage, no such album or no picture in it.
- */
-bool display_manager_rotate_from_album(const char *album_name);
 #endif
 
 #if FEATURE_FACECROP

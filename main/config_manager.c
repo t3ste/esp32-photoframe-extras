@@ -238,6 +238,8 @@ static char art_album[ART_ALBUM_NAME_MAX_LEN] = ART_ALBUM_DEFAULT;
 static uint8_t art_free_min = ART_FREE_MIN_DEFAULT;
 static uint8_t art_free_target = ART_FREE_TARGET_DEFAULT;
 static bool art_caption = true;
+static uint8_t art_scale = ART_SCALE_FIT;
+static bool art_match_orient = true;
 static uint32_t art_seq = 0;
 
 // An album name is a folder name: letters, digits, blank, '-' and '_', not starting or ending with
@@ -1425,6 +1427,13 @@ esp_err_t config_manager_init(void)
         art_free_target = (uint8_t) limit_target;
         if (nvs_get_u8(nvs_handle, NVS_ART_CAPTION_KEY, &stored_art) == ESP_OK) {
             art_caption = (stored_art != 0);
+        }
+        if (nvs_get_u8(nvs_handle, NVS_ART_SCALE_KEY, &stored_art) == ESP_OK &&
+            stored_art <= ART_SCALE_COVER) {
+            art_scale = stored_art;
+        }
+        if (nvs_get_u8(nvs_handle, NVS_ART_ORIENT_KEY, &stored_art) == ESP_OK) {
+            art_match_orient = (stored_art != 0);
         }
         nvs_get_u32(nvs_handle, NVS_ART_SEQ_KEY, &art_seq);
 #endif
@@ -4039,6 +4048,28 @@ void config_manager_set_art_caption(bool enabled)
 {
     art_caption = enabled;
     agenda_nvs_set_u8(NVS_ART_CAPTION_KEY, enabled ? 1 : 0);
+}
+
+int config_manager_get_art_scale(void)
+{
+    return art_scale;
+}
+
+void config_manager_set_art_scale(int scale)
+{
+    art_scale = (scale == ART_SCALE_COVER) ? ART_SCALE_COVER : ART_SCALE_FIT;
+    agenda_nvs_set_u8(NVS_ART_SCALE_KEY, art_scale);
+}
+
+bool config_manager_get_art_match_orient(void)
+{
+    return art_match_orient;
+}
+
+void config_manager_set_art_match_orient(bool enabled)
+{
+    art_match_orient = enabled;
+    agenda_nvs_set_u8(NVS_ART_ORIENT_KEY, enabled ? 1 : 0);
 }
 
 uint32_t config_manager_next_art_seq(void)

@@ -56,9 +56,16 @@ void art_store_file_base(const art_work_t *work, char *out, size_t out_len);
 /** @brief The caption file that belongs to a picture file (same name, `.caption.json`). */
 bool art_store_caption_path(const char *picture_path, char *out, size_t out_len);
 
-/** @brief Writes the caption file of a picture into `dir`. */
+/**
+ * @brief Writes the caption file of a picture into `dir`. The size of the original (`work->width`
+ * x `work->height`, when known) goes into it too: it tells the frame whether the picture is
+ * landscape or portrait, which the display-ready file does not.
+ */
 bool art_store_write_caption(const char *dir, const char *base, uint32_t seq,
                              const art_work_t *work, const char *text);
+
+/** @brief The size of the original of a picture, if its caption file of this option has one. */
+bool art_store_read_size(const char *picture_path, int *width, int *height);
 
 /** @brief The caption text of a picture, if it has a caption file of this option. */
 bool art_store_read_caption(const char *picture_path, char *text, size_t text_len);

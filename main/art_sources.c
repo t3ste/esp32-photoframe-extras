@@ -462,6 +462,16 @@ bool art_smk_parse_item(const char *json, size_t len, art_work_t *work)
         const char *period = member_text(made, "period");
         year_of(period ? period : member_text(made, "start"), work->year, sizeof(work->year));
 
+        // the size of the original: lets the frame skip a picture of the wrong orientation before
+        // it loads it
+        const cJSON *image_w = member(item, "image_width");
+        const cJSON *image_h = member(item, "image_height");
+        if (cJSON_IsNumber(image_w) && cJSON_IsNumber(image_h) && image_w->valueint > 0 &&
+            image_h->valueint > 0) {
+            work->width = image_w->valueint;
+            work->height = image_h->valueint;
+        }
+
         const char *rights = member_text(item, "rights");
         copy_text(work->rights, sizeof(work->rights),
                   rights && strstr(rights, "mark/1.0")   ? "PDM"
@@ -583,7 +593,9 @@ bool art_image_url(const art_work_t *work, int max_w, int max_h, char *out, size
     return n > 0 && (size_t) n < out_len;
 }
 
-bool art_jpeg_is_baseline(const uint8_t *data, size_t len)
+// The frame header of a JPEG: its marker and the size. False when there is none before the scan.
+static bool jpeg_frame(const uint8_t *data, size_t len, uint8_t *marker_out, int *width,
+                       int *height)
 {
     if (!data || len < 4 || data[0] != 0xFF || data[1] != 0xD8) {
         return false;
@@ -609,14 +621,38 @@ bool art_jpeg_is_baseline(const uint8_t *data, size_t len)
         if (segment < 2) {
             return false;
         }
-        if (marker == 0xC0 || marker == 0xC1) {
-            return true;  // baseline or extended sequential
-        }
-        if (marker >= 0xC2 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 &&
+        // a frame header: SOF0-SOF15 without DHT (C4), JPG (C8) and DAC (CC)
+        if (marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 &&
             marker != 0xCC) {
-            return false;  // progressive, lossless, arithmetic coding
+            if (segment < 8 || i + 9 > len) {
+                return false;  // too short for the size
+            }
+            *marker_out = marker;
+            *height = ((int) data[i + 5] << 8) | data[i + 6];
+            *width = ((int) data[i + 7] << 8) | data[i + 8];
+            return true;
         }
         i += 2 + segment;
     }
     return false;
+}
+
+bool art_jpeg_is_baseline(const uint8_t *data, size_t len)
+{
+    uint8_t marker = 0;
+    int width = 0, height = 0;
+    // baseline or extended sequential; progressive, lossless and arithmetic coding are refused
+    return jpeg_frame(data, len, &marker, &width, &height) && (marker == 0xC0 || marker == 0xC1);
+}
+
+bool art_jpeg_size(const uint8_t *data, size_t len, int *width, int *height)
+{
+    uint8_t marker = 0;
+    int w = 0, h = 0;
+    if (!jpeg_frame(data, len, &marker, &w, &h) || w <= 0 || h <= 0) {
+        return false;
+    }
+    *width = w;
+    *height = h;
+    return true;
 }
