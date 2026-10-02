@@ -206,6 +206,10 @@ of this repository are the only ones whose OTA feed a frame running this firmwar
 or the final `v218.7.1` (no suffix - `version_compare()` sorts it above its release candidates) once a board other than the Waveshare was
 flashed and reported; a new base version gets its own numbers.
 
+**Second candidate, 2026-10-02:** `v218.7.1-rc2` on the same base, tagged on the extended repository's `main` after the check set and both CI runs were green. It adds the artworks mode
+(run on the Waveshare only, in short sessions - so it stays a **pre-release**), the clearer markets / exchange-rate / fuel pages (trading day in the header, one-line footer) and the Fit /
+orientation settings of the artworks mode. Same procedure: tag as `t3stier`, the workflow builds the draft, title and notes by hand, then published as a pre-release.
+
 Quick check that everything is still in step: `git ls-remote t3stier`, `git ls-remote origin` and `git ls-remote extras` must show the same commit for
 `refs/heads/extras` (first two) and `refs/heads/main` (the third); the base `refs/heads/main` of the first two is the base.
 
