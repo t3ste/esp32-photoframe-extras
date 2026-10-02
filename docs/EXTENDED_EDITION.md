@@ -49,7 +49,7 @@ Honest state: **one board**.
 
 | Board | Status |
 | --- | --- |
-| Waveshare PhotoPainter 7.3" (`waveshare_photopainter_73`) | **Flashed and used** with the full firmware: every extra of the first release was run on the frame (calendars with logins, CalDAV, batch upload, duplicate detection, all information pages with real data, the Web UI in Chrome). **Not yet run on a frame: the artworks mode** ([ARTWORKS.md](ARTWORKS.md)) - built, tested on a PC against the museums' real answers, compiled for every board |
+| Waveshare PhotoPainter 7.3" (`waveshare_photopainter_73`) | **Flashed and used** with the full firmware: every extra of the first release was run on the frame (calendars with logins, CalDAV, batch upload, duplicate detection, all information pages with real data, the Web UI in Chrome). The artworks mode ([ARTWORKS.md](ARTWORKS.md)) ran in **one short session** (each of the three museums once: picture, album, caption) - **not seen yet**: the clean-up on a nearly full card, a lost network, a day of rotation |
 | the other seven boards (M5Paper, XIAO EE02/EE03/EE04, reTerminal E1002/E1003/E1004) | **Compiled** (locally for several, in CI for all) but **never flashed** - drawing sizes were checked on the PC for 800x480, 960x540, 480x800, 1200x1600 and 1872x1404 |
 
 The pages are drawn by plain functions that are tested on a PC for every panel size, so layout errors on other boards are

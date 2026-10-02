@@ -3,8 +3,9 @@
 > **Build option:** compiled in only with `python build.py --with artworks` (needs `overlays`; the build pulls it in), part of the
 > `extras` bundle and of every full build. Without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
 >
-> **Status:** built, tested on a PC against real answers of the three museums, and compiled for every board; **not yet run on a
-> frame** - please report what you see ([hardware test report](../.github/ISSUE_TEMPLATE/hardware-test-report.md)).
+> **Status:** built, tested on a PC against real answers of the three museums, compiled for every board, and ran on **one frame** (Waveshare PhotoPainter 7.3", 2026-10-02) in a short session: one rotation with each of the three museums - picture loaded, converted, kept in the album, caption overlay drawn. **Not seen yet**: the
+> clean-up on a nearly full card, a lost network, a day of rotation, the 16-grey and the big panels - please report what you see
+> ([hardware test report](../.github/ISSUE_TEMPLATE/hardware-test-report.md)).
 
 A rotation mode that shows **a painting, a drawing or a print from a museum**. At each Auto Rotate turn the frame picks the kind of
 work first (equal chance among the kinds you allow), then a random work of that kind from the museum's open-access service, loads the
@@ -119,4 +120,6 @@ includes it).
 
 Pure code (choice of kind and source, caption text, the readers of the three services, the album rule) is host-tested against real answers
 of the museums recorded on 2026-10-01 (`host_tests/data/art/`), with a run that changes bytes of those answers under ASan/UBSan; the caption
-drawing is tested on a canvas with guard bytes. The firmware compiles for every board. A rotation on a real frame has not been run yet.
+drawing is tested on a canvas with guard bytes. The firmware compiles for every board. On a real frame (Waveshare PhotoPainter 7.3", 2026-10-02) each museum was asked once: the picture came, was converted and kept
+in the album, and the frame drew it with its caption; a request for a print to the Smithsonian alone found no source and showed a picture of the album, as designed.
+The panel itself was not photographed, and the frame's own picture setting *cover* crops a portrait picture hard (a portrait drawing showed about two fifths of itself).

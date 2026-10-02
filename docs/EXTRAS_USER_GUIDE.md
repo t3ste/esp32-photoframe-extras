@@ -129,7 +129,7 @@ or CC0; its picture is loaded in the smallest size that covers the panel, shown 
 kept in the album `Art`. With no network - or when anything fails - a random picture of that album is shown. The oldest pictures
 are deleted to keep free space (by default it keeps 20 % free and cleans up to 30 %), and only pictures this mode made. Nothing
 to sign up for; a Smithsonian key is optional. For private use: you are responsible for the terms of use of the pictures. All of it,
-including the settings, the free-space rule and the rights hint: [ARTWORKS.md](ARTWORKS.md). Not yet run on a frame.
+including the settings, the free-space rule and the rights hint: [ARTWORKS.md](ARTWORKS.md). Run on one frame in a short session only.
 
 ## 3. Text on the display
 

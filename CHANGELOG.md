@@ -25,6 +25,7 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   rows get a line more; a narrow panel keeps two lines. The time the charts cover is said once in the header (`MARKETS  41 d`) when all lines share it, and every line shows the change over
   its whole chart (`+6.9%`) next to the change of the last day. New pure helpers: `info_format_stamp_short()`, `info_format_day_label()`, `info_trading_days_behind()`,
   `info_span_labels()`, `canvas_note_lines()`, `canvas_text_first_fit()`, `canvas_header_label()`, `market_period_change_percent()`, `fx_period_change_percent()`.
+  Checked on a frame (Waveshare PhotoPainter 7.3", 2026-10-02): the markets page took the newest day (the close of the same day) and both pages drew the one-line footer.
 - **Artworks** (`--with artworks`, [docs/ARTWORKS.md](docs/ARTWORKS.md); part of `extras`): a rotation mode that shows a painting, a drawing or a print from a museum. Each
   rotation draws the kind of work first, then a random work of the Rijksmuseum, SMK (Denmark) or the Smithsonian American Art Museum whose record says public domain or
   CC0, loads the smallest picture that covers the panel (IIIF fit; baseline JPEG only), makes it display-ready, keeps it in the album `Art` and shows it with a small
@@ -33,7 +34,7 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   until 30 % is free (both settable); if that is not enough the picture is shown and not kept. Settings in the Auto Rotate tab and `/api/config` (the Smithsonian
   key is write-only). New: `art_select`/`art_caption`/`art_sources`/`art_store` (pure, host-tested against real answers of the three services, 62 tests, a byte-flip run
   under ASan/UBSan), `art_flow` (the device side), `image_processor_draw_caption_outlined()`, `display_manager_rotate_from_album()`; `http_fetch_get_once()` is built
-  for it as well. Compiled for every board; **not yet run on a frame**.
+  for it as well. Compiled for every board; run on one frame (Waveshare PhotoPainter 7.3", all three museums, one session) - a day of rotation, a full card and a lost network are not seen yet.
 - **Pictures of the display** ([docs/SCREENSHOTS.md](docs/SCREENSHOTS.md), `docs/screens/`): the Agenda in its layouts (7-day grid A and B, ToDo and Calendar stacked and side by side) and in a colour profile, and every
   information page, with made-up sample data (no real names, places or calendars); also in the user guide to the extras, the page of each option, the README and the demo package. The information pages are drawn
   by the firmware's own drawing code through `host_tests/render_screens.cpp` (it existed; the page says how to draw them again), the Agenda pictures by the real `agenda_renderer.c` run on a PC with made-up
