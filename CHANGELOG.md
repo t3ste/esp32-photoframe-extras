@@ -19,8 +19,9 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
-- **The demo package is online.** The site's deploy now serves `examples/` at
-  `https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/` (the calendars and ToDo list
+- **The demo package is online.** The site's deploy now serves `examples/` below
+  `https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/` (files only - the folder address itself
+  has no page; the two configs are `.../demo-config-storage.json` and `.../demo-config-url.json`; the calendars and ToDo list
   the two importable demo configs point at - importing one used to leave calendars A-E and the ToDo list failing
   with HTTP 404 in the frame's log) and, as its last step, checks that every URL those configs use answers `200`.
   Three example Calendar color profiles (`color_profiles/`) join the package, and the landing page's "How it goes"

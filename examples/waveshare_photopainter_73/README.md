@@ -78,9 +78,10 @@ timezone and weather location.
 
 ## Hosting
 
-These files are served from this project's GitHub Pages site alongside the web flasher, at
-`https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/` - the URLs inside the two
-JSON files point there. The site's `deploy-pages` job copies this whole `examples/` tree on every deploy and then
+These files are served from this project's GitHub Pages site alongside the web flasher, each under its own address:
+[demo-config-url.json](https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/demo-config-url.json),
+[demo-config-storage.json](https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/demo-config-storage.json) and the others in the table above (the folder address
+`https://t3stier.github.io/esp32-photoframe-rebuild/examples/waveshare_photopainter_73/` itself has no page) - the URLs inside the two JSON files point there. The site's `deploy-pages` job copies this whole `examples/` tree on every deploy and then
 checks that every URL the two configs use answers `200` (see [docs/MAINTAINING.md](../../docs/MAINTAINING.md)
 section 10). GitHub's CDN may keep serving a cached `404` for a URL for up to ten minutes after the file first
 appears - if an import fails right after a deploy, wait a little and press **Refresh now** (step 5 above).
