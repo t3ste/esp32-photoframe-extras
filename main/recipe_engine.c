@@ -22,8 +22,21 @@ typedef struct {
     unsigned long start_ms;
 } engine_t;
 
+// Whether another request may be made: the time of the run is not up and the number of requests
+// is not used up. Both are checked before every request, not only between the tries - a source
+// that answers slowly (up to two attempts of 15 s a request) must not keep the frame busy for
+// minutes inside one try.
+static bool may_ask(const engine_t *e)
+{
+    return e->out->requests < RECIPE_MAX_REQUESTS &&
+           e->env->now_ms(e->env->ctx) - e->start_ms <= RECIPE_BUDGET_MS;
+}
+
 static char *get(engine_t *e, const char *url, size_t max_bytes, size_t *len)
 {
+    if (!may_ask(e)) {
+        return NULL;  // as if the source had not answered
+    }
     int status = 0;
     e->out->requests++;
     return e->env->get(e->env->ctx, url, max_bytes, len, &status);
@@ -67,6 +80,9 @@ static bool fetch_photo(engine_t *e, const recipe_t *recipe, int box_w, int box_
 {
     char url[RECIPE_URL_MAX + 40];
     bool ok;
+    if (!e->env->decode) {
+        return false;  // no decoder, no picture
+    }
     if (recipe->german) {
         ok = recipe_chefkoch_image_url(recipe->image_url, box_w, url, sizeof(url));
     } else {

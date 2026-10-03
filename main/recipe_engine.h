@@ -28,7 +28,8 @@
 
 #define RECIPE_TRIES 3           // with the filters as they are set
 #define RECIPE_MAX_CANDIDATES 6  // recipes read in a try before it gives up
-#define RECIPE_BUDGET_MS 110000  // after this long no further try is made
+#define RECIPE_BUDGET_MS 110000  // after this long no request and no further try is made
+#define RECIPE_MAX_REQUESTS 30   // requests in one run, whatever the sources answer
 #define RECIPE_HISTORY_KEEP 20   // recipes remembered as shown lately
 #define RECIPE_HISTORY_CAP 640   // bytes of that list
 

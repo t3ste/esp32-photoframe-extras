@@ -785,6 +785,48 @@ TEST(RecipeEngineLimits, ABadSourceNeverCausesAFloodOfRequests)
     EXPECT_EQ(r.out.requests, static_cast<int>(world.requests.size()));
 }
 
+TEST(RecipeEngineLimits, ASlowSourceIsNotAskedAgainOnceTheTimeIsUpEvenInsideATry)
+{
+    World world;
+    world.dice = {0, 0};
+    world.ms_per_request = 40000;  // 40 s a request: three requests use up the 110 s
+    serve_search(world);
+    world.serve_details("chefkoch-recipe-premium.json");  // every candidate is turned down
+    world.serve_pictures();
+    Fetched r;
+    run(r, world, search_options());
+    EXPECT_EQ(r.result, RECIPE_RESULT_NONE);
+    // the search and two of the six candidates; before the fix the one try went on to all six
+    EXPECT_EQ(r.out.requests, 3);
+    EXPECT_EQ(r.out.requests, static_cast<int>(world.requests.size()));
+    EXPECT_EQ(r.out.tries, 1);
+}
+
+TEST(RecipeEngineLimits, TheNumberOfRequestsOfOneRunHasAnUpperLimit)
+{
+    World world;
+    world.dice = {0, 0};
+    serve_search(world);  // answers, but no detail ever does: every try asks for all its candidates
+    Fetched r;
+    run(r, world, search_options());
+    EXPECT_EQ(r.result, RECIPE_RESULT_NONE);
+    EXPECT_LE(r.out.requests, RECIPE_MAX_REQUESTS);
+    EXPECT_EQ(r.out.requests, static_cast<int>(world.requests.size()));
+    EXPECT_GE(r.out.requests, 20);  // it did go on for a good while: the limit is the stop
+}
+
+TEST(RecipeEngineLimits, WithoutADecoderNoPictureCanBeHadAndTheRecipeIsSkipped)
+{
+    World world;
+    world.serve_day_page();
+    world.serve_details();
+    world.serve_pictures();
+    world.env.decode = nullptr;
+    Fetched r;
+    run(r, world, options_for(RECIPE_SOURCE_DAY));
+    EXPECT_EQ(r.result, RECIPE_RESULT_NONE);  // (and no crash)
+}
+
 TEST(RecipeEngineLimits, TheListOfRecipesSeenLatelyStaysShort)
 {
     World world;
