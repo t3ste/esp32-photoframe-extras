@@ -3,7 +3,11 @@
 > **Build option:** compiled in only with `python build.py --with recipes` (needs `info-screens`; the build pulls it in with what it needs), part of
 > the `extras` bundle and of every full build. Without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
 >
-> **Status:** STATUS_PLACEHOLDER
+> **Status:** built and tested on a PC (153 host tests, also under AddressSanitizer / UBSan, with invented sample answers), compiled for the boards, and run on one frame
+> (Waveshare PhotoPainter 7.3", 2026-10-03): the recipe of the day (classic, vegan), a search with filters, TheMealDB by category and at random, landscape and portrait, the QR code,
+> the page without a picture, the relaxation of the filters after three empty tries, the last recipe with its warning, the Web UI card and the settings API.
+> **Not seen yet:** a deep-sleep wake with the page, a frame with no network at all, other boards and panels (sixteen grays, the big and the small ones), a long run, and
+> the Chefkoch interface over weeks (it is unofficial and can change). Please report what you see.
 
 A page for the [information screens](INFO_SCREENS.md) that shows **one cooking recipe with its picture**: the title in red, the category and the time in blue,
 the ingredients on the left with bullets, the preparation on the right in paragraphs, and the picture at the top right. The page is drawn for the display
