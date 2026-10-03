@@ -12,6 +12,7 @@
 #include "esp_timer.h"
 #include "http_fetch.h"
 #include "jpeg_decoder.h"
+#include "power_manager.h"
 
 static const char *TAG = "recipe_service";
 
@@ -32,6 +33,9 @@ static char *service_get(void *ctx, const char *url, size_t max_bytes, size_t *l
     int http_status = 0;
     esp_err_t err = http_fetch_get_once(url, HTTP_TIMEOUT_MS, max_bytes, &body, &body_len,
                                         &http_status, USER_AGENT);
+    // a slow source (two attempts of 15 s a request) must not let the auto-sleep timer run out in
+    // the middle of the tries or of the display update that follows
+    power_manager_reset_sleep_timer();
     if (status) {
         *status = http_status;
     }
@@ -227,6 +231,7 @@ recipe_result_t recipe_service_load(recipe_t *recipe, recipe_outcome_t *out,
     if (strcmp(history, before) != 0) {
         write_history(history);
     }
+    power_manager_reset_sleep_timer();  // a full window for drawing and the panel's refresh
     ESP_LOGI(TAG, "Recipe: %s (%d tr%s, filters %s, %d request%s)",
              result == RECIPE_RESULT_NEW ? "a new one"
                                          : (result == RECIPE_RESULT_LAST ? "the last one" : "none"),
