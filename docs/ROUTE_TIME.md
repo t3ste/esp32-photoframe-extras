@@ -4,8 +4,9 @@
 > the `extras` bundle and of every full build. Without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
 >
 > **Status:** built and tested on a PC, compiled for the boards, and run on one frame (Waveshare PhotoPainter 7.3", 2026-10-03) with a real **TomTom** key: the address
-> look-up, the check of both directions (the frame's log: `Places checked: ... (TomTom)`) and the fuel page taking the travel time (`Travel time: ...`). **Not seen yet:**
-> HERE (it is only asked when TomTom fails), a way that takes too long - the red block on the panel - and the provider terms of use. The test answers in
+> look-up, the check of both directions (the frame's log: `Places checked: ... (TomTom)`) and the fuel page taking the travel time (`Travel time: ...`). The maintainer
+> also tried a real **HERE** key and reports that it works (HERE is only asked when TomTom fails or has no key; its answers are not in the part of the log that was read).
+> **Not seen yet:** a way that takes too long - the red block on the panel - and the provider terms of use. The test answers in
 > `host_tests/data/route/` are still assembled from the providers' documentation. Please report what you see.
 
 The header of the [fuel-price page](FUEL_PRICES.md) can show **how long the drive there and back takes right now**, with the traffic - for a
@@ -98,4 +99,4 @@ PhotoPainter 7.3") the endpoints answered, with a key of the right shape that no
 "the key was refused"), the Web UI card was driven in a browser (look-up, limits, name, keys, save; and, with the two route endpoints answered by a script, the choice among several places, an address edited
 afterwards or while a check is on its way, and a frame that already holds checked places), and a fuel page was drawn with the travel time switched on but not checked: no
 time, the page as before. With a real TomTom key on the same frame the address look-up (addresses, streets, up to five places, umlauts), the check of both ways and the
-travel time of the fuel page worked. **Not seen yet:** a real answer of HERE, and the red block on the panel itself.
+travel time of the fuel page worked. The maintainer reports the same for a real HERE key. **Not seen yet:** the red block on the panel itself.
