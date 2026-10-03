@@ -472,6 +472,135 @@ TEST(RecipeParseChefkoch, ANoteThatStartsWithACommaIsJoinedWithoutASpace)
     EXPECT_EQ(first_ingredient("Bund", "frisch", 2), "Basilikum (2 Bund frisch)");
 }
 
+TEST(RecipeHttpsUrl, TheAddressesOfTheRealSourcesAreAccepted)
+{
+    EXPECT_TRUE(recipe_https_url_ok(
+        "https://img.chefkoch-cdn.de/rezepte/123/bilder/456/crop-240x160/x.jpg"));
+    EXPECT_TRUE(recipe_https_url_ok("https://www.themealdb.com/images/media/meals/abc.jpg/small"));
+    EXPECT_TRUE(recipe_https_url_ok("https://www.chefkoch.de/rezepte/1234567890/"));
+    EXPECT_TRUE(recipe_https_url_ok("https://img.example.invalid/a.jpg"));
+    EXPECT_TRUE(
+        recipe_https_url_ok("HTTPS://Example.COM/x"));  // the scheme and the host in any case
+    EXPECT_TRUE(recipe_https_url_ok("https://example.com:443/x"));  // the port of https itself
+    EXPECT_TRUE(recipe_https_url_ok("https://example.com"));        // no path
+    EXPECT_TRUE(recipe_https_url_ok("https://example.com?x=1#frag"));
+}
+
+TEST(RecipeHttpsUrl, WhatCouldReachADeviceOfTheHomeNetworkIsRefused)
+{
+    const char *refused[] = {
+        "http://img.example.com/a.jpg",  // not https
+        "ftp://example.com/a.jpg",
+        "file:///etc/passwd",
+        "//example.com/a.jpg",
+        "example.com/a.jpg",
+        "",
+        "https://",
+        "https:///a.jpg",
+        "https://192.168.1.1/admin",  // an IPv4 address
+        "https://10.0.0.5/x",
+        "https://127.0.0.1/x",
+        "https://0x7f.1/x",  // the short forms lwIP reads as IPv4
+        "https://127.1/x",
+        "https://1.2.3.0xff/x",
+        "https://example.1/x",
+        "https://[::1]/x",  // IPv6
+        "https://[fe80::1]:443/x",
+        "https://user:secret@example.com/x",   // a login
+        "https://example.com@evil.example/x",  // the classic trick
+        "https://example.com:8443/x",          // another port
+        "https://example.com:80/x",
+        "https://example.com:4430/x",
+        "https://example.com:44/x",
+        "https://example.com:/x",
+        "https://localhost/x",  // no domain
+        "https://printer/x",
+        "https://printer.local/x",  // private endings
+        "https://nas.lan/x",
+        "https://router.home.arpa/x",
+        "https://server.internal/x",
+        "https://.example.com/x",
+        "https://example.com./x",
+        "https://-example.com/x",
+        "https://exa mple.com/x",
+        "https://example.com\\@evil/x",
+        "https://exa\tmple.com/x",
+        "https://example_host.com/x",
+    };
+    for (const char *url : refused) {
+        EXPECT_FALSE(recipe_https_url_ok(url)) << url;
+    }
+    EXPECT_FALSE(recipe_https_url_ok(nullptr));
+    std::string long_host = "https://" + std::string(260, 'a') + ".com/x";
+    EXPECT_FALSE(recipe_https_url_ok(long_host.c_str()));
+}
+
+TEST(RecipeHttpsUrl, ThePictureAddressesOfTheSourcesAreCheckedBeforeTheyAreUsed)
+{
+    char url[RECIPE_URL_MAX + 40];
+    EXPECT_TRUE(recipe_chefkoch_image_url("https://img.chefkoch-cdn.de/r/1/<format>/x.jpg", 240,
+                                          url, sizeof(url)));
+    EXPECT_STREQ(url, "https://img.chefkoch-cdn.de/r/1/crop-240x160/x.jpg");
+    EXPECT_FALSE(recipe_chefkoch_image_url("http://192.168.1.1/admin/reboot?x=<format>", 240, url,
+                                           sizeof(url)));
+    EXPECT_FALSE(
+        recipe_chefkoch_image_url("https://192.168.1.1/<format>/x.jpg", 240, url, sizeof(url)));
+    EXPECT_FALSE(recipe_chefkoch_image_url("http://img.example.com/x.jpg", 240, url,
+                                           sizeof(url)));  // no <format>
+    EXPECT_TRUE(recipe_mealdb_image_url("https://www.themealdb.com/images/media/meals/a.jpg", 200,
+                                        url, sizeof(url)));
+    EXPECT_FALSE(recipe_mealdb_image_url("file:///etc/passwd", 200, url, sizeof(url)));
+    EXPECT_FALSE(
+        recipe_mealdb_image_url("http://www.themealdb.com/images/a.jpg", 200, url, sizeof(url)));
+}
+
+TEST(RecipeHttpsUrl, ARecipeWhoseOwnAddressIsNotHttpsGetsNoQrAddress)
+{
+    auto url_of = [](const char *site_url) {
+        std::string json = std::string("{\"title\": \"T\", \"siteUrl\": \"") + site_url +
+                           "\", \"ingredientGroups\": [{\"ingredients\": [{\"name\": \"Salz\", "
+                           "\"amount\": 1.0, \"unit\": \"\"}]}], "
+                           "\"instructions\": \"Schritt.\"}";
+        recipe_t recipe;
+        EXPECT_TRUE(recipe_parse_chefkoch_recipe(
+            json.c_str(), "S", &recipe));  // no id: the site's own address is used
+        return std::string(recipe.url);
+    };
+    EXPECT_EQ(url_of("https://www.chefkoch.de/rezepte/42/a.html"),
+              "https://www.chefkoch.de/rezepte/42/a.html");
+    EXPECT_EQ(url_of("http://192.168.1.1/x"), "");
+    EXPECT_EQ(url_of("javascript:alert(1)"), "");
+}
+
+TEST(RecipeImageSize, TheSidesOfAPictureAreLimited)
+{
+    EXPECT_TRUE(recipe_image_dims_ok(642, 428));
+    EXPECT_TRUE(recipe_image_dims_ok(RECIPE_IMAGE_MAX_DIM, RECIPE_IMAGE_MAX_DIM));
+    EXPECT_FALSE(recipe_image_dims_ok(RECIPE_IMAGE_MAX_DIM + 1, 100));
+    EXPECT_FALSE(recipe_image_dims_ok(100, RECIPE_IMAGE_MAX_DIM + 1));
+    EXPECT_FALSE(recipe_image_dims_ok(0, 100));
+    EXPECT_FALSE(recipe_image_dims_ok(100, -1));
+    EXPECT_FALSE(recipe_image_dims_ok(65535, 65535));
+}
+
+TEST(RecipeImageSize, ASizeThatWrapsIn32BitIsNotTheSizeOfThePicture)
+{
+    // 40000 x 35792 pixels: 4 295 040 000 bytes, which esp_jpeg reports as 72 704
+    EXPECT_FALSE(recipe_image_dims_ok(40000, 35792));
+    EXPECT_FALSE(recipe_image_output_ok(40000, 35792, 0, 72704));
+    // inside the limit the size must be exactly sides x 3 (after the halvings)
+    EXPECT_TRUE(recipe_image_output_ok(640, 480, 0, 640 * 480 * 3));
+    EXPECT_TRUE(recipe_image_output_ok(640, 480, 1, 320 * 240 * 3));
+    EXPECT_TRUE(recipe_image_output_ok(641, 481, 2,
+                                       (641 / 4) * (481 / 4) * 3));  // the division of each side
+    EXPECT_TRUE(recipe_image_output_ok(4096, 4096, 3, 512 * 512 * 3));
+    EXPECT_FALSE(recipe_image_output_ok(640, 480, 0, 640 * 480));          // too small a buffer
+    EXPECT_FALSE(recipe_image_output_ok(640, 480, 0, 640 * 480 * 3 + 1));  // not what the sides say
+    EXPECT_FALSE(recipe_image_output_ok(640, 480, 4, 0));  // a scale that does not exist
+    EXPECT_FALSE(recipe_image_output_ok(640, 480, -1, 640 * 480 * 3));
+    EXPECT_FALSE(recipe_image_output_ok(3, 3, 3, 0));  // nothing is left of it
+}
+
 TEST(RecipeJsonDepth, CountsOnlyBracketsOutsideStrings)
 {
     EXPECT_TRUE(recipe_json_depth_ok("{}", 1));

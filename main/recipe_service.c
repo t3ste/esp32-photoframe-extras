@@ -59,11 +59,15 @@ static uint8_t *service_decode(void *ctx, const uint8_t *jpeg, size_t len, int b
                                 .out_format = JPEG_IMAGE_FORMAT_RGB888,
                                 .out_scale = JPEG_IMAGE_SCALE_0};
     esp_jpeg_image_output_t info;
-    if (esp_jpeg_get_image_info(&cfg, &info) != ESP_OK || info.width < 1 || info.height < 1) {
+    // The sides come out of the header of a file that came from the internet, and esp_jpeg
+    // multiplies them in 32 bit: look at them before anything is allocated or decoded.
+    if (esp_jpeg_get_image_info(&cfg, &info) != ESP_OK ||
+        !recipe_image_dims_ok(info.width, info.height)) {
         return NULL;
     }
+    const int header_w = info.width, header_h = info.height;
     int shift = 0;
-    int sw = info.width, sh = info.height;
+    int sw = header_w, sh = header_h;
     while (shift < 3 && sw / 2 >= box_w && sh / 2 >= box_h) {
         sw /= 2;
         sh /= 2;
@@ -72,7 +76,8 @@ static uint8_t *service_decode(void *ctx, const uint8_t *jpeg, size_t len, int b
     static const esp_jpeg_image_scale_t SCALES[4] = {JPEG_IMAGE_SCALE_0, JPEG_IMAGE_SCALE_1_2,
                                                      JPEG_IMAGE_SCALE_1_4, JPEG_IMAGE_SCALE_1_8};
     cfg.out_scale = SCALES[shift];
-    if (esp_jpeg_get_image_info(&cfg, &info) != ESP_OK) {
+    if (esp_jpeg_get_image_info(&cfg, &info) != ESP_OK ||
+        !recipe_image_output_ok(header_w, header_h, shift, info.output_len)) {
         return NULL;
     }
     uint8_t *rgb = heap_caps_malloc(info.output_len, MALLOC_CAP_SPIRAM);
@@ -80,9 +85,11 @@ static uint8_t *service_decode(void *ctx, const uint8_t *jpeg, size_t len, int b
         ESP_LOGW(TAG, "No memory for a %dx%d picture", info.width, info.height);
         return NULL;
     }
+    const size_t allocated = info.output_len;
     cfg.outbuf = rgb;
-    cfg.outbuf_size = info.output_len;
-    if (esp_jpeg_decode(&cfg, &info) != ESP_OK) {
+    cfg.outbuf_size = allocated;
+    if (esp_jpeg_decode(&cfg, &info) != ESP_OK ||
+        (uint64_t) info.width * (uint64_t) info.height * 3 > allocated) {
         heap_caps_free(rgb);
         return NULL;
     }

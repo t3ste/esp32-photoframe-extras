@@ -171,6 +171,29 @@ typedef struct {
     bool usable;  // not premium, not rejected
 } recipe_candidate_t;
 
+/**
+ * @brief Whether an address is one the frame may fetch a picture from or show as a QR code: https
+ * only, a host name with a dot (no IP address, no "localhost", none of the private-network
+ * endings .local .lan .internal ...), no user name and password, and no port but 443. The
+ * addresses come out of the answers of the sources; an answer that was tampered with must not
+ * make the frame ask a device of the home network.
+ */
+bool recipe_https_url_ok(const char *url);
+
+/** The largest side of a picture that is decoded (the real ones are 200-642 pixels). */
+#define RECIPE_IMAGE_MAX_DIM 4096
+
+/** @brief Whether the sides of a JPEG as its header gives them are within RECIPE_IMAGE_MAX_DIM. */
+bool recipe_image_dims_ok(int width, int height);
+
+/**
+ * @brief Whether the output size esp_jpeg reported matches the sides of the picture: it multiplies
+ * in 32 bit and a header of 40000 x 35792 pixels comes out as 72 704 bytes instead of 4.3 GB, so a
+ * decoder given that buffer would write far past it. `shift` is the number of halvings of the
+ * scale.
+ */
+bool recipe_image_output_ok(int width, int height, int shift, size_t output_len);
+
 /** How deeply nested an answer of a source may be (the real ones go 6-8 levels deep). */
 #define RECIPE_JSON_MAX_DEPTH 32
 

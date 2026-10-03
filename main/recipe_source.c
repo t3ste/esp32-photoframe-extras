@@ -1,6 +1,7 @@
 #include "recipe_source.h"
 
 #include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -351,6 +352,89 @@ bool recipe_chefkoch_short_url(const char *id, char *out, size_t out_len)
     return id_valid(id) && put_url(out, out_len, "https://www.chefkoch.de/rezepte/", id, "/");
 }
 
+static bool host_char_ok(char c)
+{
+    return isalnum((unsigned char) c) || c == '-' || c == '.';
+}
+
+bool recipe_https_url_ok(const char *url)
+{
+    static const char SCHEME[] = "https://";
+    if (!url || strncasecmp(url, SCHEME, sizeof(SCHEME) - 1) != 0) {
+        return false;
+    }
+    const char *authority = url + sizeof(SCHEME) - 1;
+    size_t n = 0;
+    while (authority[n] && authority[n] != '/' && authority[n] != '?' && authority[n] != '#') {
+        if ((unsigned char) authority[n] <= 0x20 || authority[n] == '@' || authority[n] == '\\' ||
+            authority[n] == '[' || authority[n] == ']') {
+            return false;  // a control or blank, a user name, an IPv6 address
+        }
+        n++;
+    }
+    if (n == 0 || n > 253) {
+        return false;
+    }
+    size_t host_len = n;
+    const char *colon = memchr(authority, ':', n);
+    if (colon) {
+        if (strncmp(colon + 1, "443", n - (size_t) (colon - authority) - 1) != 0 ||
+            n - (size_t) (colon - authority) - 1 != 3) {
+            return false;  // another port
+        }
+        host_len = (size_t) (colon - authority);
+    }
+    bool dot = false;
+    bool only_digits_and_dots = true;
+    for (size_t i = 0; i < host_len; i++) {
+        if (!host_char_ok(authority[i])) {
+            return false;
+        }
+        dot = dot || authority[i] == '.';
+        if (!isdigit((unsigned char) authority[i]) && authority[i] != '.') {
+            only_digits_and_dots = false;
+        }
+    }
+    if (!dot || only_digits_and_dots || authority[0] == '.' || authority[0] == '-' ||
+        authority[host_len - 1] == '.' || authority[host_len - 1] == '-') {
+        return false;  // no domain name, an IPv4 address, or a name that cannot be one
+    }
+    // The last label of a domain name starts with a letter ("com", "de", "xn--p1ai"). One that
+    // starts with a digit is an address in one of the short forms that lwIP's resolver reads as
+    // an IPv4 address ("0x7f.1", "127.1", "1.2.3.0xff").
+    size_t last_label = host_len;
+    while (last_label > 0 && authority[last_label - 1] != '.') {
+        last_label--;
+    }
+    if (!isalpha((unsigned char) authority[last_label])) {
+        return false;
+    }
+    static const char *const PRIVATE[] = {".local",     ".lan",      ".internal", ".localdomain",
+                                          ".home.arpa", ".intranet", ".corp",     ".private"};
+    for (size_t i = 0; i < sizeof(PRIVATE) / sizeof(PRIVATE[0]); i++) {
+        size_t len = strlen(PRIVATE[i]);
+        if (host_len >= len && strncasecmp(authority + host_len - len, PRIVATE[i], len) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool recipe_image_dims_ok(int width, int height)
+{
+    return width >= 1 && height >= 1 && width <= RECIPE_IMAGE_MAX_DIM &&
+           height <= RECIPE_IMAGE_MAX_DIM;
+}
+
+bool recipe_image_output_ok(int width, int height, int shift, size_t output_len)
+{
+    if (!recipe_image_dims_ok(width, height) || shift < 0 || shift > 3) {
+        return false;
+    }
+    uint64_t expected = (uint64_t) (height >> shift) * (uint64_t) (width >> shift) * 3;
+    return expected > 0 && expected == (uint64_t) output_len;
+}
+
 bool recipe_chefkoch_image_url(const char *image_template, int width, char *out, size_t out_len)
 {
     if (!image_template || !out || out_len == 0) {
@@ -360,7 +444,7 @@ bool recipe_chefkoch_image_url(const char *image_template, int width, char *out,
         width <= 240 ? "crop-240x160" : (width <= 360 ? "crop-360x240" : "crop-642x428");
     const char *marker = strstr(image_template, "<format>");
     if (!marker) {
-        return put_url(out, out_len, image_template, "", "");
+        return put_url(out, out_len, image_template, "", "") && recipe_https_url_ok(out);
     }
     out_t o = {.out = out, .cap = out_len, .len = 0, .overflow = false};
     out[0] = '\0';
@@ -374,7 +458,7 @@ bool recipe_chefkoch_image_url(const char *image_template, int width, char *out,
     out_raw(&o, head);
     out_raw(&o, crop);
     out_raw(&o, marker + strlen("<format>"));
-    return !o.overflow;
+    return !o.overflow && recipe_https_url_ok(out);
 }
 
 bool recipe_mealdb_key_valid(const char *key)
@@ -428,7 +512,8 @@ bool recipe_mealdb_image_url(const char *thumb, int width, char *out, size_t out
     if (!thumb || !thumb[0]) {
         return false;
     }
-    return put_url(out, out_len, thumb, width <= 200 ? "/small" : "/medium", "");
+    return put_url(out, out_len, thumb, width <= 200 ? "/small" : "/medium", "") &&
+           recipe_https_url_ok(out);
 }
 
 bool recipe_mealdb_short_url(const char *id, char *out, size_t out_len)
@@ -737,6 +822,9 @@ bool recipe_parse_chefkoch_recipe(const char *json, const char *source_label, re
         recipe_chefkoch_short_url(out->id, out->url, sizeof(out->url));
     } else {
         snprintf(out->url, sizeof(out->url), "%s", str_of(recipe, "siteUrl"));
+        if (!recipe_https_url_ok(out->url)) {
+            out->url[0] = '\0';  // no QR code for an address the frame would not fetch itself
+        }
     }
 
     // the category: the breadcrumb is a path - its root ("Menüart", "Zubereitungsarten",
