@@ -224,6 +224,14 @@ FEATURES = (
         "Twelve Data, Alpha Vantage as fallbacks)",
     ),
     Feature(
+        "route-time",
+        "FEATURE_ROUTE_TIME",
+        (),
+        ("fuel-prices",),
+        "Travel time there and back between two addresses on the fuel page, with the traffic of now "
+        "(TomTom, HERE), red when it is longer than usual",
+    ),
+    Feature(
         "artworks",
         "FEATURE_ARTWORKS",
         (),
@@ -281,12 +289,13 @@ BUNDLES = (
             "finance-snapshot",
             "fuel-prices",
             "market-quotes",
+            "route-time",
             "artworks",
             "schedule-pages",
         ),
         "Everything added after the first fork release: webcal, CalDAV calendars and to-dos, "
-        "multi-upload, duplicate detection, glyphs, the information pages, the artworks mode and "
-        "the pages per schedule",
+        "multi-upload, duplicate detection, glyphs, the information pages, the travel time on the fuel "
+        "page, the artworks mode and the pages per schedule",
     ),
 )
 

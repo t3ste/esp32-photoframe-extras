@@ -18,6 +18,9 @@
 #include "art_select.h"
 #include "art_store.h"
 #endif
+#if FEATURE_ROUTE_TIME
+#include "route_time.h"
+#endif
 #include "nvs.h"
 #include "storage.h"
 
@@ -228,6 +231,21 @@ static uint8_t fuel_type = 1;  // E10
 static uint8_t fuel_radius_km = 5;
 static uint8_t fuel_count = 5;
 static bool fuel_hide_closed = true;
+#endif
+#if FEATURE_ROUTE_TIME
+static bool route_enabled = false;
+static char route_text[2][ROUTE_TEXT_MAX];
+static char route_found[2][ROUTE_TEXT_MAX];
+static double route_lat[2];
+static double route_lon[2];
+static bool route_has_point[2];
+static bool route_checked = false;
+static uint16_t route_ref[2];
+static uint8_t route_percent = ROUTE_PERCENT_DEFAULT;
+static uint8_t route_min_excess = ROUTE_MIN_EXCESS_DEFAULT;
+static char route_label[ROUTE_LABEL_MAX_LEN];
+static char route_key_tomtom[ROUTE_KEY_MAX_LEN];
+static char route_key_here[ROUTE_KEY_MAX_LEN];
 #endif
 #if FEATURE_MARKET_QUOTES
 static char market_symbols[INFO_LIST_MAX_LEN] = {0};
@@ -1405,6 +1423,62 @@ esp_err_t config_manager_init(void)
         }
         if (nvs_get_u8(nvs_handle, NVS_FUEL_HIDE_CLOSED_KEY, &stored_fuel) == ESP_OK) {
             fuel_hide_closed = (stored_fuel != 0);
+        }
+#endif
+#if FEATURE_ROUTE_TIME
+        {
+            uint8_t stored_route = 0;
+            if (nvs_get_u8(nvs_handle, NVS_ROUTE_ON_KEY, &stored_route) == ESP_OK) {
+                route_enabled = (stored_route != 0);
+            }
+            static const char *const text_keys[2] = {NVS_ROUTE_FROM_KEY, NVS_ROUTE_TO_KEY};
+            static const char *const found_keys[2] = {NVS_ROUTE_FROM_FND_KEY, NVS_ROUTE_TO_FND_KEY};
+            static const char *const point_keys[2] = {NVS_ROUTE_FROM_LL_KEY, NVS_ROUTE_TO_LL_KEY};
+            for (int i = 0; i < 2; i++) {
+                size_t len = sizeof(route_text[i]);
+                nvs_get_str(nvs_handle, text_keys[i], route_text[i], &len);
+                len = sizeof(route_found[i]);
+                nvs_get_str(nvs_handle, found_keys[i], route_found[i], &len);
+                char point[40] = {0};
+                len = sizeof(point);
+                if (nvs_get_str(nvs_handle, point_keys[i], point, &len) == ESP_OK) {
+                    char *end = NULL;
+                    double lat = strtod(point, &end);
+                    if (end && *end == ',') {
+                        double lon = strtod(end + 1, NULL);
+                        if (lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0) {
+                            route_lat[i] = lat;
+                            route_lon[i] = lon;
+                            route_has_point[i] = true;
+                        }
+                    }
+                }
+            }
+            // the check only counts with both places still there
+            if (nvs_get_u8(nvs_handle, NVS_ROUTE_CHK_KEY, &stored_route) == ESP_OK) {
+                route_checked = stored_route != 0 && route_has_point[0] && route_has_point[1];
+            }
+            uint16_t stored_minutes = 0;
+            if (nvs_get_u16(nvs_handle, NVS_ROUTE_REF_A_KEY, &stored_minutes) == ESP_OK) {
+                route_ref[0] = stored_minutes > 600 ? 600 : stored_minutes;
+            }
+            if (nvs_get_u16(nvs_handle, NVS_ROUTE_REF_B_KEY, &stored_minutes) == ESP_OK) {
+                route_ref[1] = stored_minutes > 600 ? 600 : stored_minutes;
+            }
+            if (nvs_get_u8(nvs_handle, NVS_ROUTE_PCT_KEY, &stored_route) == ESP_OK &&
+                stored_route >= 1 && stored_route <= 100) {
+                route_percent = stored_route;
+            }
+            if (nvs_get_u8(nvs_handle, NVS_ROUTE_EXC_KEY, &stored_route) == ESP_OK &&
+                stored_route <= 60) {
+                route_min_excess = stored_route;
+            }
+            size_t label_len = sizeof(route_label);
+            nvs_get_str(nvs_handle, NVS_ROUTE_LBL_KEY, route_label, &label_len);
+            size_t key_len = sizeof(route_key_tomtom);
+            nvs_get_str(nvs_handle, NVS_ROUTE_KEY_TT_KEY, route_key_tomtom, &key_len);
+            key_len = sizeof(route_key_here);
+            nvs_get_str(nvs_handle, NVS_ROUTE_KEY_HERE_KEY, route_key_here, &key_len);
         }
 #endif
 #if FEATURE_MARKET_QUOTES
@@ -4059,6 +4133,165 @@ void config_manager_set_fuel_hide_closed(bool hide)
 {
     fuel_hide_closed = hide;
     agenda_nvs_set_u8(NVS_FUEL_HIDE_CLOSED_KEY, hide ? 1 : 0);
+}
+#endif
+
+#if FEATURE_ROUTE_TIME
+bool config_manager_get_route_enabled(void)
+{
+    return route_enabled;
+}
+
+void config_manager_set_route_enabled(bool enabled)
+{
+    route_enabled = enabled;
+    agenda_nvs_set_u8(NVS_ROUTE_ON_KEY, enabled ? 1 : 0);
+}
+
+const char *config_manager_get_route_text(int which)
+{
+    return (which == 0 || which == 1) ? route_text[which] : "";
+}
+
+const char *config_manager_get_route_found(int which)
+{
+    return (which == 0 || which == 1) ? route_found[which] : "";
+}
+
+bool config_manager_get_route_point(int which, double *lat, double *lon)
+{
+    if ((which != 0 && which != 1) || !route_has_point[which]) {
+        return false;
+    }
+    *lat = route_lat[which];
+    *lon = route_lon[which];
+    return true;
+}
+
+static void route_persist_place(int which)
+{
+    static const char *const text_keys[2] = {NVS_ROUTE_FROM_KEY, NVS_ROUTE_TO_KEY};
+    static const char *const found_keys[2] = {NVS_ROUTE_FROM_FND_KEY, NVS_ROUTE_TO_FND_KEY};
+    static const char *const point_keys[2] = {NVS_ROUTE_FROM_LL_KEY, NVS_ROUTE_TO_LL_KEY};
+    char point[40] = "";
+    if (route_has_point[which]) {
+        snprintf(point, sizeof(point), "%.6f,%.6f", route_lat[which], route_lon[which]);
+    }
+    agenda_nvs_set_str_or_erase(text_keys[which], route_text[which]);
+    agenda_nvs_set_str_or_erase(found_keys[which], route_found[which]);
+    agenda_nvs_set_str_or_erase(point_keys[which], point);
+}
+
+void config_manager_set_route_text(int which, const char *text)
+{
+    if (which != 0 && which != 1) {
+        return;
+    }
+    char cleaned[ROUTE_TEXT_MAX];
+    copy_info_list(cleaned, sizeof(cleaned), text);
+    if (strcmp(cleaned, route_text[which]) == 0) {
+        return;
+    }
+    snprintf(route_text[which], sizeof(route_text[which]), "%s", cleaned);
+    route_found[which][0] = '\0';  // the place found for the old text is no longer the place
+    route_has_point[which] = false;
+    route_checked = false;
+    route_persist_place(which);
+    agenda_nvs_set_u8(NVS_ROUTE_CHK_KEY, 0);
+}
+
+void config_manager_set_route_place(int which, const char *text, const char *found, double lat,
+                                    double lon)
+{
+    if ((which != 0 && which != 1) || lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) {
+        return;
+    }
+    copy_info_list(route_text[which], sizeof(route_text[which]), text);
+    copy_info_list(route_found[which], sizeof(route_found[which]), found);
+    route_lat[which] = lat;
+    route_lon[which] = lon;
+    route_has_point[which] = true;
+    route_persist_place(which);
+}
+
+bool config_manager_get_route_checked(void)
+{
+    return route_checked && route_has_point[0] && route_has_point[1];
+}
+
+void config_manager_set_route_checked(bool checked)
+{
+    route_checked = checked && route_has_point[0] && route_has_point[1];
+    agenda_nvs_set_u8(NVS_ROUTE_CHK_KEY, route_checked ? 1 : 0);
+}
+
+int config_manager_get_route_ref(int which)
+{
+    return (which == 0 || which == 1) ? route_ref[which] : 0;
+}
+
+void config_manager_set_route_ref(int which, int minutes)
+{
+    if (which != 0 && which != 1) {
+        return;
+    }
+    route_ref[which] = (uint16_t) (minutes < 0 ? 0 : (minutes > 600 ? 600 : minutes));
+    agenda_nvs_set_u16(which == 0 ? NVS_ROUTE_REF_A_KEY : NVS_ROUTE_REF_B_KEY, route_ref[which]);
+}
+
+int config_manager_get_route_percent(void)
+{
+    return route_percent;
+}
+
+void config_manager_set_route_percent(int percent)
+{
+    route_percent = (uint8_t) (percent < 1 ? 1 : (percent > 100 ? 100 : percent));
+    agenda_nvs_set_u8(NVS_ROUTE_PCT_KEY, route_percent);
+}
+
+int config_manager_get_route_min_excess(void)
+{
+    return route_min_excess;
+}
+
+void config_manager_set_route_min_excess(int minutes)
+{
+    route_min_excess = (uint8_t) (minutes < 0 ? 0 : (minutes > 60 ? 60 : minutes));
+    agenda_nvs_set_u8(NVS_ROUTE_EXC_KEY, route_min_excess);
+}
+
+const char *config_manager_get_route_label(void)
+{
+    return route_label;
+}
+
+void config_manager_set_route_label(const char *label)
+{
+    copy_info_list(route_label, sizeof(route_label), label);
+    agenda_nvs_set_str_or_erase(NVS_ROUTE_LBL_KEY, route_label);
+}
+
+const char *config_manager_get_route_key_tomtom(void)
+{
+    return route_key_tomtom;
+}
+
+void config_manager_set_route_key_tomtom(const char *key)
+{
+    copy_info_list(route_key_tomtom, sizeof(route_key_tomtom), key);
+    agenda_nvs_set_str_or_erase(NVS_ROUTE_KEY_TT_KEY, route_key_tomtom);
+}
+
+const char *config_manager_get_route_key_here(void)
+{
+    return route_key_here;
+}
+
+void config_manager_set_route_key_here(const char *key)
+{
+    copy_info_list(route_key_here, sizeof(route_key_here), key);
+    agenda_nvs_set_str_or_erase(NVS_ROUTE_KEY_HERE_KEY, route_key_here);
 }
 #endif
 

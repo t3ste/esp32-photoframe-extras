@@ -2,6 +2,9 @@
 
 > **Build option:** compiled in only with `python build.py --with schedule-pages` (needs `info-screens`; the build pulls it in), part of the
 > `extras` bundle and of every full build. Without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
+>
+> **Status:** host-tested (also against a literal reference over random schedules and across the days the clock changes) and checked on a **USB-powered** Waveshare frame with schedules a few
+> minutes apart. **Not seen yet:** the deep-sleep wake of a battery frame, which uses the same functions - please report what you see.
 
 The [information screens](INFO_SCREENS.md) take turns on the Agenda's schedule: every time the schedule fires, the next page of the
 rotation is drawn. With this option **each schedule of the Agenda can draw its own pages**, so that a schedule at 06:30 can always show

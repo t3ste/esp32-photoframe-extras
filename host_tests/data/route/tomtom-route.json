@@ -1,0 +1,1 @@
+{"formatVersion":"0.0.12","routes":[{"summary":{"lengthInMeters":4250,"travelTimeInSeconds":780,"trafficDelayInSeconds":180,"trafficLengthInMeters":950,"departureTime":"2026-10-03T07:30:00+02:00","arrivalTime":"2026-10-03T07:43:00+02:00","noTrafficTravelTimeInSeconds":600,"historicTrafficTravelTimeInSeconds":690,"liveTrafficIncidentsTravelTimeInSeconds":780}}]}

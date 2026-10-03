@@ -28,7 +28,8 @@ longitude); nothing is entered twice. The frame must be online when the page is 
 
 ## What the page shows
 
-- A yellow header with the fuel type and the radius.
+- A yellow header with the fuel type and the radius - and, with `--with route-time`, the **travel time there and back** between two addresses, a way that
+  takes longer than usual as a red block with a "!" ([ROUTE_TIME.md](ROUTE_TIME.md)).
 - One row per station, the cheapest first - at the same price the nearer one (green bar and a green number for the cheapest): brand (or name), street and town, the distance in
   kilometres, and the price in euros per litre.
 - One line at the bottom with the attribution the licence asks for - `tankerkoenig.de, CC BY 4.0` - and the date and time the prices were fetched: `tankerkoenig.de, CC BY 4.0 - 30 Sep 14:35`.

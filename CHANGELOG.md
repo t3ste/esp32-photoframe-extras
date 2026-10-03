@@ -19,6 +19,17 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **Travel time on the fuel page** (`--with route-time`, [docs/ROUTE_TIME.md](docs/ROUTE_TIME.md); part of `extras`, needs `fuel-prices`): the header of the fuel page shows how long the drive
+  there and back between two addresses takes **right now**, with the traffic (`Hin 28 min  Rück 31 min`); a way that takes more than the usual time by a percentage (10) **and** a number of
+  minutes (5) - both settable - is a **red block with a "!"**. Sources: TomTom first, HERE second (a free key of one or both; a refused key, no answer or no requests left
+  continues with the next). The Web UI looks an address up (**Find**), lets you choose among the places the provider found, and takes both over only after the frame has
+  calculated a **believable route both ways** between them (a time and a length above zero, not more than 12 hours, not shorter than the straight line, no absurd detour, not the same
+  place twice); the **coordinates** are stored, nothing is looked up when the page is drawn, and a changed text drops the check. The usual times can be taken from the check (with or
+  without traffic) or typed. The display shows only a name you choose; **the addresses are in an export only if it includes the credentials**; the keys are write-only and never
+  logged, nor are the addresses. No old time is ever shown: without a time the header is as before. New: `route_time.c` (pure: requests, readers of both providers' answers,
+  the believable-route and too-long rules; 34 host tests incl. cut-off and changed answers), `route_service.c` (the providers in order, the five-minute memory; 20 host tests with the
+  HTTP layer faked), the header in `screen_fuel.c`, `POST /api/route/geocode` and `/api/route/check`; web: `utils/routeKey.js`. **Not yet run with a real key** - the test answers are
+  assembled from the providers' documentation (the answers of an invalid key were recorded).
 - **Pages per Agenda schedule** (`--with schedule-pages`, [docs/SCHEDULE_PAGES.md](docs/SCHEDULE_PAGES.md); part of `extras`, needs `info-screens`): each schedule of the Agenda can draw
   its own pages (chips under the schedule card; a rotation counter of its own), so that a schedule at 06:30 always shows the fuel page while the hourly one shows the Agenda. When schedules
   overlap, **the smaller number wins** (the order of the list is the priority, with up/down arrows), and no display replaces another within the **minimum time between two displays**

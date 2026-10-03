@@ -522,6 +522,39 @@ void config_manager_set_fuel_count(int count);
 bool config_manager_get_fuel_hide_closed(void);
 void config_manager_set_fuel_hide_closed(bool hide);
 #endif
+#if FEATURE_ROUTE_TIME
+// The travel time on the fuel page (route_time.h). Two places: 0 = the start, 1 = the destination.
+bool config_manager_get_route_enabled(void);
+void config_manager_set_route_enabled(bool enabled);
+const char *config_manager_get_route_text(int which);  // as typed
+const char *config_manager_get_route_found(
+    int which);  // as the provider wrote the place ("" if none)
+// The coordinates of the place that was taken over; false if there is none.
+bool config_manager_get_route_point(int which, double *lat, double *lon);
+// A new text: the place found for the old one and the check are gone (the same text changes
+// nothing).
+void config_manager_set_route_text(int which, const char *text);
+// The place the user took over for `text`; the check is not touched here.
+void config_manager_set_route_place(int which, const char *text, const char *found, double lat,
+                                    double lon);
+// Both places taken over and the route between them calculated (set only after the check).
+bool config_manager_get_route_checked(void);
+void config_manager_set_route_checked(bool checked);
+int config_manager_get_route_ref(
+    int which);  // the usual time in minutes, 0 = none (0 there, 1 back)
+void config_manager_set_route_ref(int which, int minutes);
+int config_manager_get_route_percent(void);
+void config_manager_set_route_percent(int percent);
+int config_manager_get_route_min_excess(void);
+void config_manager_set_route_min_excess(int minutes);
+const char *config_manager_get_route_label(void);
+void config_manager_set_route_label(const char *label);
+// The personal keys are write-only: never returned by the API, only by the export with credentials.
+const char *config_manager_get_route_key_tomtom(void);
+void config_manager_set_route_key_tomtom(const char *key);
+const char *config_manager_get_route_key_here(void);
+void config_manager_set_route_key_here(const char *key);
+#endif
 #if FEATURE_MARKET_QUOTES
 // The markets page (market_quotes.h): the symbols as typed ("AAPL, EUNL.DE"; empty = the built-in
 // four), whether Yahoo Finance may be asked, the two personal API keys (write-only like the fuel

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -496,4 +497,269 @@ TEST(FuelScreen, LongTextsStayInsideTheMargins)
             }
         }
     }
+}
+
+// ---- the travel time in the header (build option route-time)
+// ----------------------------------------------------------------
+
+namespace
+{
+
+fuel_screen_data_t with_route(fuel_screen_data_t data, int there, int back, bool there_over,
+                              bool back_over, const char *label = "")
+{
+    data.route.shown = true;
+    data.route.there_min = there;
+    data.route.back_min = back;
+    data.route.there_over = there_over;
+    data.route.back_over = back_over;
+    snprintf(data.route.label, sizeof(data.route.label), "%s", label);
+    return data;
+}
+
+int header_height(const canvas_t &canvas)
+{
+    return canvas_text_height(canvas_text_scale(&canvas, 1)) + 2 * canvas_unit(&canvas);
+}
+
+// The pixels that differ between two renders of the same size, as a bounding box
+struct Diff {
+    int x0 = 1 << 30, y0 = 1 << 30, x1 = -1, y1 = -1;
+    size_t count = 0;
+};
+
+Diff diff(const GuardedCanvas &a, const GuardedCanvas &b)
+{
+    Diff d;
+    for (int y = 0; y < a.canvas.height; y++) {
+        for (int x = 0; x < a.canvas.width; x++) {
+            const uint8_t *p = a.canvas.rgb + ((size_t) y * a.canvas.width + x) * 3;
+            const uint8_t *q = b.canvas.rgb + ((size_t) y * b.canvas.width + x) * 3;
+            if (memcmp(p, q, 3) != 0) {
+                d.x0 = std::min(d.x0, x);
+                d.y0 = std::min(d.y0, y);
+                d.x1 = std::max(d.x1, x);
+                d.y1 = std::max(d.y1, y);
+                d.count++;
+            }
+        }
+    }
+    return d;
+}
+
+size_t count_colour(const GuardedCanvas &cv, uint32_t rgb, int y_from, int y_to)
+{
+    size_t n = 0;
+    for (int y = y_from; y < y_to; y++) {
+        for (int x = 0; x < cv.canvas.width; x++) {
+            const uint8_t *p = cv.canvas.rgb + ((size_t) y * cv.canvas.width + x) * 3;
+            n += ((uint32_t) p[0] << 16 | (uint32_t) p[1] << 8 | p[2]) == rgb ? 1 : 0;
+        }
+    }
+    return n;
+}
+
+fuel_screen_data_t diesel_page()
+{
+    return page_of(fixture("list-diesel-mixed.json"), 5);
+}
+
+}  // namespace
+
+TEST(FuelRoute, WithoutATravelTimeThePageIsAsBefore)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    GuardedCanvas a(800, 480), b(800, 480);
+    fuel_screen_data_t data = diesel_page();
+    fuel_screen_render(&a.canvas, &now, &data);
+    data.route.shown = false;
+    data.route.there_min = 99;  // what is in the other fields does not matter
+    data.route.there_over = true;
+    fuel_screen_render(&b.canvas, &now, &data);
+    EXPECT_EQ(diff(a, b).count, 0u);
+}
+
+TEST(FuelRoute, TheTravelTimeChangesOnlyTheHeaderLeftOfTheRadius)
+{
+    for (const auto &size : kBoardSizes) {
+        for (bool german : {false, true}) {
+            info_now_t now;
+            info_now_from_date(2026, 9, 30, german, &now);
+            GuardedCanvas plain(size[0], size[1]), timed(size[0], size[1]);
+            fuel_screen_data_t data = diesel_page();
+            fuel_screen_data_t with = with_route(data, 28, 31, false, false);
+            fuel_screen_render(&plain.canvas, &now, &data);
+            fuel_screen_render(&timed.canvas, &now, &with);
+            ASSERT_TRUE(timed.guards_intact());
+            Diff d = diff(plain, timed);
+            int u = canvas_unit(&plain.canvas);
+            int s = canvas_text_scale(&plain.canvas, 1);
+            int band = header_height(plain.canvas);
+            EXPECT_LT(d.y1, band) << size[0] << "x" << size[1];  // nothing below the header
+            if (d.count == 0) {
+                // too narrow for even the shortest form: the header stays as it was
+                EXPECT_LT(size[0], 600) << size[0] << "x" << size[1];
+                continue;
+            }
+            char radius[24];
+            snprintf(radius, sizeof(radius), "%d km", data.radius_km);
+            int right_limit = size[0] - 4 * u - canvas_text_width(radius, s);
+            EXPECT_LE(d.x1, right_limit) << size[0] << "x" << size[1];  // the radius is not touched
+        }
+    }
+}
+
+TEST(FuelRoute, AWayThatIsNotLongIsDrawnWithoutRed)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, true, &now);
+    GuardedCanvas cv(800, 480);
+    fuel_screen_data_t data = with_route(diesel_page(), 28, 31, false, false);
+    fuel_screen_render(&cv.canvas, &now, &data);
+    EXPECT_EQ(count_colour(cv, 0xFF0000, 0, 480), 0u);
+}
+
+TEST(FuelRoute, AWayThatIsLongIsARedBlockInTheHeaderOnly)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    fuel_screen_data_t base = diesel_page();
+    for (int which = 0; which < 3; which++) {  // there, back, both
+        GuardedCanvas cv(800, 480);
+        fuel_screen_data_t data = with_route(base, 41, 31, which != 1, which != 0);
+        fuel_screen_render(&cv.canvas, &now, &data);
+        ASSERT_TRUE(cv.guards_intact());
+        int band = header_height(cv.canvas);
+        EXPECT_GT(count_colour(cv, 0xFF0000, 0, band), (size_t) 400)
+            << which;                                                   // a block, not a speck
+        EXPECT_EQ(count_colour(cv, 0xFF0000, band, 480), 0u) << which;  // nothing red below
+    }
+    // both long: more red than one
+    GuardedCanvas one(800, 480), two(800, 480);
+    fuel_screen_data_t one_long = with_route(base, 41, 31, true, false);
+    fuel_screen_data_t both_long = with_route(base, 41, 45, true, true);
+    fuel_screen_render(&one.canvas, &now, &one_long);
+    fuel_screen_render(&two.canvas, &now, &both_long);
+    EXPECT_GT(count_colour(two, 0xFF0000, 0, 480), count_colour(one, 0xFF0000, 0, 480));
+}
+
+TEST(FuelRoute, TheRedBlockCarriesWhiteText)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    GuardedCanvas cv(800, 480);
+    fuel_screen_data_t data = with_route(diesel_page(), 41, 31, true, false);
+    fuel_screen_render(&cv.canvas, &now, &data);
+    int band = header_height(cv.canvas);
+    int red_x0 = 1 << 30, red_x1 = -1;
+    for (int y = 0; y < band; y++) {
+        for (int x = 0; x < 800; x++) {
+            const uint8_t *p = cv.canvas.rgb + ((size_t) y * 800 + x) * 3;
+            if (p[0] == 255 && p[1] == 0 && p[2] == 0) {
+                red_x0 = std::min(red_x0, x);
+                red_x1 = std::max(red_x1, x);
+            }
+        }
+    }
+    ASSERT_GT(red_x1, red_x0);
+    size_t white_inside = 0;
+    for (int y = 0; y < band; y++) {
+        for (int x = red_x0; x <= red_x1; x++) {
+            const uint8_t *p = cv.canvas.rgb + ((size_t) y * 800 + x) * 3;
+            white_inside += (p[0] == 255 && p[1] == 255 && p[2] == 255) ? 1 : 0;
+        }
+    }
+    EXPECT_GT(white_inside, (size_t) 100);
+}
+
+TEST(FuelRoute, EveryFormFitsEveryPanelInBothLanguagesWithOrWithoutALabel)
+{
+    int minutes[] = {1, 28, 640};
+    const char *labels[] = {"", "Work", "Workplace1"};
+    fuel_screen_data_t base = diesel_page();
+    for (const auto &size : kBoardSizes) {
+        for (bool german : {false, true}) {
+            for (const char *label : labels) {
+                for (int there : minutes) {
+                    if (size[0] > 960 && (german || there != 28 || label == labels[1])) {
+                        continue;  // the biggest panels run the same code: fewer, they are slow
+                    }
+                    for (int back : {7, 125}) {
+                        for (int over = 0; over < 4; over++) {
+                            info_now_t now;
+                            info_now_from_date(2026, 9, 30, german, &now);
+                            GuardedCanvas cv(size[0], size[1]);
+                            fuel_screen_data_t data =
+                                with_route(base, there, back, over & 1, over & 2, label);
+                            fuel_screen_render(&cv.canvas, &now, &data);
+                            ASSERT_TRUE(cv.guards_intact()) << size[0] << "x" << size[1];
+                            if (size[0] <=
+                                960) {  // the colours of the biggest ones are the same code
+                                for (uint32_t rgb : cv.colours()) {  // nothing but palette colours
+                                    for (int shift : {16, 8, 0}) {
+                                        uint32_t v = (rgb >> shift) & 0xFF;
+                                        ASSERT_TRUE(v == 0 || v == 255) << std::hex << rgb;
+                                    }
+                                }
+                            }
+                            ASSERT_EQ(count_colour(cv, 0xFF0000, header_height(cv.canvas), size[1]),
+                                      0u);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST(FuelRoute, ALabelIsShownWhereItFitsAndDroppedWhereItDoesNot)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    fuel_screen_data_t base = diesel_page();
+    fuel_screen_data_t plain_data = with_route(base, 28, 31, false, false);
+    fuel_screen_data_t short_label = with_route(base, 28, 31, false, false, "Work");
+    fuel_screen_data_t long_label = with_route(base, 28, 31, false, false, "Workplace1");
+    GuardedCanvas plain(800, 480), with_short(800, 480), with_long(800, 480);
+    fuel_screen_render(&plain.canvas, &now, &plain_data);
+    fuel_screen_render(&with_short.canvas, &now, &short_label);
+    fuel_screen_render(&with_long.canvas, &now, &long_label);
+    EXPECT_GT(diff(plain, with_short).count, 0u);  // room for four letters in front of the times
+    EXPECT_EQ(diff(plain, with_long).count, 0u);   // not for ten: the times are drawn without it
+}
+
+TEST(FuelRoute, TheHeadingGivesWayToTheWordsAndTheUnit)
+{
+    // at 800x480 "FUEL PRICES  DIESEL" and "To 28 min  Back 31 min" do not fit side by side: the
+    // heading is cut to the fuel type, so the times keep their words and their unit
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    fuel_screen_data_t base = diesel_page();
+    fuel_screen_data_t timed = with_route(base, 28, 31, false, false);
+    GuardedCanvas plain(800, 480), with(800, 480);
+    fuel_screen_render(&plain.canvas, &now, &base);
+    fuel_screen_render(&with.canvas, &now, &timed);
+    Diff d = diff(plain, with);
+    EXPECT_LT(d.x0, 100);  // the heading changed: it starts the same but the second word is gone
+    // the German words are about as wide as the English ones: the same checks
+    info_now_t german;
+    info_now_from_date(2026, 9, 30, true, &german);
+    GuardedCanvas de(800, 480);
+    fuel_screen_render(&de.canvas, &german, &timed);
+    ASSERT_TRUE(de.guards_intact());
+}
+
+TEST(FuelRoute, ThePageOfAFailedFetchHasNoTravelTime)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    fuel_screen_data_t data;
+    memset(&data, 0, sizeof(data));
+    data.status = FUEL_SCREEN_NONE_FOUND;
+    fuel_screen_data_t with = with_route(data, 28, 31, true, true);
+    GuardedCanvas a(800, 480), b(800, 480);
+    fuel_screen_render(&a.canvas, &now, &data);
+    fuel_screen_render(&b.canvas, &now, &with);
+    EXPECT_EQ(diff(a, b).count, 0u);  // a message, no header: no travel time there
 }

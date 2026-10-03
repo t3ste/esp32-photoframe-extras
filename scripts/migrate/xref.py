@@ -59,6 +59,7 @@ MODULES = {
     "market-quotes": ["market_quotes", "market_service", "screen_markets"],
     "artworks": ["art_select", "art_caption", "art_sources", "art_store", "art_flow"],
     "schedule-pages": ["sched_pick"],
+    "route-time": ["route_time", "route_service"],
     "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }
 ALWAYS_HELPERS = {

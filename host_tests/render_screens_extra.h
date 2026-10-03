@@ -317,6 +317,37 @@ inline void draw_fuel_german(canvas_t *canvas)
     fuel_screen_render(canvas, &now, &data);
 }
 
+// The fuel page with the travel time in the header: one way is longer than usual, the other not.
+inline void draw_fuel_route_english(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, false, &now);
+    now.hour = 6;
+    now.minute = 30;
+    fuel_screen_data_t data = fuel_sample(5, FUEL_DIESEL, 5);
+    data.route.shown = true;
+    data.route.there_min = 41;
+    data.route.back_min = 29;
+    data.route.there_over = true;
+    data.route.back_over = false;
+    fuel_screen_render(canvas, &now, &data);
+}
+
+inline void draw_fuel_route_german(canvas_t *canvas)
+{
+    info_now_t now;
+    info_now_from_date(2026, 9, 30, true, &now);
+    now.hour = 6;
+    now.minute = 30;
+    fuel_screen_data_t data = fuel_sample(5, FUEL_E10, 5);
+    data.route.shown = true;
+    data.route.there_min = 28;
+    data.route.back_min = 44;
+    data.route.there_over = false;
+    data.route.back_over = true;
+    fuel_screen_render(canvas, &now, &data);
+}
+
 inline void draw_fuel_refused(canvas_t *canvas)
 {
     info_now_t now;
@@ -485,6 +516,8 @@ inline const std::vector<RenderCase> &render_cases()
         {"finance-offline", draw_finance_offline},
         {"fuel-en", draw_fuel_english},
         {"fuel-de", draw_fuel_german},
+        {"fuel-route-en", draw_fuel_route_english},
+        {"fuel-route-de", draw_fuel_route_german},
         {"fuel-refused", draw_fuel_refused},
         {"markets-en", draw_markets_english},
         {"markets-de", draw_markets_german},

@@ -1,6 +1,9 @@
 #ifndef SCREEN_FUEL_H
 #define SCREEN_FUEL_H
 
+#include <stdbool.h>
+
+#include "feature_config.h"
 #include "fuel_prices.h"
 #include "info_screens_core.h"
 #include "screen_canvas.h"
@@ -25,11 +28,25 @@ typedef enum {
     FUEL_SCREEN_NONE_FOUND     // no open station with a price in the radius
 } fuel_screen_status_t;
 
+#if FEATURE_ROUTE_TIME
+// The travel time in the header (build option `route-time`): both ways, in whole minutes, and
+// whether each is longer than usual (drawn as a red block with a "!").
+typedef struct {
+    bool shown;  // false: the header has no travel time
+    int there_min, back_min;
+    bool there_over, back_over;
+    char label[12];  // what the user calls the route; "" = none
+} fuel_route_t;
+#endif
+
 typedef struct {
     fuel_screen_status_t status;
     fuel_type_t type;
     int radius_km;
     fuel_result_t result;  // for OK; result.message is the service's text for KEY_REFUSED
+#if FEATURE_ROUTE_TIME
+    fuel_route_t route;
+#endif
 } fuel_screen_data_t;
 
 /** @brief Draws the page (or a message when the data say there is nothing to show). */

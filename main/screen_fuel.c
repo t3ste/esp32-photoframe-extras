@@ -175,6 +175,132 @@ static void draw_row(canvas_t *canvas, int x, int y, int w, int h, int rank,
     }
 }
 
+#if FEATURE_ROUTE_TIME
+// The forms of the travel time in the header, fullest first. Those up to ROUTE_FORM_NUMBERS say the
+// unit ("min"): "Hin 28 min  Rück 31 min", "Hin 28  Rück 31 min", "28 / 31 min".
+typedef enum {
+    ROUTE_FORM_LABEL = 0,  // the name of the route in front of the first form
+    ROUTE_FORM_UNIT_EACH,
+    ROUTE_FORM_UNIT_ONCE,
+    ROUTE_FORM_NUMBERS,
+    ROUTE_FORM_WORDS,  // "Hin 28  Rück 31", no unit
+    ROUTE_FORM_PLAIN,  // "28/31"
+    ROUTE_FORM_COUNT
+} route_form_t;
+
+typedef struct {
+    char prefix[CANVAS_WRAP_LINE_MAX + 4];
+    char text[2][48];  // the two ways, with a "!" in front of one that is long
+    int width[2];      // with the room of the red block around a long one
+    const char *separator;
+    const char *suffix;
+    int total;
+} route_layout_t;
+
+// Fills the layout of a form; false if the form does not apply (a name of the route it has not
+// got).
+static bool route_layout(const fuel_route_t *route, bool german, int scale, int pad,
+                         route_form_t form, route_layout_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (form == ROUTE_FORM_LABEL) {
+        if (route->label[0] == '\0') {
+            return false;
+        }
+        char label[CANVAS_WRAP_LINE_MAX];
+        canvas_text_from_utf8(route->label, label, sizeof(label));
+        snprintf(out->prefix, sizeof(out->prefix), "%s  ", label);
+    }
+    bool words = form <= ROUTE_FORM_UNIT_ONCE || form == ROUTE_FORM_WORDS;
+    bool unit_each = form <= ROUTE_FORM_UNIT_EACH;
+    bool unit_once = form == ROUTE_FORM_UNIT_ONCE || form == ROUTE_FORM_NUMBERS;
+    const char *word[2] = {german ? "Hin" : "To", german ? "R\xC3\xBC"
+                                                           "ck"
+                                                         : "Back"};
+    const bool over[2] = {route->there_over, route->back_over};
+    const int minutes[2] = {route->there_min, route->back_min};
+    for (int i = 0; i < 2; i++) {
+        char raw[48], marked[56];
+        snprintf(raw, sizeof(raw), words ? "%s %d%s" : "%.0s%d%s", word[i], minutes[i],
+                 unit_each ? " min" : "");
+        snprintf(marked, sizeof(marked), "%s%s", over[i] ? "!" : "", raw);
+        canvas_text_from_utf8(marked, out->text[i], sizeof(out->text[i]));
+        out->width[i] = canvas_text_width(out->text[i], scale) + (over[i] ? 2 * pad : 0);
+    }
+    out->separator = form == ROUTE_FORM_NUMBERS ? " / " : (form == ROUTE_FORM_PLAIN ? "/" : "  ");
+    out->suffix = unit_once ? " min" : "";
+    out->total = canvas_text_width(out->prefix, scale) + out->width[0] +
+                 canvas_text_width(out->separator, scale) + out->width[1] +
+                 canvas_text_width(out->suffix, scale);
+    return true;
+}
+
+// The fullest form that fits `room` pixels, or -1.
+static int route_best_form(const fuel_route_t *route, bool german, int scale, int pad, int room)
+{
+    route_layout_t layout;
+    for (int form = ROUTE_FORM_LABEL; form < ROUTE_FORM_COUNT; form++) {
+        if (route_layout(route, german, scale, pad, (route_form_t) form, &layout) &&
+            layout.total <= room) {
+            return form;
+        }
+    }
+    return -1;
+}
+
+// The travel time in the free room of the header, from `x0` to `x1`: "Hin 28 min  Rück 31 min" (in
+// English "To ... Back ..."), shorter where the room is short. A way that is longer than usual is a
+// red block with white text and a "!" in front. Nothing is drawn if even the shortest form does not
+// fit, so the header is never crowded.
+static void draw_route(canvas_t *canvas, const fuel_route_t *route, bool german, int x0, int x1)
+{
+    int u = canvas_unit(canvas);
+    int s = canvas_text_scale(canvas, 1);
+    int pad = u / 2 + 1;
+    int form = route_best_form(route, german, s, pad, x1 - x0);
+    route_layout_t layout;
+    if (form < 0 || !route_layout(route, german, s, pad, (route_form_t) form, &layout)) {
+        return;
+    }
+    int text_y = u;
+    int box_y = u / 3 + 1;
+    int box_h = canvas_text_height(s) + 2 * u - 2 * box_y;
+    const bool over[2] = {route->there_over, route->back_over};
+    int x = x0 + (x1 - x0 - layout.total) / 2;
+    x = canvas_text(canvas, x, text_y, layout.prefix, s, CANVAS_BLACK);  // returns the x after it
+    for (int i = 0; i < 2; i++) {
+        if (over[i]) {
+            canvas_rect(canvas, x, box_y, layout.width[i], box_h, CANVAS_RED);
+            canvas_text(canvas, x + pad, text_y, layout.text[i], s, CANVAS_WHITE);
+        } else {
+            canvas_text(canvas, x, text_y, layout.text[i], s, CANVAS_BLACK);
+        }
+        x += layout.width[i];
+        if (i == 0) {
+            x = canvas_text(canvas, x, text_y, layout.separator, s, CANVAS_BLACK);
+        }
+    }
+    canvas_text(canvas, x, text_y, layout.suffix, s, CANVAS_BLACK);
+}
+
+// Whether the heading is better cut to the fuel type: when a fuller form of the travel time (with
+// its words and its unit "min") fits then - the words "FUEL PRICES" are known from the page.
+static bool route_wants_short_heading(const fuel_route_t *route, bool german, int scale, int pad,
+                                      int unit, int right_edge, const char *full_heading,
+                                      const char *short_heading)
+{
+    if (!route->shown) {
+        return false;
+    }
+    int full = route_best_form(route, german, scale, pad,
+                               right_edge - (4 * unit + canvas_text_width(full_heading, scale)));
+    int shorter =
+        route_best_form(route, german, scale, pad,
+                        right_edge - (4 * unit + canvas_text_width(short_heading, scale)));
+    return shorter >= 0 && (full < 0 || shorter < full);
+}
+#endif
+
 void fuel_screen_render(canvas_t *canvas, const info_now_t *now, const fuel_screen_data_t *data)
 {
     if (data->status != FUEL_SCREEN_OK || data->result.count < 1) {
@@ -207,10 +333,23 @@ void fuel_screen_render(canvas_t *canvas, const info_now_t *now, const fuel_scre
     if (canvas_text_width(raw, s) > canvas->width - 5 * u - radius_w) {
         snprintf(raw, sizeof(raw), "%s", type_names[type]);  // a narrow panel: just the fuel
     }
+#if FEATURE_ROUTE_TIME
+    if (strcmp(raw, type_names[type]) != 0 &&
+        route_wants_short_heading(&data->route, now->german, s, u / 2 + 1, u,
+                                  canvas->width - 4 * u - radius_w, raw, type_names[type])) {
+        snprintf(raw, sizeof(raw), "%s", type_names[type]);  // the travel time wants the room
+    }
+#endif
     canvas_text_from_utf8(raw, heading, sizeof(heading));
     canvas_text_fit(heading, canvas->width - 5 * u - radius_w, s, fitted, sizeof(fitted));
     canvas_text(canvas, 2 * u, u, fitted, s, CANVAS_BLACK);
     canvas_text_right(canvas, canvas->width - 2 * u, u, radius, s, CANVAS_BLACK);
+#if FEATURE_ROUTE_TIME
+    if (data->route.shown) {
+        draw_route(canvas, &data->route, now->german, 4 * u + canvas_text_width(fitted, s),
+                   canvas->width - 4 * u - radius_w);
+    }
+#endif
 
     // the footer: the attribution the licence asks for and when the prices were fetched, on one
     // line if they fit (the fullest wording of the attribution that leaves room for the time)

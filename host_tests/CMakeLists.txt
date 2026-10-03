@@ -72,7 +72,9 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_FINANCE_SNAPSHOT
   CONFIG_FEATURE_FUEL_PRICES
   CONFIG_FEATURE_MARKET_QUOTES
+  CONFIG_FEATURE_ROUTE_TIME
   CONFIG_FEATURE_ARTWORKS
+  CONFIG_FEATURE_SCHEDULE_PAGES
   CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
@@ -121,6 +123,67 @@ target_include_directories(
   sched_pick_test
   PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# The travel time on the fuel page (build option route-time): requests, the readers of the TomTom and HERE
+# answers, the address checks and the rule for a time that is too long (the real cJSON)
+add_executable(
+  route_test
+  test_route.cpp
+  ../main/route_time.c
+  ${CJSON_DIR}/cJSON.c
+)
+
+target_compile_definitions(
+  route_test
+  PRIVATE
+  ROUTE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/route"
+)
+
+target_link_libraries(
+  route_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  route_test
+  PRIVATE
+  ${CJSON_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# The device side of the travel time on the PC: the settings and the HTTP helper are faked, the answers are the
+# test answers of data/route
+add_executable(
+  route_service_test
+  test_route_service.cpp
+  ../main/route_service.c
+  ../main/route_time.c
+  ${CJSON_DIR}/cJSON.c
+)
+
+target_compile_definitions(
+  route_service_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  ROUTE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/route"
+)
+
+target_link_libraries(
+  route_service_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  route_service_test
+  PRIVATE
+  ${CJSON_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
@@ -884,6 +947,8 @@ target_include_directories(
 include(GoogleTest)
 gtest_discover_tests(cron_test)
 gtest_discover_tests(sched_pick_test)
+gtest_discover_tests(route_test)
+gtest_discover_tests(route_service_test)
 gtest_discover_tests(wake_schedule_test)
 gtest_discover_tests(http_auth_test)
 gtest_discover_tests(source_auth_test)

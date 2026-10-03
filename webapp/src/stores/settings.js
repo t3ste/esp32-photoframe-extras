@@ -12,6 +12,9 @@ import { isMarketKey } from "../utils/marketKey";
 // #endif
 // #if FEATURE_ARTWORKS
 import { isArtAlbumName, isArtKey } from "../utils/artKey";
+// #if FEATURE_ROUTE_TIME
+import { isRouteKey } from "../utils/routeKey";
+// #endif
 // #endif
 
 export const useSettingsStore = defineStore("settings", () => {
@@ -315,6 +318,27 @@ export const useSettingsStore = defineStore("settings", () => {
     // Information screens in the Agenda rotation (see docs/INFO_SCREENS.md)
     infoScreens: ["agenda"],
     infoScreensAvailable: ["agenda"],
+// #if FEATURE_ROUTE_TIME
+    // Travel time on the fuel page (see docs/ROUTE_TIME.md): the places as typed and as the provider
+    // wrote them once they were taken over, whether both were checked, the usual times there and back
+    // in minutes (0: none), the limits of a time that is too long, the label the display shows, and
+    // the keys (write-only: typed here, never loaded back)
+    routeEnabled: false,
+    routeFrom: "",
+    routeTo: "",
+    routeFromFound: "",
+    routeToFound: "",
+    routeChecked: false,
+    routeRefThereMin: 0,
+    routeRefBackMin: 0,
+    routePercent: 10,
+    routeMinExcessMin: 5,
+    routeLabel: "",
+    routeKeyTomtom: "",
+    routeKeyTomtomConfigured: false,
+    routeKeyHere: "",
+    routeKeyHereConfigured: false,
+// #endif
 // #if FEATURE_SCHEDULE_PAGES
     // Pages per Agenda schedule (see docs/SCHEDULE_PAGES.md): per schedule the pages it draws
     // (empty: the shared rotation) and its hold in minutes (0: the common minimum time between
@@ -723,6 +747,21 @@ export const useSettingsStore = defineStore("settings", () => {
 // #if FEATURE_INFO_SCREENS
       deviceSettings.value.infoScreens = data.info_screens ?? ["agenda"];
       deviceSettings.value.infoScreensAvailable = data.info_screens_available ?? ["agenda"];
+// #if FEATURE_ROUTE_TIME
+      deviceSettings.value.routeEnabled = data.route_enabled === true;
+      deviceSettings.value.routeFrom = data.route_from ?? "";
+      deviceSettings.value.routeTo = data.route_to ?? "";
+      deviceSettings.value.routeFromFound = data.route_from_found ?? "";
+      deviceSettings.value.routeToFound = data.route_to_found ?? "";
+      deviceSettings.value.routeChecked = data.route_checked === true;
+      deviceSettings.value.routeRefThereMin = data.route_ref_there_min ?? 0;
+      deviceSettings.value.routeRefBackMin = data.route_ref_back_min ?? 0;
+      deviceSettings.value.routePercent = data.route_percent ?? 10;
+      deviceSettings.value.routeMinExcessMin = data.route_min_excess_min ?? 5;
+      deviceSettings.value.routeLabel = data.route_label ?? "";
+      deviceSettings.value.routeKeyTomtomConfigured = data.route_key_tomtom_configured === true;
+      deviceSettings.value.routeKeyHereConfigured = data.route_key_here_configured === true;
+// #endif
 // #if FEATURE_SCHEDULE_PAGES
       deviceSettings.value.agendaCronPages = Array.isArray(data.agenda_cron_pages)
         ? data.agenda_cron_pages
@@ -1015,6 +1054,23 @@ export const useSettingsStore = defineStore("settings", () => {
 // #endif
 // #if FEATURE_INFO_SCREENS
       info_screens: deviceSettings.value.infoScreens,
+// #if FEATURE_ROUTE_TIME
+      route_enabled: deviceSettings.value.routeEnabled,
+      route_from: deviceSettings.value.routeFrom,
+      route_to: deviceSettings.value.routeTo,
+      route_ref_there_min: deviceSettings.value.routeRefThereMin,
+      route_ref_back_min: deviceSettings.value.routeRefBackMin,
+      route_percent: deviceSettings.value.routePercent,
+      route_min_excess_min: deviceSettings.value.routeMinExcessMin,
+      route_label: deviceSettings.value.routeLabel,
+      // write-only: sent only when something valid was typed (an empty value means "not touched")
+      ...(isRouteKey(deviceSettings.value.routeKeyTomtom)
+        ? { route_key_tomtom: deviceSettings.value.routeKeyTomtom }
+        : {}),
+      ...(isRouteKey(deviceSettings.value.routeKeyHere)
+        ? { route_key_here: deviceSettings.value.routeKeyHere }
+        : {}),
+// #endif
 // #if FEATURE_SCHEDULE_PAGES
       agenda_cron_pages: deviceSettings.value.agendaCronPages,
       agenda_cron_hold: deviceSettings.value.agendaCronHold,

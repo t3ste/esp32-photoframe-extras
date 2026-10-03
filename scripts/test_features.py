@@ -165,6 +165,7 @@ class BundleTest(unittest.TestCase):
                 "finance-snapshot",
                 "fuel-prices",
                 "market-quotes",
+                "route-time",
                 "artworks",
                 "schedule-pages",
             },

@@ -27,6 +27,9 @@
 #include "http_fetch.h"
 #include "screen_fuel.h"
 #include "weather.h"
+#if FEATURE_ROUTE_TIME
+#include "route_service.h"
+#endif
 #endif
 #if FEATURE_FINANCE_SNAPSHOT
 #include <stdlib.h>
@@ -287,6 +290,32 @@ static void load_fuel(fuel_screen_data_t *out, bool wifi_connected)
         break;
     }
     ESP_LOGI(TAG, "Fuel prices: %d station(s)", out->result.count);
+#if FEATURE_ROUTE_TIME
+    // the travel time in the header: only with the places checked and an answer of the provider; a
+    // failure leaves the header as it was
+    if (out->status == FUEL_SCREEN_OK && config_manager_get_route_enabled()) {
+        route_times_t times;
+        route_status_t route_status = route_service_times(&times, wifi_connected);
+        if (route_status == ROUTE_STATUS_OK) {
+            int percent = config_manager_get_route_percent();
+            int excess = config_manager_get_route_min_excess();
+            out->route.shown = true;
+            out->route.there_min = route_minutes(times.there.seconds);
+            out->route.back_min = route_minutes(times.back.seconds);
+            out->route.there_over = route_is_over(times.there.seconds,
+                                                  config_manager_get_route_ref(0), percent, excess);
+            out->route.back_over =
+                route_is_over(times.back.seconds, config_manager_get_route_ref(1), percent, excess);
+            snprintf(out->route.label, sizeof(out->route.label), "%s",
+                     config_manager_get_route_label());
+            ESP_LOGI(TAG, "Travel time: %d / %d min%s%s", out->route.there_min, out->route.back_min,
+                     out->route.there_over ? ", there is long" : "",
+                     out->route.back_over ? ", back is long" : "");
+        } else {
+            ESP_LOGW(TAG, "No travel time: %s", route_status_name(route_status));
+        }
+    }
+#endif
 }
 #endif
 

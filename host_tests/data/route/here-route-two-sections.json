@@ -1,0 +1,1 @@
+{"routes":[{"id":"r1","sections":[{"id":"s1","type":"vehicle","summary":{"duration":500,"length":3000,"baseDuration":400}},{"id":"s2","type":"vehicle","summary":{"duration":300,"length":2000,"baseDuration":260}}]}]}

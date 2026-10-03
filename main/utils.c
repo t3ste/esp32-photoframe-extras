@@ -38,6 +38,10 @@
 #if FEATURE_SCHEDULE_PAGES
 #include "agenda_manager.h"
 #endif
+#if FEATURE_ROUTE_TIME
+#include "route_service.h"
+#include "route_time.h"
+#endif
 #include "cron.h"
 #include "debug_log.h"
 #include "display_flow.h"
@@ -1212,6 +1216,66 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     item = cJSON_GetObjectItem(root, "fuel_api_key_clear");
     if (item && cJSON_IsTrue(item)) {
         config_manager_set_fuel_api_key("");
+    }
+#endif
+#if FEATURE_ROUTE_TIME
+    // The travel time: the places are typed here, but they only count after the Web UI has had them
+    // checked (/api/route/check); a changed text drops the place found for the old one. The keys
+    // are write-only like the other keys: an empty string means "not touched", a separate flag
+    // removes one, a text that cannot be a key is ignored.
+    item = cJSON_GetObjectItem(root, "route_enabled");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_route_enabled(cJSON_IsTrue(item));
+    }
+    item = cJSON_GetObjectItem(root, "route_from");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_route_text(0, cJSON_GetStringValue(item));
+        route_service_forget();
+    }
+    item = cJSON_GetObjectItem(root, "route_to");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_route_text(1, cJSON_GetStringValue(item));
+        route_service_forget();
+    }
+    item = cJSON_GetObjectItem(root, "route_ref_there_min");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_route_ref(0, item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "route_ref_back_min");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_route_ref(1, item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "route_percent");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_route_percent(item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "route_min_excess_min");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_route_min_excess(item->valueint);
+    }
+    item = cJSON_GetObjectItem(root, "route_label");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_route_label(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "route_key_tomtom");
+    if (item && cJSON_IsString(item) && route_key_valid(cJSON_GetStringValue(item))) {
+        config_manager_set_route_key_tomtom(cJSON_GetStringValue(item));
+        route_service_forget();
+    }
+    item = cJSON_GetObjectItem(root, "route_key_tomtom_clear");
+    if (item && cJSON_IsTrue(item)) {
+        config_manager_set_route_key_tomtom("");
+        route_service_forget();
+    }
+    item = cJSON_GetObjectItem(root, "route_key_here");
+    if (item && cJSON_IsString(item) && route_key_valid(cJSON_GetStringValue(item))) {
+        config_manager_set_route_key_here(cJSON_GetStringValue(item));
+        route_service_forget();
+    }
+    item = cJSON_GetObjectItem(root, "route_key_here_clear");
+    if (item && cJSON_IsTrue(item)) {
+        config_manager_set_route_key_here("");
+        route_service_forget();
     }
 #endif
 #if FEATURE_MARKET_QUOTES

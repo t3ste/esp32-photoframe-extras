@@ -27,6 +27,7 @@ something does not show up. Each section ends with a link to the detailed page f
 | ... exchange rates of the ECB | `finance-snapshot` | the same box | nothing |
 | ... the cheapest petrol stations (Germany) | `fuel-prices` | the same box | a free Tankerkoenig key and a place |
 | ... stocks, ETFs, indices, crypto, currency pairs | `market-quotes` | the same box | nothing; two free keys are optional |
+| ... the travel time there and back to work, red when a jam makes it longer | `route-time` | the fuel page | a free TomTom or HERE key |
 | A schedule that always shows one page (the fuel prices at 06:30, the Agenda hourly) | `schedule-pages` | Settings -> Agenda -> Schedule | nothing |
 | A painting, drawing or print from a museum at each rotation | `artworks` | Settings -> Auto Rotate -> mode *Artworks* | nothing; a Smithsonian key is optional |
 | Art albums for your frame | `scripts/fetch_art.py` (a PC helper) | on your computer | Python and Node.js |
@@ -243,6 +244,12 @@ example ones it stopped publishing) is left out. More: [FINANCE_SNAPSHOT.md](FIN
 2. Choose the fuel (Super E5, Super E10, Diesel), the radius (1-25 km) and how many stations to show (1-5). *Hide closed*
    leaves out stations that are closed right now.
 3. The **place** is the one of the weather (Overlays tab), so set it there.
+
+**The travel time in the header** (with `route-time`): switch on *Travel time in the header*, type the two addresses, press **Find** and choose the place that is meant, then
+**Check the route** - the frame takes the two places over only if it calculated a believable route between them both ways. The times of the check are offered as the
+usual ones (change them if you like, or take the ones without traffic); a way that takes more than the usual time by the percentage **and** the minutes you set is drawn as a
+red block with a "!". You need a free key from developer.tomtom.com or developer.here.com. The display shows only a name you choose, never the addresses.
+More: [ROUTE_TIME.md](ROUTE_TIME.md).
 
 The page shows the cheapest first (a green bar for the cheapest), each with brand, street, town, distance and price, and the
 attribution the licence asks for. If this page comes up more often than every 5 minutes (few pages in the rotation and a short

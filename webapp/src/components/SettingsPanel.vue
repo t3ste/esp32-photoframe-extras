@@ -30,6 +30,10 @@ import { isMarketKey } from "../utils/marketKey";
 // #if FEATURE_ARTWORKS
 import { isArtAlbumName, isArtKey } from "../utils/artKey";
 // #endif
+// #if FEATURE_ROUTE_TIME
+import { reactive } from "vue";
+import { isRouteKey } from "../utils/routeKey";
+// #endif
 
 const settingsStore = useSettingsStore();
 const appStore = useAppStore();
@@ -759,6 +763,15 @@ async function exportConfig() {
 // #endif
       exported.config = config;
     }
+// #if FEATURE_ROUTE_TIME
+    // The addresses are as private as the keys: only an export that includes the credentials keeps them.
+    if (exported.config && !exportIncludeSecrets.value) {
+      delete exported.config.route_from;
+      delete exported.config.route_to;
+      delete exported.config.route_from_found;
+      delete exported.config.route_to_found;
+    }
+// #endif
 // #if FEATURE_AGENDA
     // ToDo/Calendar URLs are write-only at the device level (GET /api/config
     // never returns them - either can carry a credential embedded as a
@@ -921,6 +934,146 @@ async function removeMarketKey(which) {
       const name = which === "twelvedata" ? "Twelvedata" : "Alphavantage";
       settingsStore.deviceSettings[`marketKey${name}Configured`] = false;
       settingsStore.deviceSettings[`marketKey${name}`] = "";
+    }
+  } catch {
+    /* the frame is not reachable: the key stays */
+  }
+}
+// #endif
+// #if FEATURE_ROUTE_TIME
+// The travel time on the fuel page: look an address up, choose among the places found, let the frame
+// check the route between the two, adopt the times as the usual ones.
+const routeKeyRule = (value) =>
+  !value || isRouteKey(value) || "Letters, digits, - and _, 16 to 104 characters";
+
+const routeEnds = [
+  { which: 0, label: "Start address", model: "routeFrom", found: "routeFromFound" },
+  { which: 1, label: "Destination address", model: "routeTo", found: "routeToFound" },
+];
+const routeState = reactive({
+  busy: false,
+  candidates: [[], []], // the places a lookup found, per end
+  choice: [-1, -1], // the one chosen, per end
+  lookup: ["", ""], // what the last lookup said, per end
+  check: null, // the answer of the last successful check
+  message: "", // why the last check failed
+});
+const routeReady = computed(() =>
+  routeEnds.every(
+    (end) =>
+      routeState.choice[end.which] >= 0 &&
+      routeState.candidates[end.which][routeState.choice[end.which]]
+  )
+);
+
+const routeReasons = {
+  no_key: "Enter the key of TomTom or HERE below first.",
+  key_refused: "The service refused the key. Check that it was copied completely and is still valid.",
+  quota: "The service has no requests left for now. Try again later.",
+  not_found: "No address or street found. Add the street, the house number and the town.",
+  implausible: "The route between the two places does not look right. Check both addresses.",
+  no_places: "Choose a place for both ends first.",
+  failed: "The service did not answer. Try again.",
+};
+function routeReason(answer) {
+  const text = routeReasons[answer.status] || "Something went wrong.";
+  return answer.message ? `${text} (${answer.message})` : text;
+}
+
+async function routePost(path, body) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return response.json();
+}
+
+async function routeLookup(which) {
+  const text = (which === 0 ? settingsStore.deviceSettings.routeFrom : settingsStore.deviceSettings.routeTo)
+    .trim();
+  routeState.candidates[which] = [];
+  routeState.choice[which] = -1;
+  routeState.lookup[which] = "";
+  if (!text) {
+    routeState.lookup[which] = "Type an address first.";
+    return;
+  }
+  routeState.busy = true;
+  try {
+    const answer = await routePost("/api/route/geocode", { text });
+    if (answer.status === "ok" && answer.places && answer.places.length) {
+      routeState.candidates[which] = answer.places;
+      routeState.choice[which] = 0;
+      routeState.lookup[which] =
+        answer.places.length === 1
+          ? `Found by ${answer.source}. Is this the place?`
+          : `${answer.places.length} places found by ${answer.source}: choose yours.`;
+    } else {
+      routeState.lookup[which] = routeReason(answer);
+    }
+  } catch {
+    routeState.lookup[which] = "The frame did not answer.";
+  } finally {
+    routeState.busy = false;
+  }
+}
+
+async function routeCheck() {
+  if (!routeReady.value) return;
+  const ds = settingsStore.deviceSettings;
+  const from = routeState.candidates[0][routeState.choice[0]];
+  const to = routeState.candidates[1][routeState.choice[1]];
+  routeState.busy = true;
+  routeState.message = "";
+  routeState.check = null;
+  try {
+    const answer = await routePost("/api/route/check", {
+      from_text: ds.routeFrom.trim(),
+      from,
+      to_text: ds.routeTo.trim(),
+      to,
+    });
+    if (answer.status === "ok") {
+      routeState.check = answer;
+      ds.routeChecked = true;
+      ds.routeFrom = ds.routeFrom.trim();
+      ds.routeTo = ds.routeTo.trim();
+      ds.routeFromFound = from.label;
+      ds.routeToFound = to.label;
+      // a first time to go by: the times of now, to be adopted as they are or changed
+      if (!ds.routeRefThereMin) ds.routeRefThereMin = answer.there_min;
+      if (!ds.routeRefBackMin) ds.routeRefBackMin = answer.back_min;
+    } else {
+      routeState.message = routeReason(answer);
+    }
+  } catch {
+    routeState.message = "The frame did not answer.";
+  } finally {
+    routeState.busy = false;
+  }
+}
+
+// kind: "now" (the times of the last check) or "free" (the same without traffic)
+function routeAdopt(kind) {
+  const check = routeState.check;
+  if (!check) return;
+  const ds = settingsStore.deviceSettings;
+  ds.routeRefThereMin = kind === "free" ? check.free_there_min : check.there_min;
+  ds.routeRefBackMin = kind === "free" ? check.free_back_min : check.back_min;
+}
+
+async function removeRouteKey(which) {
+  try {
+    const response = await fetch("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [`route_key_${which}_clear`]: true }),
+    });
+    if (response.ok) {
+      const name = which === "tomtom" ? "Tomtom" : "Here";
+      settingsStore.deviceSettings[`routeKey${name}Configured`] = false;
+      settingsStore.deviceSettings[`routeKey${name}`] = "";
     }
   } catch {
     /* the frame is not reachable: the key stays */
@@ -3136,6 +3289,252 @@ async function performFactoryReset() {
               hide-details
               class="mb-2"
             />
+<!-- #if FEATURE_ROUTE_TIME -->
+            <v-divider class="my-3" />
+            <div class="text-subtitle-2 mb-1">Travel time in the header</div>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Shows how long the drive there and back takes right now, with the traffic, in the
+              header of this page (from TomTom or HERE; a free key of one of them is needed). Enter
+              the two addresses, press <b>Find</b> and choose the place that is meant - the frame
+              takes an address over only if the service found it as a street or a house, and
+              calculated a believable route between the two. A way that takes more than the usual
+              time plus the limits below is drawn as a red block with a "!". The frame asks when the
+              page is drawn, so a schedule shortly before you leave shows the traffic of then.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.routeEnabled"
+              label="Show the travel time there and back"
+              color="primary"
+              density="compact"
+              hide-details
+              class="mb-2"
+            />
+            <template v-if="settingsStore.deviceSettings.routeEnabled">
+              <div v-for="end in routeEnds" :key="end.which" class="mb-3">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings[end.model]"
+                  :label="end.label"
+                  placeholder="Street 1, 12345 Town"
+                  maxlength="95"
+                  variant="outlined"
+                  density="compact"
+                  hide-details="auto"
+                >
+                  <template #append-inner>
+                    <v-btn
+                      size="small"
+                      variant="tonal"
+                      :loading="routeState.busy"
+                      @click="routeLookup(end.which)"
+                    >
+                      Find
+                    </v-btn>
+                  </template>
+                </v-text-field>
+                <div
+                  v-if="routeState.lookup[end.which]"
+                  class="text-caption text-medium-emphasis mt-1"
+                >
+                  {{ routeState.lookup[end.which] }}
+                </div>
+                <v-radio-group
+                  v-if="routeState.candidates[end.which].length"
+                  v-model="routeState.choice[end.which]"
+                  density="compact"
+                  hide-details
+                >
+                  <v-radio
+                    v-for="(place, index) in routeState.candidates[end.which]"
+                    :key="index"
+                    :value="index"
+                    :label="place.label + (place.level === 1 ? ' (street only)' : '')"
+                  />
+                </v-radio-group>
+                <div
+                  v-if="
+                    settingsStore.deviceSettings.routeChecked &&
+                    settingsStore.deviceSettings[end.found]
+                  "
+                  class="text-caption mt-1"
+                >
+                  <v-icon size="small" color="success">mdi-check-circle</v-icon>
+                  Taken over: {{ settingsStore.deviceSettings[end.found] }}
+                </div>
+              </div>
+              <v-btn
+                size="small"
+                variant="tonal"
+                :disabled="!routeReady"
+                :loading="routeState.busy"
+                class="mb-2"
+                @click="routeCheck"
+              >
+                Check the route and take over both places
+              </v-btn>
+              <v-alert
+                v-if="routeState.message"
+                type="warning"
+                variant="tonal"
+                density="compact"
+                class="mb-2"
+              >
+                {{ routeState.message }}
+              </v-alert>
+              <div v-if="routeState.check" class="text-caption mb-2">
+                <v-icon size="small" color="success">mdi-check-circle</v-icon>
+                Checked by {{ routeState.check.source }}. Right now: there
+                {{ routeState.check.there_min }} min, back {{ routeState.check.back_min }} min<span
+                  v-if="routeState.check.free_there_min"
+                >
+                  (without traffic: {{ routeState.check.free_there_min }} /
+                  {{ routeState.check.free_back_min }} min)</span
+                >. The places are stored on the frame now; Save Settings keeps the rest.
+              </div>
+              <div v-else-if="!settingsStore.deviceSettings.routeChecked" class="text-caption mb-2">
+                Not checked yet: the page shows no travel time until both places are taken over.
+              </div>
+              <div class="text-subtitle-2 mb-1">The usual time</div>
+              <div class="text-caption text-medium-emphasis mb-2">
+                What a way normally takes, in minutes. A way is red when it takes more than this
+                plus the percentage and the minutes below. Take the times of the last check or the
+                ones without traffic, or type your own.
+              </div>
+              <v-row dense class="mb-1">
+                <v-col cols="6" sm="3">
+                  <v-text-field
+                    v-model.number="settingsStore.deviceSettings.routeRefThereMin"
+                    label="There (min)"
+                    type="number"
+                    min="0"
+                    max="600"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                  />
+                </v-col>
+                <v-col cols="6" sm="3">
+                  <v-text-field
+                    v-model.number="settingsStore.deviceSettings.routeRefBackMin"
+                    label="Back (min)"
+                    type="number"
+                    min="0"
+                    max="600"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                  />
+                </v-col>
+                <v-col cols="12" sm="6" class="d-flex align-center ga-2">
+                  <v-btn
+                    size="small"
+                    variant="text"
+                    :disabled="!routeState.check"
+                    @click="routeAdopt('now')"
+                  >
+                    Use the times now
+                  </v-btn>
+                  <v-btn
+                    size="small"
+                    variant="text"
+                    :disabled="!routeState.check || !routeState.check.free_there_min"
+                    @click="routeAdopt('free')"
+                  >
+                    Use the times without traffic
+                  </v-btn>
+                </v-col>
+              </v-row>
+              <v-row dense class="mb-2">
+                <v-col cols="6" sm="3">
+                  <v-text-field
+                    v-model.number="settingsStore.deviceSettings.routePercent"
+                    label="Longer by (%)"
+                    type="number"
+                    min="1"
+                    max="100"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                  />
+                </v-col>
+                <v-col cols="6" sm="3">
+                  <v-text-field
+                    v-model.number="settingsStore.deviceSettings.routeMinExcessMin"
+                    label="and by (min)"
+                    type="number"
+                    min="0"
+                    max="60"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                  />
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-text-field
+                    v-model="settingsStore.deviceSettings.routeLabel"
+                    label="Name on the display (optional)"
+                    placeholder="Work"
+                    maxlength="10"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                  />
+                </v-col>
+              </v-row>
+              <div class="text-caption text-medium-emphasis mb-2">
+                The display shows only this name, never the addresses. Keys: a free one from
+                developer.tomtom.com or developer.here.com; with both, the second is tried when the
+                first does not answer. A key is stored on the frame and never shown again; leave the
+                box empty to keep the one that is there.
+              </div>
+              <v-text-field
+                v-model="settingsStore.deviceSettings.routeKeyTomtom"
+                label="TomTom API key"
+                :placeholder="
+                  settingsStore.deviceSettings.routeKeyTomtomConfigured
+                    ? 'A key is saved'
+                    : 'Paste the key'
+                "
+                :rules="[routeKeyRule]"
+                type="password"
+                autocomplete="off"
+                variant="outlined"
+                density="compact"
+                hide-details="auto"
+                class="mb-2"
+              >
+                <template
+                  v-if="settingsStore.deviceSettings.routeKeyTomtomConfigured"
+                  #append-inner
+                >
+                  <v-btn size="x-small" variant="text" @click="removeRouteKey('tomtom')">
+                    Remove
+                  </v-btn>
+                </template>
+              </v-text-field>
+              <v-text-field
+                v-model="settingsStore.deviceSettings.routeKeyHere"
+                label="HERE API key (optional)"
+                :placeholder="
+                  settingsStore.deviceSettings.routeKeyHereConfigured
+                    ? 'A key is saved'
+                    : 'Paste the key'
+                "
+                :rules="[routeKeyRule]"
+                type="password"
+                autocomplete="off"
+                variant="outlined"
+                density="compact"
+                hide-details="auto"
+                class="mb-2"
+              >
+                <template v-if="settingsStore.deviceSettings.routeKeyHereConfigured" #append-inner>
+                  <v-btn size="x-small" variant="text" @click="removeRouteKey('here')">
+                    Remove
+                  </v-btn>
+                </template>
+              </v-text-field>
+            </template>
+<!-- #endif -->
 <!-- #endif -->
 <!-- #if FEATURE_FINANCE_SNAPSHOT -->
             <v-checkbox

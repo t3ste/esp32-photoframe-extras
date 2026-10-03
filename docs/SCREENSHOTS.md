@@ -58,6 +58,7 @@ charts say how many days they cover.
 | Fact of the day | <img src="screens/info-fact.png" width="400" alt="The fact of the day page"> | [FACT_OF_THE_DAY.md](FACT_OF_THE_DAY.md) |
 | Exchange rates (ECB reference rates) | <img src="screens/info-exchange-rates.png" width="400" alt="The exchange-rate page"> | [FINANCE_SNAPSHOT.md](FINANCE_SNAPSHOT.md) |
 | Fuel prices (Germany) | <img src="screens/info-fuel-prices.png" width="400" alt="The fuel-price page"> | [FUEL_PRICES.md](FUEL_PRICES.md) |
+| Fuel prices with the travel time in the header (one way longer than usual) | <img src="screens/info-fuel-route.png" width="400" alt="The fuel-price page with the travel time in the header"> | [ROUTE_TIME.md](ROUTE_TIME.md) |
 | Markets (stocks, ETFs, indices, crypto, currency pairs) | <img src="screens/info-markets.png" width="400" alt="The markets page"> | [MARKET_QUOTES.md](MARKET_QUOTES.md) |
 
 ### In German, with umlauts
@@ -95,6 +96,7 @@ build-host/render_screens out                              # every case in five 
 | --- | --- |
 | `info-chore-wheel.png`, `info-weather.png`, `info-fact.png`, `info-fact-de.png` | `chore-wheel-en`, `weather-en`, `fact-en`, `fact-de` |
 | `info-exchange-rates.png`, `info-fuel-prices.png`, `info-markets.png`, `info-markets-late.png` | `finance-en`, `fuel-en`, `markets-en`, `markets-late` |
+| `info-fuel-route.png` | `fuel-route-en` |
 
 The program knows more cases than are shown here (German variants, empty and error pages).
 

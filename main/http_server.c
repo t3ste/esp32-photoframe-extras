@@ -52,6 +52,10 @@
 #if FEATURE_ARTWORKS
 #include "art_select.h"
 #endif
+#if FEATURE_ROUTE_TIME
+#include "route_service.h"
+#include "route_time.h"
+#endif
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
@@ -2771,6 +2775,27 @@ static esp_err_t config_handler(httpd_req_t *req)
             cJSON_AddBoolToObject(root, "fuel_api_key_configured",
                                   config_manager_get_fuel_api_key()[0] != '\0');
 #endif
+#if FEATURE_ROUTE_TIME
+            // the travel time on the fuel page: the places (the Web UI shows what was taken over;
+            // the export leaves them out unless it includes credentials), never the coordinates,
+            // and whether there is a key - the keys themselves are write-only
+            cJSON_AddBoolToObject(root, "route_enabled", config_manager_get_route_enabled());
+            cJSON_AddStringToObject(root, "route_from", config_manager_get_route_text(0));
+            cJSON_AddStringToObject(root, "route_to", config_manager_get_route_text(1));
+            cJSON_AddStringToObject(root, "route_from_found", config_manager_get_route_found(0));
+            cJSON_AddStringToObject(root, "route_to_found", config_manager_get_route_found(1));
+            cJSON_AddBoolToObject(root, "route_checked", config_manager_get_route_checked());
+            cJSON_AddNumberToObject(root, "route_ref_there_min", config_manager_get_route_ref(0));
+            cJSON_AddNumberToObject(root, "route_ref_back_min", config_manager_get_route_ref(1));
+            cJSON_AddNumberToObject(root, "route_percent", config_manager_get_route_percent());
+            cJSON_AddNumberToObject(root, "route_min_excess_min",
+                                    config_manager_get_route_min_excess());
+            cJSON_AddStringToObject(root, "route_label", config_manager_get_route_label());
+            cJSON_AddBoolToObject(root, "route_key_tomtom_configured",
+                                  config_manager_get_route_key_tomtom()[0] != '\0');
+            cJSON_AddBoolToObject(root, "route_key_here_configured",
+                                  config_manager_get_route_key_here()[0] != '\0');
+#endif
 #if FEATURE_MARKET_QUOTES
             cJSON_AddStringToObject(root, "market_symbols", config_manager_get_market_symbols());
             cJSON_AddBoolToObject(root, "market_yahoo", config_manager_get_market_yahoo());
@@ -3004,6 +3029,10 @@ static esp_err_t config_urls_handler(httpd_req_t *req)
 #if FEATURE_ARTWORKS
     cJSON_AddStringToObject(root, "art_si_key", config_manager_get_art_si_key());
 #endif
+#if FEATURE_ROUTE_TIME
+    cJSON_AddStringToObject(root, "route_key_tomtom", config_manager_get_route_key_tomtom());
+    cJSON_AddStringToObject(root, "route_key_here", config_manager_get_route_key_here());
+#endif
 
     char *json_str = cJSON_Print(root);
     httpd_resp_set_type(req, "application/json");
@@ -3014,6 +3043,152 @@ static esp_err_t config_urls_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+#endif
+#if FEATURE_ROUTE_TIME
+// The body of a POST as JSON (at most 2 KB); NULL after an answer has been sent.
+static cJSON *route_read_body(httpd_req_t *req)
+{
+    if (req->content_len == 0 || req->content_len > 2048) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad request size");
+        return NULL;
+    }
+    char *buf = malloc(req->content_len + 1);
+    if (!buf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return NULL;
+    }
+    size_t got = 0;
+    while (got < req->content_len) {
+        int n = httpd_req_recv(req, buf + got, req->content_len - got);
+        if (n <= 0) {
+            free(buf);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to read request");
+            return NULL;
+        }
+        got += (size_t) n;
+    }
+    buf[got] = '\0';
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+    }
+    return root;
+}
+
+static void route_send_json(httpd_req_t *req, cJSON *answer)
+{
+    char *text = cJSON_PrintUnformatted(answer);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, text ? text : "{\"status\":\"failed\"}");
+    free(text);
+    cJSON_Delete(answer);
+}
+
+// A place of the Web UI: {"label", "lat", "lon", "level"}; false if it is not one.
+static bool route_read_place(const cJSON *object, route_place_t *out)
+{
+    const cJSON *label = cJSON_GetObjectItem(object, "label");
+    const cJSON *lat = cJSON_GetObjectItem(object, "lat");
+    const cJSON *lon = cJSON_GetObjectItem(object, "lon");
+    const cJSON *level = cJSON_GetObjectItem(object, "level");
+    if (!cJSON_IsString(label) || !cJSON_IsNumber(lat) || !cJSON_IsNumber(lon) ||
+        !cJSON_IsNumber(level) || lat->valuedouble < -90.0 || lat->valuedouble > 90.0 ||
+        lon->valuedouble < -180.0 || lon->valuedouble > 180.0) {
+        return false;
+    }
+    memset(out, 0, sizeof(*out));
+    snprintf(out->label, sizeof(out->label), "%.*s", (int) sizeof(out->label) - 1,
+             label->valuestring);
+    out->lat = lat->valuedouble;
+    out->lon = lon->valuedouble;
+    out->level = level->valueint;
+    return true;
+}
+
+// POST {"text": "an address"}: the places it can be - addresses or streets, best match first -
+// {"status": "ok", "source": "TomTom", "places": [{"label", "lat", "lon", "level", "score"}]}, or a
+// status with the provider's words in "message". The Web UI shows the list; nothing is stored.
+static esp_err_t route_geocode_handler(httpd_req_t *req)
+{
+    cJSON *body = route_read_body(req);
+    if (!body) {
+        return ESP_FAIL;
+    }
+    const cJSON *text = cJSON_GetObjectItem(body, "text");
+    route_place_t places[ROUTE_CANDIDATES_MAX];
+    int count = 0;
+    char source[12] = "", message[96] = "";
+    route_status_t status = ROUTE_STATUS_NOT_FOUND;
+    if (cJSON_IsString(text) && strlen(text->valuestring) < ROUTE_TEXT_MAX) {
+        status = route_service_geocode(text->valuestring, places, ROUTE_CANDIDATES_MAX, &count,
+                                       source, sizeof(source), message, sizeof(message));
+    }
+    cJSON_Delete(body);
+    cJSON *answer = cJSON_CreateObject();
+    cJSON_AddStringToObject(answer, "status", route_status_name(status));
+    if (status == ROUTE_STATUS_OK) {
+        cJSON_AddStringToObject(answer, "source", source);
+        cJSON *list = cJSON_AddArrayToObject(answer, "places");
+        for (int i = 0; i < count; i++) {
+            cJSON *place = cJSON_CreateObject();
+            cJSON_AddStringToObject(place, "label", places[i].label);
+            cJSON_AddNumberToObject(place, "lat", places[i].lat);
+            cJSON_AddNumberToObject(place, "lon", places[i].lon);
+            cJSON_AddNumberToObject(place, "level", places[i].level);
+            cJSON_AddNumberToObject(place, "score", places[i].score);
+            cJSON_AddItemToArray(list, place);
+        }
+    } else {
+        cJSON_AddStringToObject(answer, "message", message);
+    }
+    route_send_json(req, answer);
+    return ESP_OK;
+}
+
+// POST {"from_text", "from": {place}, "to_text", "to": {place}}: takes the two places the user
+// chose over - only if the route between them can be calculated both ways and is plausible. Answers
+// {"status": "ok", "source", "there_min", "back_min", "free_there_min", "free_back_min"} (the
+// free-flow times are 0 if the provider does not tell them), or a status with the provider's words.
+static esp_err_t route_check_handler(httpd_req_t *req)
+{
+    cJSON *body = route_read_body(req);
+    if (!body) {
+        return ESP_FAIL;
+    }
+    const cJSON *from_text = cJSON_GetObjectItem(body, "from_text");
+    const cJSON *to_text = cJSON_GetObjectItem(body, "to_text");
+    route_place_t from, to;
+    route_times_t times;
+    memset(&times, 0, sizeof(times));
+    route_status_t status = ROUTE_STATUS_NO_PLACES;
+    if (cJSON_IsString(from_text) && cJSON_IsString(to_text) &&
+        strlen(from_text->valuestring) < ROUTE_TEXT_MAX &&
+        strlen(to_text->valuestring) < ROUTE_TEXT_MAX &&
+        route_read_place(cJSON_GetObjectItem(body, "from"), &from) &&
+        route_read_place(cJSON_GetObjectItem(body, "to"), &to)) {
+        status =
+            route_service_check(from_text->valuestring, &from, to_text->valuestring, &to, &times);
+    }
+    cJSON_Delete(body);
+    cJSON *answer = cJSON_CreateObject();
+    cJSON_AddStringToObject(answer, "status", route_status_name(status));
+    if (status == ROUTE_STATUS_OK) {
+        cJSON_AddStringToObject(answer, "source", times.source);
+        cJSON_AddNumberToObject(answer, "there_min", route_minutes(times.there.seconds));
+        cJSON_AddNumberToObject(answer, "back_min", route_minutes(times.back.seconds));
+        cJSON_AddNumberToObject(
+            answer, "free_there_min",
+            times.there.free_seconds > 0 ? route_minutes(times.there.free_seconds) : 0);
+        cJSON_AddNumberToObject(
+            answer, "free_back_min",
+            times.back.free_seconds > 0 ? route_minutes(times.back.free_seconds) : 0);
+    } else {
+        cJSON_AddStringToObject(answer, "message", times.message);
+    }
+    route_send_json(req, answer);
+    return ESP_OK;
+}
 #endif
 #if FEATURE_FACT_OF_THE_DAY
 // The user's own facts (fact_service.h): the pack as plain text, read and replaced by the Web UI.
@@ -4677,6 +4852,10 @@ static void register_all_handlers(httpd_handle_t handle)
     register_uri(handle, "/api/config", HTTP_PATCH, config_handler);
 #if FEATURE_AGENDA
     register_uri(handle, "/api/config/urls", HTTP_GET, config_urls_handler);
+#if FEATURE_ROUTE_TIME
+    register_uri(handle, "/api/route/geocode", HTTP_POST, route_geocode_handler);
+    register_uri(handle, "/api/route/check", HTTP_POST, route_check_handler);
+#endif
 #endif
     register_uri(handle, "/api/debug/log", HTTP_GET, debug_log_download_handler);
     register_uri(handle, "/api/debug/log", HTTP_DELETE, debug_log_clear_handler);

@@ -935,6 +935,30 @@ typedef enum {
 #define NVS_FUEL_COUNT_KEY "fuel_cnt"
 #define NVS_FUEL_HIDE_CLOSED_KEY "fuel_hide"
 #define FUEL_API_KEY_MAX_LEN 65
+// route-time feature: whether the travel time is shown, the two places (the text as typed, the
+// place the provider found for it, its coordinates "lat,lon"), whether both were taken over and the
+// route between them calculated, the usual time there and back in minutes, the limits of a time
+// that is too long (percent, minutes), the label the display shows, and the personal keys of TomTom
+// and HERE (write-only credentials)
+#define NVS_ROUTE_ON_KEY "route_on"
+#define NVS_ROUTE_FROM_KEY "route_from"
+#define NVS_ROUTE_TO_KEY "route_to"
+#define NVS_ROUTE_FROM_FND_KEY "route_from_fnd"
+#define NVS_ROUTE_TO_FND_KEY "route_to_fnd"
+#define NVS_ROUTE_FROM_LL_KEY "route_from_ll"
+#define NVS_ROUTE_TO_LL_KEY "route_to_ll"
+#define NVS_ROUTE_CHK_KEY "route_chk"
+#define NVS_ROUTE_REF_A_KEY "route_ref_a"
+#define NVS_ROUTE_REF_B_KEY "route_ref_b"
+#define NVS_ROUTE_PCT_KEY "route_pct"
+#define NVS_ROUTE_EXC_KEY "route_exc"
+#define NVS_ROUTE_LBL_KEY "route_lbl"
+#define NVS_ROUTE_KEY_TT_KEY "route_k_tt"
+#define NVS_ROUTE_KEY_HERE_KEY "route_k_here"
+#define ROUTE_PERCENT_DEFAULT 10
+#define ROUTE_MIN_EXCESS_DEFAULT 5
+#define ROUTE_LABEL_MAX_LEN 11
+#define ROUTE_KEY_MAX_LEN 105
 // market-quotes feature: the symbols of the markets page as typed, whether Yahoo Finance may be
 // used (default on), the personal keys of Twelve Data and Alpha Vantage (write-only credentials),
 // and the requests made today per source ("day,yahoo,twelvedata,alphavantage"); the last good

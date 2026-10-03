@@ -293,6 +293,16 @@ menu "Photoframe optional features"
             keys, optional); the last good answers are kept for wakes without
             network. Needs the information screens option.
 
+    config FEATURE_ROUTE_TIME
+        bool "Travel time on the fuel page"
+        default n
+        depends on FEATURE_FUEL_PRICES
+        help
+            Shows the current travel time there and back between two addresses
+            in the header of the fuel-price page, from TomTom or HERE (a free
+            key of one of them is needed), and draws a time that is longer than
+            usual in red. Needs the fuel prices option.
+
     config FEATURE_ARTWORKS
         bool "Artworks rotation mode"
         default n
