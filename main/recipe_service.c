@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "config.h"
 #include "config_manager.h"
@@ -133,14 +134,7 @@ static bool service_load_last(void *ctx, recipe_t *recipe, uint8_t **jpeg, size_
     if (!ok) {
         return false;
     }
-    // the text of a file is not trusted to end where it should
-    recipe->title[sizeof(recipe->title) - 1] = '\0';
-    recipe->text[sizeof(recipe->text) - 1] = '\0';
-    recipe->url[sizeof(recipe->url) - 1] = '\0';
-    recipe->image_url[sizeof(recipe->image_url) - 1] = '\0';
-    if (recipe->ingredient_count < 0 || recipe->ingredient_count > RECIPE_INGREDIENTS_MAX) {
-        recipe->ingredient_count = 0;
-    }
+    recipe_sanitize(recipe);  // a file is not trusted to be what was written
     *jpeg = NULL;
     *jpeg_len = 0;
     FILE *photo = fopen(RECIPE_PHOTO_PATH, "rb");
@@ -162,10 +156,28 @@ static bool service_load_last(void *ctx, recipe_t *recipe, uint8_t **jpeg, size_
     return true;
 }
 
+// The recipe that the two files hold now (from this boot), so that the same one is not written
+// again with every drawing: the recipe of the day stays the same all day, and a rewrite of the
+// struct and the picture (about 40 KB) each time only wears the flash.
+static char saved_id[RECIPE_ID_MAX];
+static bool saved_with_photo;
+
+static bool file_exists(const char *path)
+{
+    struct stat info;
+    return stat(path, &info) == 0;
+}
+
 static void service_save_last(void *ctx, const recipe_t *recipe, const uint8_t *jpeg,
                               size_t jpeg_len)
 {
     (void) ctx;
+    bool with_photo = jpeg && jpeg_len > 0;
+    if (recipe->id[0] && strcmp(saved_id, recipe->id) == 0 && saved_with_photo == with_photo &&
+        file_exists(RECIPE_LAST_PATH) && (!with_photo || file_exists(RECIPE_PHOTO_PATH))) {
+        return;  // already there
+    }
+    saved_id[0] = '\0';
     FILE *file = fopen(RECIPE_LAST_PATH, "wb");
     if (!file) {
         return;
@@ -183,6 +195,8 @@ static void service_save_last(void *ctx, const recipe_t *recipe, const uint8_t *
     } else {
         remove(RECIPE_PHOTO_PATH);  // a recipe without a picture: no old picture stays with it
     }
+    snprintf(saved_id, sizeof(saved_id), "%s", recipe->id);
+    saved_with_photo = with_photo;
 }
 
 // ---- the list of recipes shown lately

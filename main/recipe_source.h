@@ -180,6 +180,13 @@ typedef struct {
  */
 bool recipe_https_url_ok(const char *url);
 
+/**
+ * @brief Makes a recipe that was read back from a file safe to use: every text ends inside its
+ * field, the number of ingredients is in range (an impossible one gives none) and the two flags are
+ * 0 or 1. A recipe that was just parsed is not changed by it.
+ */
+void recipe_sanitize(recipe_t *recipe);
+
 /** How many ld+json blocks of the recipe-of-the-day page are looked at for the list. */
 #define RECIPE_DAY_MAX_BLOCKS 8
 

@@ -357,6 +357,33 @@ static bool host_char_ok(char c)
     return isalnum((unsigned char) c) || c == '-' || c == '.';
 }
 
+void recipe_sanitize(recipe_t *r)
+{
+    if (!r) {
+        return;
+    }
+    r->title[sizeof(r->title) - 1] = '\0';
+    r->category[sizeof(r->category) - 1] = '\0';
+    r->time[sizeof(r->time) - 1] = '\0';
+    r->source[sizeof(r->source) - 1] = '\0';
+    r->id[sizeof(r->id) - 1] = '\0';
+    r->url[sizeof(r->url) - 1] = '\0';
+    r->image_url[sizeof(r->image_url) - 1] = '\0';
+    r->text[sizeof(r->text) - 1] = '\0';
+    for (int i = 0; i < RECIPE_INGREDIENTS_MAX; i++) {
+        r->ingredients[i][sizeof(r->ingredients[i]) - 1] = '\0';
+    }
+    if (r->ingredient_count < 0 || r->ingredient_count > RECIPE_INGREDIENTS_MAX) {
+        r->ingredient_count = 0;
+    }
+    // a bool that holds another value than 0 or 1 is not a bool: read the byte
+    unsigned char german, cut;
+    memcpy(&german, &r->german, 1);
+    memcpy(&cut, &r->text_cut, 1);
+    r->german = german != 0;
+    r->text_cut = cut != 0;
+}
+
 bool recipe_https_url_ok(const char *url)
 {
     static const char SCHEME[] = "https://";

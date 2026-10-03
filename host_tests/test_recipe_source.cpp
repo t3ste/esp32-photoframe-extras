@@ -523,6 +523,53 @@ TEST(RecipeParseIngredients, ACutIngredientDoesNotLeaveABracketOpen)
     EXPECT_EQ(full, std::string(RECIPE_INGREDIENT_LEN - 1, 'C'));
 }
 
+TEST(RecipeSanitize, ARecipeReadBackFromAFileIsSafeToUse)
+{
+    // a file with the right size but not what was written: every byte is 'A' (no string ends)
+    recipe_t *r = new recipe_t;
+    memset(r, 'A', sizeof(*r));
+    recipe_sanitize(r);
+    EXPECT_EQ(strlen(r->title), sizeof(r->title) - 1);
+    EXPECT_EQ(strlen(r->category), sizeof(r->category) - 1);
+    EXPECT_EQ(strlen(r->time), sizeof(r->time) - 1);
+    EXPECT_EQ(strlen(r->source), sizeof(r->source) - 1);
+    EXPECT_EQ(strlen(r->id), sizeof(r->id) - 1);
+    EXPECT_EQ(strlen(r->url), sizeof(r->url) - 1);
+    EXPECT_EQ(strlen(r->image_url), sizeof(r->image_url) - 1);
+    EXPECT_EQ(strlen(r->text), sizeof(r->text) - 1);
+    for (int i = 0; i < RECIPE_INGREDIENTS_MAX; i++) {
+        EXPECT_EQ(strlen(r->ingredients[i]), sizeof(r->ingredients[i]) - 1) << i;
+    }
+    EXPECT_EQ(r->ingredient_count, 0);  // 0x41414141 is not a number of ingredients
+    // the flags are 0 or 1 whatever the bytes were
+    unsigned char german, cut;
+    memcpy(&german, &r->german, 1);
+    memcpy(&cut, &r->text_cut, 1);
+    EXPECT_EQ(german, 1);
+    EXPECT_EQ(cut, 1);
+    delete r;
+}
+
+TEST(RecipeSanitize, ARecipeThatWasJustParsedIsNotChanged)
+{
+    recipe_t *r = new recipe_t;
+    ASSERT_TRUE(
+        recipe_parse_chefkoch_recipe(fixture("chefkoch-recipe.json").c_str(), "Chefkoch", r));
+    recipe_t *copy = new recipe_t;
+    memcpy(copy, r, sizeof(*r));
+    recipe_sanitize(r);
+    EXPECT_EQ(memcmp(copy, r, sizeof(*r)), 0);
+    r->ingredient_count = RECIPE_INGREDIENTS_MAX;  // the largest number there is
+    recipe_sanitize(r);
+    EXPECT_EQ(r->ingredient_count, RECIPE_INGREDIENTS_MAX);
+    r->ingredient_count = -1;
+    recipe_sanitize(r);
+    EXPECT_EQ(r->ingredient_count, 0);
+    recipe_sanitize(nullptr);  // and no crash
+    delete copy;
+    delete r;
+}
+
 TEST(RecipeParseDayBlocks, TheListMayBeInALaterBlockOfThePage)
 {
     char ids[12][RECIPE_ID_MAX];
