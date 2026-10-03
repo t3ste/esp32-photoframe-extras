@@ -1,0 +1,30 @@
+{
+  "name": "ESP32 PhotoFrame M5Stack M5Paper v1.1 (4.7\" 16-level grayscale) (Development)",
+  "version": "dev-736f646",
+  "home_assistant_domain": "esphome",
+  "new_install_prompt_erase": true,
+  "new_install_improv_wait_time": 15,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {
+          "path": "photoframe-firmware-m5stack_m5paper_v11-dev-boot.bin",
+          "offset": 4096
+        },
+        {
+          "path": "photoframe-firmware-m5stack_m5paper_v11-dev-partitions.bin",
+          "offset": 32768
+        },
+        {
+          "path": "photoframe-firmware-m5stack_m5paper_v11-dev-otadata.bin",
+          "offset": 61440
+        },
+        {
+          "path": "photoframe-firmware-m5stack_m5paper_v11-dev-app.bin",
+          "offset": 131072
+        }
+      ]
+    }
+  ]
+}
