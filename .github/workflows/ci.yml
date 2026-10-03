@@ -87,7 +87,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '18'
+          # 20 like the web builds: the dependencies installed below need it (Vite)
+          node-version: '20'
 
       - name: Feature registry tests
         run: python -m unittest discover -s scripts -p "test_*.py"
@@ -103,3 +104,12 @@ jobs:
 
       - name: With every feature off the web sources are the upstream web sources
         run: python scripts/migrate/alloff_web.py
+
+      # the Vue compiler is all the next check needs: no install scripts (the `canvas` prebuilt download
+      # of a full install is a known network flake)
+      - name: Install the web app's dependencies
+        run: npm ci --ignore-scripts
+        working-directory: webapp
+
+      - name: In every feature set the web sources use only names they define
+        run: python scripts/migrate/web_bindings.py
