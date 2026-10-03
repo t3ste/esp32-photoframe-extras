@@ -440,6 +440,39 @@ bool recipe_mealdb_short_url(const char *id, char *out, size_t out_len)
 // Reading the answers
 // ---------------------------------------------------------------------------------------------
 
+bool recipe_json_depth_ok(const char *json, int max_depth)
+{
+    if (!json) {
+        return false;
+    }
+    int depth = 0;
+    bool in_string = false;
+    for (const char *p = json; *p; p++) {
+        if (in_string) {
+            if (*p == '\\' && p[1]) {
+                p++;
+            } else if (*p == '"') {
+                in_string = false;
+            }
+        } else if (*p == '"') {
+            in_string = true;
+        } else if (*p == '{' || *p == '[') {
+            if (++depth > max_depth) {
+                return false;
+            }
+        } else if ((*p == '}' || *p == ']') && depth > 0) {
+            depth--;
+        }
+    }
+    return true;
+}
+
+// cJSON_Parse for the answers of the sources: NULL for text that is nested too deeply.
+static cJSON *parse_json(const char *json)
+{
+    return recipe_json_depth_ok(json, RECIPE_JSON_MAX_DEPTH) ? cJSON_Parse(json) : NULL;
+}
+
 static const char *str_of(const cJSON *object, const char *key)
 {
     const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
@@ -523,7 +556,7 @@ int recipe_parse_chefkoch_search(const char *json, recipe_candidate_t *out, int 
         memcpy(slice, p, len);
         slice[len] = '\0';
         p = end + 1;
-        cJSON *item = cJSON_Parse(slice);
+        cJSON *item = parse_json(slice);
         free(slice);
         if (!item) {
             continue;
@@ -598,7 +631,7 @@ int recipe_parse_chefkoch_day(const char *html, char ids[][RECIPE_ID_MAX], int m
     }
     memcpy(block, start, len);
     block[len] = '\0';
-    cJSON *root = cJSON_Parse(block);
+    cJSON *root = parse_json(block);
     free(block);
     if (!root) {
         return 0;
@@ -677,7 +710,7 @@ bool recipe_parse_chefkoch_recipe(const char *json, const char *source_label, re
     if (!json) {
         return false;
     }
-    cJSON *root = cJSON_Parse(json);
+    cJSON *root = parse_json(json);
     if (!root) {
         return false;
     }
@@ -793,7 +826,7 @@ int recipe_parse_mealdb_list(const char *json, recipe_candidate_t *out, int max)
     if (!json || !out || max <= 0) {
         return 0;
     }
-    cJSON *root = cJSON_Parse(json);
+    cJSON *root = parse_json(json);
     if (!root) {
         return 0;
     }
@@ -829,7 +862,7 @@ bool recipe_parse_mealdb_recipe(const char *json, recipe_t *out)
     if (!json) {
         return false;
     }
-    cJSON *root = cJSON_Parse(json);
+    cJSON *root = parse_json(json);
     if (!root) {
         return false;
     }

@@ -171,6 +171,18 @@ typedef struct {
     bool usable;  // not premium, not rejected
 } recipe_candidate_t;
 
+/** How deeply nested an answer of a source may be (the real ones go 6-8 levels deep). */
+#define RECIPE_JSON_MAX_DEPTH 32
+
+/**
+ * @brief Whether the JSON text is nested no deeper than `max_depth` (brackets inside strings do
+ * not count). cJSON parses recursively and needs about 64 bytes of stack for each level on the
+ * device, while the build allows a thousand levels: an answer with thousands of '[' would overflow
+ * the 16 KB stack of the task that parses it. Every parser of this file asks first, in one linear
+ * pass without recursion.
+ */
+bool recipe_json_depth_ok(const char *json, int max_depth);
+
 /**
  * @brief The results of a Chefkoch search, one object at a time (so a long answer needs little
  * memory, and one that was cut off still gives what came before the cut).

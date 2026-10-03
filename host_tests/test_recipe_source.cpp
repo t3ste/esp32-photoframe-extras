@@ -472,6 +472,85 @@ TEST(RecipeParseChefkoch, ANoteThatStartsWithACommaIsJoinedWithoutASpace)
     EXPECT_EQ(first_ingredient("Bund", "frisch", 2), "Basilikum (2 Bund frisch)");
 }
 
+TEST(RecipeJsonDepth, CountsOnlyBracketsOutsideStrings)
+{
+    EXPECT_TRUE(recipe_json_depth_ok("{}", 1));
+    EXPECT_FALSE(recipe_json_depth_ok("{}", 0));
+    EXPECT_TRUE(recipe_json_depth_ok("{\"a\": [1, {\"b\": [2]}]}", 4));
+    EXPECT_FALSE(recipe_json_depth_ok("{\"a\": [1, {\"b\": [2]}]}", 3));
+    // brackets in strings, also behind an escaped quote, are text
+    EXPECT_TRUE(recipe_json_depth_ok("{\"a\": \"[[[[[[[[\", \"b\": \"\\\"[[[[[[[\"}", 1));
+    EXPECT_TRUE(recipe_json_depth_ok("[1] [2] [3]", 1));  // side by side, not nested
+    EXPECT_FALSE(recipe_json_depth_ok(nullptr, 5));
+    EXPECT_TRUE(recipe_json_depth_ok("", 0));
+}
+
+TEST(RecipeJsonDepth, ThirtyTwoLevelsAreAllowedAndMoreAreNot)
+{
+    auto nested = [](int levels) {
+        return std::string((size_t) levels, '[') + std::string((size_t) levels, ']');
+    };
+    EXPECT_TRUE(recipe_json_depth_ok(nested(RECIPE_JSON_MAX_DEPTH).c_str(), RECIPE_JSON_MAX_DEPTH));
+    EXPECT_FALSE(
+        recipe_json_depth_ok(nested(RECIPE_JSON_MAX_DEPTH + 1).c_str(), RECIPE_JSON_MAX_DEPTH));
+    // a megabyte of '[' is turned down in one pass, without recursion (and without a stack of its
+    // own)
+    std::string flood(1000000, '[');
+    EXPECT_FALSE(recipe_json_depth_ok(flood.c_str(), RECIPE_JSON_MAX_DEPTH));
+}
+
+namespace
+{
+// The text of a fixture with a deeply nested value added at the end of its outermost object.
+std::string with_deep_value(const std::string &json, int levels)
+{
+    size_t close = json.rfind('}');
+    std::string deep = std::string((size_t) levels, '[') + std::string((size_t) levels, ']');
+    return json.substr(0, close) + ", \"deep\": " + deep + json.substr(close);
+}
+}  // namespace
+
+TEST(RecipeJsonDepth, TheParsersTurnDownAnAnswerThatIsNestedTooDeeply)
+{
+    recipe_t recipe;
+    std::string chefkoch = fixture("chefkoch-recipe.json");
+    EXPECT_TRUE(recipe_parse_chefkoch_recipe(with_deep_value(chefkoch, 10).c_str(), "C", &recipe));
+    EXPECT_FALSE(
+        recipe_parse_chefkoch_recipe(with_deep_value(chefkoch, 5000).c_str(), "C", &recipe));
+
+    std::string meal = fixture("mealdb-meal.json");
+    EXPECT_FALSE(recipe_parse_mealdb_recipe(with_deep_value(meal, 5000).c_str(), &recipe));
+
+    recipe_candidate_t found[RECIPE_SEARCH_PAGE];
+    std::string list = fixture("mealdb-list.json");
+    EXPECT_GT(recipe_parse_mealdb_list(list.c_str(), found, RECIPE_SEARCH_PAGE), 0);
+    EXPECT_EQ(
+        recipe_parse_mealdb_list(with_deep_value(list, 5000).c_str(), found, RECIPE_SEARCH_PAGE),
+        0);
+
+    char ids[12][RECIPE_ID_MAX];
+    std::string page =
+        "<script type=\"application/ld+json\">" +
+        with_deep_value(
+            "{\"itemListElement\": [{\"url\": \"https://x.invalid/rezepte/42/a.html\"}]}", 5000) +
+        "</script>";
+    EXPECT_EQ(recipe_parse_chefkoch_day(page.c_str(), ids, 12), 0);
+}
+
+TEST(RecipeJsonDepth, OneResultThatIsNestedTooDeeplyIsLeftOutOfASearch)
+{
+    // two results; the first has a deep value, the second is fine
+    std::string answer =
+        "{\"count\": 2, \"results\": [{\"recipe\": {\"id\": \"1\", \"title\": \"A\", \"deep\": " +
+        std::string(5000, '[') + std::string(5000, ']') +
+        "}}, {\"recipe\": {\"id\": \"2\", \"title\": \"B\", \"hasImage\": true}}]}";
+    recipe_candidate_t found[RECIPE_SEARCH_PAGE];
+    int total = 0;
+    int n = recipe_parse_chefkoch_search(answer.c_str(), found, RECIPE_SEARCH_PAGE, &total);
+    ASSERT_EQ(n, 1);
+    EXPECT_STREQ(found[0].id, "2");
+}
+
 TEST(RecipeParseChefkoch, ReadsTheRecipe)
 {
     recipe_t recipe;
