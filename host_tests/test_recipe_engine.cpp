@@ -323,6 +323,48 @@ TEST(RecipeEngineDay, ARecipeWithTooMuchTextIsSkipped)
     EXPECT_STREQ(r.recipe->id, "3004");
 }
 
+TEST(RecipeEngineDay, ARecipeWithFarMoreIngredientsThanThePageHoldsIsSkipped)
+{
+    auto serve_recipe_with = [](World &world, int ingredients) {
+        world.responders.push_back([ingredients](const std::string &url, std::string *body) {
+            if (url.rfind("https://api.chefkoch.de/v2/recipes/", 0) != 0) {
+                return false;
+            }
+            std::string json =
+                "{\"id\": \"7\", \"title\": \"Viele\", \"hasImage\": true, "
+                "\"previewImageUrlTemplate\": "
+                "\"https://x.example.invalid/bilder/<format>/a.jpg\", \"totalTime\": 20, "
+                "\"instructions\": \"Alles mischen.\", "
+                "\"ingredientGroups\": [{\"header\": \"\", \"ingredients\": [";
+            for (int i = 0; i < ingredients; i++) {
+                json += std::string(i ? ", " : "") + "{\"name\": \"Zutat " + std::to_string(i) +
+                        "\", \"amount\": 1.0, \"unit\": \"g\"}";
+            }
+            *body = json + "]}]}";
+            return true;
+        });
+    };
+    {
+        World world;
+        world.serve_day_page();
+        serve_recipe_with(world, 15);  // a list the page holds
+        world.serve_pictures();
+        Fetched r;
+        run(r, world, options_for(RECIPE_SOURCE_DAY));
+        EXPECT_EQ(r.result, RECIPE_RESULT_NEW);
+    }
+    {
+        World world;
+        world.serve_day_page();
+        serve_recipe_with(world,
+                          RECIPE_INGREDIENTS_MAX + 5);  // 35: not even the parser keeps them all
+        world.serve_pictures();
+        Fetched r;
+        run(r, world, options_for(RECIPE_SOURCE_DAY));
+        EXPECT_EQ(r.result, RECIPE_RESULT_NONE);  // a list that would be cut is not shown
+    }
+}
+
 TEST(RecipeEngineDay, ARecipeWhosePictureCannotBeHadIsSkipped)
 {
     World world;

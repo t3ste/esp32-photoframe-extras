@@ -472,6 +472,128 @@ TEST(RecipeParseChefkoch, ANoteThatStartsWithACommaIsJoinedWithoutASpace)
     EXPECT_EQ(first_ingredient("Bund", "frisch", 2), "Basilikum (2 Bund frisch)");
 }
 
+namespace
+{
+// A recipe of the Chefkoch shape with `n` ingredients, the time and the other numbers as given.
+std::string recipe_json(int ingredients, const std::string &numbers = "")
+{
+    std::string json =
+        "{\"id\": \"1\", \"title\": \"T\", \"hasImage\": true, \"previewImageUrlTemplate\": "
+        "\"https://x.example.invalid/<format>/a.jpg\", " +
+        numbers +
+        "\"instructions\": \"Schritt eins.\", \"ingredientGroups\": [{\"header\": \"\", "
+        "\"ingredients\": [";
+    for (int i = 0; i < ingredients; i++) {
+        json += std::string(i ? ", " : "") + "{\"name\": \"Zutat " + std::to_string(i + 1) +
+                "\", \"amount\": 1.0, \"unit\": \"g\"}";
+    }
+    return json + "]}]}";
+}
+}  // namespace
+
+TEST(RecipeParseDayBlocks, TheListMayBeInALaterBlockOfThePage)
+{
+    char ids[12][RECIPE_ID_MAX];
+    std::string list =
+        "<script type=\"application/ld+json\">{\"itemListElement\": [{\"url\": "
+        "\"https://x.invalid/rezepte/111/a.html\"}, "
+        "{\"url\": \"https://x.invalid/rezepte/222/b.html\"}]}</script>";
+    std::string other =
+        "<script type=\"application/ld+json\">{\"@type\": \"Organization\", \"name\": "
+        "\"x\"}</script>";
+    std::string broken = "<script type=\"application/ld+json\">{not json at all</script>";
+    std::string empty_list =
+        "<script type=\"application/ld+json\">{\"itemListElement\": []}</script>";
+
+    EXPECT_EQ(recipe_parse_chefkoch_day(("<html>" + list + "</html>").c_str(), ids, 12),
+              2);  // as before
+    ASSERT_EQ(recipe_parse_chefkoch_day(("<html>" + other + list + "</html>").c_str(), ids, 12), 2);
+    EXPECT_STREQ(ids[0], "111");
+    EXPECT_EQ(recipe_parse_chefkoch_day(
+                  ("<html>" + other + broken + empty_list + list + "</html>").c_str(), ids, 12),
+              2);
+    // no block has the list
+    EXPECT_EQ(recipe_parse_chefkoch_day(
+                  ("<html>" + other + broken + empty_list + "</html>").c_str(), ids, 12),
+              0);
+    // a page cut off in the block that has the list gives nothing (as before)
+    std::string cut = other +
+                      "<script type=\"application/ld+json\">{\"itemListElement\": [{\"url\": "
+                      "\"https://x.invalid/rezepte/1/a";
+    EXPECT_EQ(recipe_parse_chefkoch_day(cut.c_str(), ids, 12), 0);
+    // only the first few blocks are looked at
+    std::string many;
+    for (int i = 0; i < RECIPE_DAY_MAX_BLOCKS; i++)
+        many += other;
+    EXPECT_EQ(recipe_parse_chefkoch_day((many + list).c_str(), ids, 12), 0);
+}
+
+TEST(RecipeParseIngredients, MoreThanThePageHoldsIsLikeTooMuchText)
+{
+    recipe_t recipe;
+    ASSERT_TRUE(
+        recipe_parse_chefkoch_recipe(recipe_json(RECIPE_INGREDIENTS_MAX).c_str(), "S", &recipe));
+    EXPECT_EQ(recipe.ingredient_count, RECIPE_INGREDIENTS_MAX);
+    EXPECT_FALSE(recipe.text_cut);  // exactly as many as fit
+    ASSERT_TRUE(recipe_parse_chefkoch_recipe(recipe_json(RECIPE_INGREDIENTS_MAX + 1).c_str(), "S",
+                                             &recipe));
+    EXPECT_EQ(recipe.ingredient_count, RECIPE_INGREDIENTS_MAX);
+    EXPECT_TRUE(recipe.text_cut);  // one more: the recipe is not complete on the page
+    ASSERT_TRUE(recipe_parse_chefkoch_recipe(recipe_json(40).c_str(), "S", &recipe));
+    EXPECT_TRUE(recipe.text_cut);
+    // an extra entry without a name is nothing
+    std::string json = recipe_json(RECIPE_INGREDIENTS_MAX);
+    json.insert(json.rfind(']'), ", {\"name\": \"\", \"amount\": 1.0}");
+    ASSERT_TRUE(recipe_parse_chefkoch_recipe(json.c_str(), "S", &recipe));
+    EXPECT_FALSE(recipe.text_cut);
+}
+
+TEST(RecipeParseNumbers, ValuesOutsideTheRangeOfAnIntAreClampedNotCast)
+{
+    recipe_t recipe;
+    ASSERT_TRUE(
+        recipe_parse_chefkoch_recipe(recipe_json(2, "\"totalTime\": 90, ").c_str(), "S", &recipe));
+    EXPECT_STREQ(recipe.time, "1 Std. 30 Min.");
+    ASSERT_TRUE(recipe_parse_chefkoch_recipe(recipe_json(2, "\"totalTime\": 1e300, ").c_str(), "S",
+                                             &recipe));
+    EXPECT_STREQ(recipe.time, "");  // no time is better than an absurd one
+    ASSERT_TRUE(recipe_parse_chefkoch_recipe(recipe_json(2, "\"totalTime\": 1e999, ").c_str(), "S",
+                                             &recipe));  // infinity
+    EXPECT_STREQ(recipe.time, "");
+    ASSERT_TRUE(recipe_parse_chefkoch_recipe(
+        recipe_json(2, "\"totalTime\": -5, \"preparationTime\": 20, \"cookingTime\": 10, ").c_str(),
+        "S", &recipe));
+    EXPECT_STREQ(recipe.time, "30 Min.");  // the parts, when the total is not there
+    ASSERT_TRUE(recipe_parse_chefkoch_recipe(
+        recipe_json(2, "\"preparationTime\": 1e999, \"cookingTime\": -1e999, ").c_str(), "S",
+        &recipe));
+    EXPECT_STREQ(recipe.time, "");  // infinity minus infinity
+    // an id that is a number: whole and not absurd
+    ASSERT_TRUE(recipe_parse_chefkoch_recipe(recipe_json(2).c_str(), "S", &recipe));
+    EXPECT_STREQ(recipe.id, "1");
+    std::string numeric_id = recipe_json(2);
+    numeric_id.replace(numeric_id.find("\"id\": \"1\""), 9, "\"id\": 1e300");
+    ASSERT_TRUE(recipe_parse_chefkoch_recipe(numeric_id.c_str(), "S", &recipe));
+    EXPECT_STREQ(recipe.id, "");
+
+    // the candidates of a search: time, rating and difficulty stay in their ranges
+    std::string answer =
+        "{\"count\": 1, \"results\": [{\"recipe\": {\"id\": \"5\", \"title\": \"A\", "
+        "\"preparationTime\": 1e300, "
+        "\"difficulty\": 1e999, \"rating\": {\"rating\": 1e999}}}, {\"recipe\": {\"id\": \"6\", "
+        "\"title\": \"B\", "
+        "\"preparationTime\": -7, \"difficulty\": -1e999, \"rating\": {\"rating\": -3}}}]}";
+    recipe_candidate_t found[RECIPE_SEARCH_PAGE];
+    int total = 0;
+    ASSERT_EQ(recipe_parse_chefkoch_search(answer.c_str(), found, RECIPE_SEARCH_PAGE, &total), 2);
+    EXPECT_EQ(found[0].minutes, 10 * 24 * 60);
+    EXPECT_EQ(found[0].difficulty, 10);
+    EXPECT_EQ(found[0].rating_tenths, 100);
+    EXPECT_EQ(found[1].minutes, 0);
+    EXPECT_EQ(found[1].difficulty, 0);
+    EXPECT_EQ(found[1].rating_tenths, 0);
+}
+
 TEST(RecipeHttpsUrl, TheAddressesOfTheRealSourcesAreAccepted)
 {
     EXPECT_TRUE(recipe_https_url_ok(

@@ -35,7 +35,7 @@ typedef struct {
     int ingredient_count;
     char ingredients[RECIPE_INGREDIENTS_MAX][RECIPE_INGREDIENT_LEN];  // "Entenbrust (400 g)"
     char text[RECIPE_TEXT_MAX];  // the preparation, one paragraph per line ('\n' between)
-    bool text_cut;               // the source had more text than RECIPE_TEXT_MAX
+    bool text_cut;  // the source had more text than RECIPE_TEXT_MAX or more ingredients than fit
 } recipe_t;
 
 #endif

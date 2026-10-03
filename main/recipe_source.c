@@ -570,6 +570,21 @@ static double num_of(const cJSON *object, const char *key)
     return cJSON_IsNumber(item) ? item->valuedouble : 0;
 }
 
+// A number of an answer as an int in [lo, hi]: a value outside the range of an int (1e999 is
+// infinity for cJSON) must not be cast, that is undefined.
+static int int_of(double value, int lo, int hi)
+{
+    if (!(value >= lo)) {  // also NaN
+        return lo;
+    }
+    if (value > hi) {
+        return hi;
+    }
+    return (int) value;
+}
+
+#define RECIPE_MINUTES_SHOWN_MAX (10 * 24 * 60)  // a time of more than ten days is not believed
+
 static bool bool_of(const cJSON *object, const char *key)
 {
     const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
@@ -589,7 +604,10 @@ static void id_of(const cJSON *object, const char *key, char *out, size_t cap)
     if (cJSON_IsString(item) && item->valuestring) {
         snprintf(out, cap, "%s", item->valuestring);
     } else if (cJSON_IsNumber(item)) {
-        snprintf(out, cap, "%.0f", item->valuedouble);
+        double value = item->valuedouble;
+        if (value > 0 && value < 1e15) {  // an id is a whole number of at most 15 digits
+            snprintf(out, cap, "%.0f", value);
+        }
     }
     if (!id_valid(out)) {
         out[0] = '\0';
@@ -655,10 +673,11 @@ int recipe_parse_chefkoch_search(const char *json, recipe_candidate_t *out, int 
         id_of(recipe, "id", candidate->id, sizeof(candidate->id));
         if (candidate->id[0]) {
             copy_clean(candidate->title, sizeof(candidate->title), str_of(recipe, "title"));
-            candidate->minutes = (int) num_of(recipe, "preparationTime");
+            candidate->minutes =
+                int_of(num_of(recipe, "preparationTime"), 0, RECIPE_MINUTES_SHOWN_MAX);
             const cJSON *rating = cJSON_GetObjectItemCaseSensitive(recipe, "rating");
-            candidate->rating_tenths = (int) (num_of(rating, "rating") * 10 + 0.5);
-            candidate->difficulty = (int) num_of(recipe, "difficulty");
+            candidate->rating_tenths = int_of(num_of(rating, "rating") * 10 + 0.5, 0, 100);
+            candidate->difficulty = int_of(num_of(recipe, "difficulty"), 0, 10);
             candidate->has_image = bool_of(recipe, "hasImage");
             candidate->usable = !bool_of(recipe, "isPremium") && !bool_of(recipe, "isPlus") &&
                                 !bool_of(recipe, "isRejected");
@@ -696,46 +715,55 @@ int recipe_parse_chefkoch_day(const char *html, char ids[][RECIPE_ID_MAX], int m
     if (!html || !ids || max <= 0) {
         return 0;
     }
-    const char *marker = strstr(html, "application/ld+json");
-    if (!marker) {
-        return 0;
-    }
-    const char *start = strchr(marker, '>');
-    if (!start) {
-        return 0;
-    }
-    start++;
-    const char *end = strstr(start, "</script>");
-    if (!end) {
-        return 0;  // the page was cut off before the end of the list
-    }
-    size_t len = (size_t) (end - start);
-    char *block = malloc(len + 1);
-    if (!block) {
-        return 0;
-    }
-    memcpy(block, start, len);
-    block[len] = '\0';
-    cJSON *root = parse_json(block);
-    free(block);
-    if (!root) {
-        return 0;
-    }
-    int count = 0;
-    const cJSON *list = cJSON_GetObjectItemCaseSensitive(root, "itemListElement");
-    const cJSON *item = NULL;
-    cJSON_ArrayForEach(item, list)
-    {
-        if (count >= max) {
-            break;
+    // The list is in one of the ld+json blocks of the page (a page can have several: the
+    // organisation, the breadcrumb ...): the first block that holds recipe addresses is taken.
+    const char *from = html;
+    for (int blocks = 0; blocks < RECIPE_DAY_MAX_BLOCKS; blocks++) {
+        const char *marker = strstr(from, "application/ld+json");
+        if (!marker) {
+            return 0;
         }
-        const char *url = str_of(item, "url");
-        if (id_from_recipe_url(url, ids[count], RECIPE_ID_MAX)) {
-            count++;
+        const char *start = strchr(marker, '>');
+        if (!start) {
+            return 0;
+        }
+        start++;
+        const char *end = strstr(start, "</script>");
+        if (!end) {
+            return 0;  // the page was cut off before the end of the list
+        }
+        from = end + strlen("</script>");
+        size_t len = (size_t) (end - start);
+        char *block = malloc(len + 1);
+        if (!block) {
+            return 0;
+        }
+        memcpy(block, start, len);
+        block[len] = '\0';
+        cJSON *root = parse_json(block);
+        free(block);
+        if (!root) {
+            continue;
+        }
+        int count = 0;
+        const cJSON *list = cJSON_GetObjectItemCaseSensitive(root, "itemListElement");
+        const cJSON *item = NULL;
+        cJSON_ArrayForEach(item, list)
+        {
+            if (count >= max) {
+                break;
+            }
+            const char *url = str_of(item, "url");
+            if (id_from_recipe_url(url, ids[count], RECIPE_ID_MAX)) {
+                count++;
+            }
+        }
+        cJSON_Delete(root);
+        if (count > 0) {
+            return count;
         }
     }
-    cJSON_Delete(root);
-    return count;
+    return 0;
 }
 
 int recipe_day_position(int variant)
@@ -853,10 +881,14 @@ bool recipe_parse_chefkoch_recipe(const char *json, const char *source_label, re
         // the precisions keep the two names, " / " and the end of the string inside the field
         snprintf(out->category, sizeof(out->category), "%.24s / %.28s", names[1], names[2]);
     }
-    int minutes = (int) num_of(recipe, "totalTime");
+    int minutes = int_of(num_of(recipe, "totalTime"), 0, RECIPE_MINUTES_SHOWN_MAX + 1);
     if (minutes <= 0) {
-        minutes = (int) (num_of(recipe, "preparationTime") + num_of(recipe, "cookingTime") +
-                         num_of(recipe, "restingTime"));
+        minutes = int_of(num_of(recipe, "preparationTime") + num_of(recipe, "cookingTime") +
+                             num_of(recipe, "restingTime"),
+                         0, RECIPE_MINUTES_SHOWN_MAX + 1);
+    }
+    if (minutes > RECIPE_MINUTES_SHOWN_MAX) {
+        minutes = 0;  // no time is better than an absurd one
     }
     recipe_text_format_minutes(minutes, true, out->time, sizeof(out->time));
 
@@ -868,12 +900,13 @@ bool recipe_parse_chefkoch_recipe(const char *json, const char *source_label, re
         const cJSON *ingredient = NULL;
         cJSON_ArrayForEach(ingredient, items)
         {
-            if (out->ingredient_count >= RECIPE_INGREDIENTS_MAX) {
-                break;
-            }
             const char *name = str_of(ingredient, "name");
             if (!name[0]) {
                 continue;
+            }
+            if (out->ingredient_count >= RECIPE_INGREDIENTS_MAX) {
+                out->text_cut = true;  // more ingredients than fit: like too long a text, not shown
+                break;
             }
             char amount[16];
             recipe_text_format_amount(num_of(ingredient, "amount"), true, amount, sizeof(amount));

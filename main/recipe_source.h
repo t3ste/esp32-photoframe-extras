@@ -180,6 +180,9 @@ typedef struct {
  */
 bool recipe_https_url_ok(const char *url);
 
+/** How many ld+json blocks of the recipe-of-the-day page are looked at for the list. */
+#define RECIPE_DAY_MAX_BLOCKS 8
+
 /** The largest side of a picture that is decoded (the real ones are 200-642 pixels). */
 #define RECIPE_IMAGE_MAX_DIM 4096
 
