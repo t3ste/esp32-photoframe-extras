@@ -3,7 +3,7 @@
 > **Build option:** compiled in only with `python build.py --with recipes` (needs `info-screens`; the build pulls it in with what it needs), part of
 > the `extras` bundle and of every full build. Without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
 >
-> **Status:** built and tested on a PC (153 host tests, also under AddressSanitizer / UBSan, with invented sample answers), compiled for the boards, and run on one frame
+> **Status:** built and tested on a PC (182 host tests, also under AddressSanitizer / UBSan, and a mutation fuzzer, with invented sample answers), compiled for the boards, and run on one frame
 > (Waveshare PhotoPainter 7.3", 2026-10-03): the recipe of the day (classic, vegan), a search with filters, TheMealDB by category and at random, landscape and portrait, the QR code,
 > the page without a picture, the relaxation of the filters after three empty tries, the last recipe with its warning, the Web UI card and the settings API.
 > **Not seen yet:** a deep-sleep wake with the page, a frame with no network at all, other boards and panels (sixteen grays, the big and the small ones), a long run, and
@@ -64,14 +64,16 @@ if the credentials are included). Attribution: recipe data and imagery are TheMe
 
 1. **Three tries with exactly your filters.** A try asks the source, takes up to six recipes in random order, and the first that **has a picture** (when pictures are on),
    **fits the page without being cut** at the smallest size (12 px text), and **has not been shown lately** (the frame remembers the last 20; the recipe of the
-   day is exempt - it is meant to stay the same all day) is the recipe.
-2. **Only if the source answered but nothing usable came out**, the filters are **relaxed step by step** and asked once more each: first the type of meal,
+   day is exempt - it is meant to stay the same all day) is the recipe. If every result of a page was shown lately and there are more pages, another page is asked;
+   if everything that fits your filters was shown lately, **one of those is shown again** (it is better than a recipe that does not fit).
+2. **Only if the source answered but nothing usable came out** (nothing fits the filters at all), the filters are **relaxed step by step** and asked once more each: first the type of meal,
    the diet and the property are dropped, then category and country, and last everything (the search words, the time and the rating too). The page then
    says "Filter gelockert" / "Filters relaxed". A failing network never relaxes anything.
 3. **If nothing is found at all** (also when there is no network): the **last recipe that was fetched** is shown again with a warning
    ("Letztes Rezept" / "Last recipe", and "Offline" without a network). If there never was one, **nothing is drawn** and the page is skipped (the
    other pages of the rotation take its turn); if it is the only page, a short message ("No recipe could be loaded") is shown instead.
-4. A try takes a few seconds; after about **110 seconds** no further try is made.
+4. A drawing takes a few seconds. Before **every request** the frame looks at the clock and at the count: after about **110 seconds**, or after **30 requests**,
+   nothing more is asked - a slow source cannot keep the frame busy for minutes (and on a battery frame awake).
 
 The frame keeps the last recipe and its picture in its storage (`.recipe_last.bin`, `.recipe_last.jpg`) and the list of recent ones in `.recipe_seen.txt`; they
 are hidden files and never uploaded anywhere.
@@ -97,7 +99,12 @@ On small panels the text is correspondingly small; on a 7.3" panel (800 x 480) t
 ## The picture and the QR code
 
 - The picture is loaded as a small JPEG (Chefkoch: 240 x 160, 360 x 240 or 642 x 428, whichever the room on the page needs; TheMealDB: 200 or 350 px), decoded on
-  the frame and dithered.
+  the frame and dithered. Only a picture at an **https address of a domain name** is fetched (no IP address, no `localhost`, no `.local` / `.lan` / `.internal`
+  name, no login in the address, no port but 443) - the address comes out of the source's answer, and an answer that was tampered with must not make the
+  frame ask a device of your home network; a recipe whose picture address does not pass is skipped. The sides of the picture may be at most 4096 pixels and its size
+  must be what its header says (the decoder library multiplies in 32 bit, and a header with 40000 x 35792 pixels would make it write far past its buffer).
+- What the frame reads from the sources is bounded: an answer nested more than 32 levels is turned down (the real ones are at most 5 deep), a text is cleaned
+  in one pass, an amount above 100 kg or a time above ten days is not shown.
 - The QR code holds the recipe's short address (`https://www.chefkoch.de/rezepte/<id>/`, or the recipe's page at TheMealDB). It is small on purpose
   (version up to 6, low error correction) - a phone reads it from the panel at arm's length. It uses the room at the bottom right, and the text keeps out of it.
 
@@ -119,7 +126,7 @@ The page is added to the rotation with `"recipe"` in `info_screens`.
 ## Files and tests
 
 - Code: `main/recipe_*.c` (fonts, text cleaning, sources, layout, QR code, engine, device glue) and `main/screen_recipe.c`; the page id `recipe` in `main/info_screens.c`.
-- Host tests (`make test`): `recipe_text_test`, `recipe_source_test`, `recipe_layout_test`, `recipe_engine_test` - 153 tests with invented sample answers in
+- Host tests (`make test`): `recipe_text_test`, `recipe_source_test`, `recipe_layout_test`, `recipe_engine_test` - 182 tests with invented sample answers in
   `host_tests/data/recipe/`; they also run under AddressSanitizer / UBSan (see [MAINTAINING.md](MAINTAINING.md)).
 - `host_tests/render_recipe.cpp` draws the page for the panels of all boards, both orientations, into PNG files without a frame (that is how the pictures in these
   docs are made).

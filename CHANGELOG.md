@@ -28,7 +28,7 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   (the page says so), and when nothing can be had at all the last recipe is shown again with a warning (none ever fetched: the page is skipped). Characters and step numbers of the sources are
   cleaned. The options are one NVS text plus TheMealDB's optional write-only key; Web UI card in the Agenda tab; `GET/PATCH /api/config` fields `recipe_*`. New: `recipe_font.c` and
   `scripts/gen_recipe_font.py`, `recipe_text.c`, `recipe_source.c`, `recipe_layout.c`, `recipe_qr.c`, `recipe_engine.c`, `recipe_service.c`, `screen_recipe.c` (everything but the glue is pure:
-  153 host tests, also under AddressSanitizer / UBSan, with invented sample answers; `host_tests/render_recipe.cpp` draws the page for all panels without a frame). The sources are unofficial or
+  182 host tests, also under AddressSanitizer / UBSan and a fuzzer, with invented sample answers; `host_tests/render_recipe.cpp` draws the page for all panels without a frame). The sources are unofficial or
   free interfaces (see the docs for their terms).
 - **Travel time on the fuel page** (`--with route-time`, [docs/ROUTE_TIME.md](docs/ROUTE_TIME.md); part of `extras`, needs `fuel-prices`): the header of the fuel page shows how long the drive
   there and back between two addresses takes **right now**, with the traffic (`Hin 28 min  Rück 31 min`); a way that takes more than the usual time by a percentage (10) **and** a number of
@@ -186,6 +186,17 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Fixed
 
+- **The recipe page was hardened after a code audit** (static warnings, a review of every path that reads data from the internet, and a mutation fuzzer under
+  ASan / UBSan / LeakSanitizer; details in [docs/RECIPES.md](docs/RECIPES.md)): the time (110 s) and the number of requests (30) are checked before **every** request, not
+  only between the tries; an answer nested more than 32 levels is turned down before cJSON parses it (the build allows 1000, which needs ~64 KB of stack on the Xtensa);
+  a picture address must be **https to a domain name** (no IP address, no home-network names, no login or odd port) and the sides of a JPEG are limited and checked
+  against the size the decoder reports (the library multiplies in 32 bit: 40000 x 35792 pixels comes out as 72 704 bytes); the day page's list is looked for in every
+  `ld+json` block; numbers from the answers are clamped instead of cast (an infinity was cast to int, undefined); a step number has at most four digits; an amount above
+  100 kg is not shown; the text cleaning is linear (it was quadratic for a text with many `<` and no `>`); a layout that could not be built is defined and draws a white page;
+  the last recipe read from its file is made safe (every text terminated) and is not written again when it is the same one (flash wear); when every recipe that fits the
+  filters was shown lately one is shown again instead of relaxing the filters; the cleaned search text is whole UTF-8 and cleaning it twice changes nothing.
+  The same weakness of the decoder library is in the **base's photo pipeline** (`image_processor.c`, which does not look at the sides of a JPEG either); it is not changed
+  there. 29 new host tests (the recipe suites have 182 now).
 - **Every TLS connection of a build with `agenda` leaked 200-400 bytes of internal heap** (found with a heap trace while testing the recipe page of the extended edition, which fetches three times a drawing). The `agenda` option switches on the cross-signed
   verification of ESP-IDF's certificate bundle (`CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY`, needed for Google Calendar); its callback builds a certificate for the trusted root out of separate
   `calloc()`s, and `mbedtls_x509_crt_free()` frees only the structure and the list nodes, so the name buffers were lost after every verification. A heap trace of one request showed exactly those allocations
