@@ -3,7 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstring>
+#include <limits>
 #include <string>
 
 extern "C" {
@@ -179,6 +181,46 @@ TEST(RecipeClean, NoSpaceBeforeACommaOrSemicolon)
     EXPECT_EQ(clean("a ,"), "a,");
     EXPECT_EQ(clean(", a"), ", a");  // nothing before it: stays
     EXPECT_EQ(clean("2 - 3 EL"), "2 - 3 EL");
+}
+
+TEST(RecipeClean, ATextWithManyOpeningBracketsAndNoClosingOneIsCleanedInOnePass)
+{
+    // 400 KB of "<a": the search for the '>' of each tag used to run to the end of the text every
+    // time (quadratic: hundreds of milliseconds on a PC, seconds on the frame)
+    std::string flood;
+    while (flood.size() < 400000)
+        flood += "<a";
+    auto start = std::chrono::steady_clock::now();
+    std::string out = clean(flood, flood.size() + 16);
+    double ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    EXPECT_EQ(out, flood);  // none of it is a tag: it stays
+    EXPECT_LT(ms, 100.0);
+    // the tags that are closed are still removed, before and after the lone '<'
+    EXPECT_EQ(clean("a<b>b <i>c</i> d<e f<g>h"),
+              "ab c dh");  // "<e f<g>" is one tag, as it always was
+    EXPECT_EQ(clean("x<br>y<p>z"), "x\ny\nz");
+    EXPECT_EQ(clean("<a href=\"x\">link</a> and <b"), "link and <b");
+}
+
+TEST(RecipeSteps, ANumberOfFiveDigitsOrMoreIsTextNotAStep)
+{
+    EXPECT_EQ(steps("1234\nMix."), "1234. Mix.");    // four digits: still a marker
+    EXPECT_EQ(steps("12345\nMix."), "12345\nMix.");  // five: text
+    // no overflow of the number (it was a signed overflow, undefined)
+    EXPECT_EQ(steps("1234567890123456789012\nMix."), "1234567890123456789012\nMix.");
+    EXPECT_EQ(steps("Step 99999999999\nMix."), "Step 99999999999\nMix.");
+}
+
+TEST(RecipeAmount, NoAmountIsBetterThanAnAbsurdOne)
+{
+    EXPECT_EQ(amount(100000.0, true), "100000");
+    EXPECT_EQ(amount(100000.5, true), "");
+    EXPECT_EQ(amount(1e30, true), "");
+    EXPECT_EQ(amount(std::numeric_limits<double>::infinity(), true), "");
+    EXPECT_EQ(amount(std::numeric_limits<double>::quiet_NaN(), true), "");
+    EXPECT_EQ(amount(-3.0, true), "");
+    EXPECT_EQ(amount(1500, false), "1500");
 }
 
 TEST(RecipeClean, ANullInputGivesAnEmptyText)

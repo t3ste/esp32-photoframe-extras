@@ -808,7 +808,21 @@ static void ingredient_label(char *out, size_t cap, const char *name, const char
     add_word(detail, sizeof(detail), clean_unit);
     add_note(detail, sizeof(detail), clean_note);
     if (detail[0] && paren) {
-        snprintf(out, cap, "%s (%s)", clean_name, detail);
+        int written = snprintf(out, cap, "%s (%s)", clean_name, detail);
+        if (written >= (int) cap) {
+            // cut: do not leave the bracket open (and not just the bracket at the end)
+            char *open = strrchr(out, '(');
+            if (open && !strchr(open, ')')) {
+                if (open[1] == '\0') {
+                    *open = '\0';
+                    while (open > out && open[-1] == ' ') {
+                        *--open = '\0';
+                    }
+                } else {
+                    out[strlen(out) - 1] = ')';
+                }
+            }
+        }
     } else {
         snprintf(out, cap, "%s", clean_name);
     }

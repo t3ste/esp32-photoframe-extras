@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <set>
@@ -490,6 +491,37 @@ std::string recipe_json(int ingredients, const std::string &numbers = "")
     return json + "]}]}";
 }
 }  // namespace
+
+TEST(RecipeParseIngredients, ACutIngredientDoesNotLeaveABracketOpen)
+{
+    auto label_of = [](const std::string &name, const std::string &unit) {
+        std::string json =
+            "{\"id\": \"1\", \"title\": \"T\", \"instructions\": \"Schritt.\", "
+            "\"ingredientGroups\": [{\"ingredients\": [{\"name\": \"" +
+            name + "\", \"amount\": 100.0, \"unit\": \"" + unit + "\"}]}]}";
+        recipe_t recipe;
+        EXPECT_TRUE(recipe_parse_chefkoch_recipe(json.c_str(), "S", &recipe));
+        return std::string(recipe.ingredients[0]);
+    };
+    auto balanced = [](const std::string &text) {
+        return std::count(text.begin(), text.end(), '(') ==
+               std::count(text.begin(), text.end(), ')');
+    };
+    EXPECT_EQ(label_of("Mehl", "g"), "Mehl (100 g)");  // fits: as it was
+    // a name that leaves room for part of the detail only
+    std::string cut = label_of(std::string(88, 'A'), "Gramm");
+    EXPECT_EQ(cut.size(), RECIPE_INGREDIENT_LEN - 1);
+    EXPECT_TRUE(balanced(cut)) << cut;
+    EXPECT_EQ(cut.back(), ')');
+    // room for the bracket and nothing else: the bracket goes, not a lone " ("
+    std::string tight = label_of(std::string(93, 'B'), "g");
+    EXPECT_TRUE(balanced(tight)) << tight;
+    EXPECT_NE(tight.back(), '(');
+    EXPECT_NE(tight.back(), ' ');
+    // a name that fills the whole field: nothing of the detail, and no ')' written over the name
+    std::string full = label_of(std::string(200, 'C'), "g");
+    EXPECT_EQ(full, std::string(RECIPE_INGREDIENT_LEN - 1, 'C'));
+}
 
 TEST(RecipeParseDayBlocks, TheListMayBeInALaterBlockOfThePage)
 {

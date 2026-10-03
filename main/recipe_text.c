@@ -248,18 +248,32 @@ static size_t entity_at(const char *s, uint32_t *cp)
     return 0;
 }
 
+// Where the next '>' is: found once and kept, so that a text with thousands of '<' and no '>' is
+// not searched to its end for each of them (that was quadratic).
+typedef struct {
+    const char *next;  // the first '>' at or after the last place that was looked at
+    bool none;         // there is no '>' in the rest of the text
+} gt_cache_t;
+
 // `s` points at '<'. If a tag follows (a letter, '/' or '!' after it, closed by '>'), returns its
 // length and says whether it ends a line (<br>, <p>, </p>, <div>, <li>, <h1>...).
-static size_t tag_at(const char *s, bool *breaks_line)
+static size_t tag_at(const char *s, gt_cache_t *cache, bool *breaks_line)
 {
     char next = s[1];
     if (!(isalpha((unsigned char) next) || next == '/' || next == '!')) {
         return 0;
     }
-    const char *end = strchr(s, '>');
-    if (!end) {
+    if (cache->none) {
         return 0;
     }
+    if (!cache->next || cache->next < s) {
+        cache->next = strchr(s, '>');
+        if (!cache->next) {
+            cache->none = true;
+            return 0;
+        }
+    }
+    const char *end = cache->next;
     const char *name = s + 1;
     if (*name == '/') {
         name++;
@@ -352,11 +366,12 @@ size_t recipe_text_clean(const char *utf8, char *out, size_t out_cap, bool *out_
     }
     // pass 1: decode, remove markup, map characters; white space is tidied in pass 2
     sink_t sink = {.out = out, .cap = out_cap, .len = 0, .cut = false};
+    gt_cache_t gt = {NULL, false};
     const unsigned char *p = (const unsigned char *) utf8;
     while (*p) {
         if (*p == '<') {
             bool breaks = false;
-            size_t tag = tag_at((const char *) p, &breaks);
+            size_t tag = tag_at((const char *) p, &gt, &breaks);
             if (tag) {
                 if (breaks) {
                     put(&sink, '\n');
@@ -432,7 +447,11 @@ static bool is_step_marker(const char *line, size_t len, int *number)
     }
     int value = 0;
     bool digits = false;
+    int digit_count = 0;
     while (i < len && isdigit((unsigned char) line[i])) {
+        if (++digit_count > 4) {
+            return false;  // a step has no five-digit number: text (and no overflow of the value)
+        }
         value = value * 10 + (line[i] - '0');
         digits = true;
         i++;
@@ -665,8 +684,9 @@ void recipe_text_format_amount(double value, bool german, char *out, size_t out_
         return;
     }
     out[0] = '\0';
-    if (!(value > 0)) {
-        return;
+    if (!(value > 0) || value > 100000.0) {
+        return;  // none, NaN, or more than 100 kg: no amount is better than "inf" or 1e30 written
+                 // out
     }
     char text[32];
     snprintf(text, sizeof(text), "%.2f", value);
