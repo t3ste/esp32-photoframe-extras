@@ -547,11 +547,12 @@ bool recipe_parse_chefkoch_recipe(const char *json, const char *source_label, re
     if (!bool_of(recipe, "hasImage")) {
         out->image_url[0] = '\0';
     }
-    const char *site = str_of(recipe, "siteUrl");
-    if (site[0]) {
-        snprintf(out->url, sizeof(out->url), "%s", site);
-    } else if (out->id[0]) {
+    // the address of the recipe: the short form (the QR code is smaller for it), the site's own
+    // if the recipe has no id
+    if (out->id[0]) {
         recipe_chefkoch_short_url(out->id, out->url, sizeof(out->url));
+    } else {
+        snprintf(out->url, sizeof(out->url), "%s", str_of(recipe, "siteUrl"));
     }
 
     // the category: the last entry of the breadcrumb that has a name

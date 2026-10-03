@@ -757,6 +757,7 @@ target_link_libraries(render_screens PNG::PNG m)
 # The recipe page (build option recipes): the layout, the fonts, the text, the sources and the QR code. The tests and
 # the render harness share the sources.
 set(RECIPE_SCREEN_SOURCES
+  ../main/recipe_engine.c
   ../main/recipe_layout.c
   ../main/recipe_font.c
   ../main/recipe_font_data.c
@@ -822,6 +823,34 @@ target_include_directories(
 )
 
 target_link_libraries(recipe_layout_test GTest::gtest_main m)
+
+# How the page gets its recipe: the tries, the choosing and the rules, with a made-up network, picture decoder,
+# clock and dice
+add_executable(
+  recipe_engine_test
+  test_recipe_engine.cpp
+  ${RECIPE_SCREEN_SOURCES}
+)
+
+target_compile_definitions(
+  recipe_engine_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  RECIPE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/recipe"
+)
+
+target_include_directories(
+  recipe_engine_test
+  PRIVATE
+  ${CJSON_DIR}
+  ${QRCODEGEN_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
+target_link_libraries(recipe_engine_test GTest::gtest_main m)
 
 # Microphone level maths (RMS/peak in dBFS, text bar) behind the console level test
 # (voice-stop feature)
@@ -1087,6 +1116,7 @@ gtest_discover_tests(route_service_test)
 gtest_discover_tests(recipe_text_test)
 gtest_discover_tests(recipe_source_test)
 gtest_discover_tests(recipe_layout_test)
+gtest_discover_tests(recipe_engine_test)
 gtest_discover_tests(wake_schedule_test)
 gtest_discover_tests(http_auth_test)
 gtest_discover_tests(source_auth_test)

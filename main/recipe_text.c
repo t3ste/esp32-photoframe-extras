@@ -200,7 +200,14 @@ static const entity_t ENTITIES[] = {
 // `s` points at '&'. If an entity follows, stores its code point and returns its length.
 static size_t entity_at(const char *s, uint32_t *cp)
 {
-    const char *end = memchr(s, ';', 12);
+    // the ';' within a dozen characters - not past the end of the text
+    const char *end = NULL;
+    for (size_t i = 1; i < 12 && s[i]; i++) {
+        if (s[i] == ';') {
+            end = s + i;
+            break;
+        }
+    }
     if (!end || end - s < 3) {
         return 0;
     }

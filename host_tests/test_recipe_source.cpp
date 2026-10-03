@@ -428,7 +428,7 @@ TEST(RecipeParseChefkoch, ReadsTheRecipe)
     EXPECT_EQ(std::string(recipe.source), "Chefkoch " + byte(0x96) + " Rezept des Tages");
     EXPECT_STREQ(recipe.category, "Suppen");  // the last breadcrumb with a name
     EXPECT_STREQ(recipe.time, "35 Min.");
-    EXPECT_STREQ(recipe.url, "https://www.example.invalid/rezepte/2001/Beispiel-Gemuesesuppe.html");
+    EXPECT_STREQ(recipe.url, "https://www.chefkoch.de/rezepte/2001/");  // the short form
     EXPECT_STREQ(
         recipe.image_url,
         "https://img.example.invalid/rezepte/2001/bilder/7/<format>/beispiel-gemuesesuppe.jpg");
