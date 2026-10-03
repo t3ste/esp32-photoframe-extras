@@ -41,6 +41,24 @@ static void put_pixel(canvas_t *canvas, int x, int y, canvas_color_t c)
     p[2] = c.b;
 }
 
+void canvas_rotate_cw(const canvas_t *src, canvas_t *dst)
+{
+    if (!src || !dst || !src->rgb || !dst->rgb || dst->width != src->height ||
+        dst->height != src->width) {
+        return;
+    }
+    for (int out_y = 0; out_y < dst->height; out_y++) {
+        uint8_t *row = dst->rgb + (size_t) out_y * dst->width * 3;
+        for (int out_x = 0; out_x < dst->width; out_x++) {
+            const uint8_t *pixel =
+                src->rgb + ((size_t) (src->height - 1 - out_x) * src->width + (size_t) out_y) * 3;
+            row[out_x * 3] = pixel[0];
+            row[out_x * 3 + 1] = pixel[1];
+            row[out_x * 3 + 2] = pixel[2];
+        }
+    }
+}
+
 void canvas_fill(canvas_t *canvas, canvas_color_t color)
 {
     canvas_rect(canvas, 0, 0, canvas->width, canvas->height, color);

@@ -350,6 +350,20 @@ menu "Photoframe optional features"
             overlay captions, headlines, the Agenda and Telegram captions. It
             only changes text that is drawn by another feature.
 
+    config FEATURE_RECIPES
+        bool "Recipe page"
+        default n
+        depends on FEATURE_INFO_SCREENS
+        help
+            A page with a cooking recipe: a recipe of Chefkoch (the recipe of the
+            day, classic, vegetarian or vegan, or a search with filters) or of
+            TheMealDB (by category), with its picture, drawn in landscape or
+            portrait to suit the display orientation. The title, the
+            ingredients and the preparation are shown in the largest size in
+            which everything fits; a recipe without a picture or with too much
+            text is skipped, and a small QR code of the recipe's address can be
+            added. Needs the information screens option.
+
     config FEATURE_MULTI_UPLOAD
         bool "Upload several images at once"
         default n

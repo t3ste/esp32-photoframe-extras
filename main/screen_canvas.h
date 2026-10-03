@@ -49,6 +49,14 @@ int canvas_text_scale(const canvas_t *canvas, int steps);
 
 void canvas_fill(canvas_t *canvas, canvas_color_t color);
 
+/**
+ * @brief Copies `src` turned a quarter clockwise into `dst`, whose width is the height of `src` and
+ * whose height is its width: the top left of `src` becomes the top right of `dst`. How a layout
+ * drawn for the other orientation is written to the panel's own layout - the way photos in portrait
+ * orientation are (build option `recipes`). Does nothing if the sizes do not match.
+ */
+void canvas_rotate_cw(const canvas_t *src, canvas_t *dst);
+
 /** @brief A filled rectangle. */
 void canvas_rect(canvas_t *canvas, int x, int y, int w, int h, canvas_color_t color);
 

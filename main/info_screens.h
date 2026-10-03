@@ -30,11 +30,12 @@ typedef enum {
     INFO_SCREEN_FINANCE = 4,
     INFO_SCREEN_FUEL = 5,
     INFO_SCREEN_MARKETS = 6,
+    INFO_SCREEN_RECIPE = 7,
     INFO_SCREEN_COUNT
 } info_screen_id_t;
 
 /** @brief The name used in the settings ("agenda", "chore-wheel", "weather", "fact", "finance",
- * "fuel", "markets"), NULL for an unknown id. */
+ * "fuel", "markets", "recipe"), NULL for an unknown id. */
 const char *info_screen_name(int id);
 
 /** @brief The id for a name of the settings, -1 if unknown. */

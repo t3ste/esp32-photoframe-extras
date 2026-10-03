@@ -247,6 +247,14 @@ FEATURES = (
         "Pages per Agenda schedule, with priorities and a minimum time between two displays",
     ),
     Feature(
+        "recipes",
+        "FEATURE_RECIPES",
+        (),
+        ("info-screens",),
+        "Recipe page: a recipe of Chefkoch (of the day or searched with filters) or TheMealDB with "
+        "its picture, in landscape and portrait, optionally with a QR code of its address",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),
@@ -292,10 +300,11 @@ BUNDLES = (
             "route-time",
             "artworks",
             "schedule-pages",
+            "recipes",
         ),
         "Everything added after the first fork release: webcal, CalDAV calendars and to-dos, "
         "multi-upload, duplicate detection, glyphs, the information pages, the travel time on the fuel "
-        "page, the artworks mode and the pages per schedule",
+        "page, the artworks mode, the pages per schedule and the recipe page",
     ),
 )
 

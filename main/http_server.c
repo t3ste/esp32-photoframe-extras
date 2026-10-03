@@ -2796,6 +2796,39 @@ static esp_err_t config_handler(httpd_req_t *req)
             cJSON_AddBoolToObject(root, "route_key_here_configured",
                                   config_manager_get_route_key_here()[0] != '\0');
 #endif
+#if FEATURE_RECIPES
+            {
+                // the recipe page: what the user chose, by the names of recipe_source.h (the Web
+                // UI offers the same lists); the key of TheMealDB is write-only
+                recipe_options_t recipe_options;
+                config_manager_get_recipe_options(&recipe_options);
+                cJSON_AddStringToObject(root, "recipe_source",
+                                        RECIPE_SOURCE_NAMES[recipe_options.source]);
+                cJSON_AddStringToObject(root, "recipe_variant",
+                                        RECIPE_VARIANTS[recipe_options.variant]);
+                cJSON_AddStringToObject(root, "recipe_query", recipe_options.query);
+                cJSON_AddStringToObject(root, "recipe_property",
+                                        RECIPE_PROPERTIES[recipe_options.property]);
+                cJSON_AddStringToObject(root, "recipe_health",
+                                        RECIPE_HEALTH[recipe_options.health]);
+                cJSON_AddStringToObject(root, "recipe_category",
+                                        RECIPE_CATEGORIES[recipe_options.category]);
+                cJSON_AddStringToObject(root, "recipe_country",
+                                        RECIPE_COUNTRIES[recipe_options.country]);
+                cJSON_AddStringToObject(root, "recipe_meal", RECIPE_MEALS[recipe_options.meal]);
+                cJSON_AddNumberToObject(root, "recipe_max_minutes",
+                                        RECIPE_MAX_MINUTES[recipe_options.max_time]);
+                cJSON_AddNumberToObject(root, "recipe_min_rating",
+                                        RECIPE_MIN_RATINGS[recipe_options.min_rating]);
+                cJSON_AddStringToObject(root, "recipe_sort", RECIPE_SORTS[recipe_options.sort]);
+                cJSON_AddStringToObject(root, "recipe_mealdb_category",
+                                        RECIPE_MEALDB_CATEGORIES[recipe_options.mealdb_category]);
+                cJSON_AddBoolToObject(root, "recipe_image", recipe_options.image);
+                cJSON_AddBoolToObject(root, "recipe_qr", recipe_options.qr);
+                cJSON_AddBoolToObject(root, "recipe_mealdb_key_configured",
+                                      config_manager_get_recipe_mealdb_key()[0] != '\0');
+            }
+#endif
 #if FEATURE_MARKET_QUOTES
             cJSON_AddStringToObject(root, "market_symbols", config_manager_get_market_symbols());
             cJSON_AddBoolToObject(root, "market_yahoo", config_manager_get_market_yahoo());
@@ -3032,6 +3065,9 @@ static esp_err_t config_urls_handler(httpd_req_t *req)
 #if FEATURE_ROUTE_TIME
     cJSON_AddStringToObject(root, "route_key_tomtom", config_manager_get_route_key_tomtom());
     cJSON_AddStringToObject(root, "route_key_here", config_manager_get_route_key_here());
+#endif
+#if FEATURE_RECIPES
+    cJSON_AddStringToObject(root, "recipe_mealdb_key", config_manager_get_recipe_mealdb_key());
 #endif
 
     char *json_str = cJSON_Print(root);

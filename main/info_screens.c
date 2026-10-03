@@ -51,11 +51,17 @@
 #include "screen_weather.h"
 #include "weather.h"
 #endif
+#if FEATURE_RECIPES
+#include <stdlib.h>
+
+#include "recipe_service.h"
+#include "screen_recipe.h"
+#endif
 
 static const char *TAG = "info_screens";
 
 static const char *const SCREEN_NAMES[INFO_SCREEN_COUNT] = {
-    "agenda", "chore-wheel", "weather", "fact", "finance", "fuel", "markets"};
+    "agenda", "chore-wheel", "weather", "fact", "finance", "fuel", "markets", "recipe"};
 
 const char *info_screen_name(int id)
 {
@@ -92,6 +98,9 @@ uint32_t info_screens_compiled_mask(void)
 #endif
 #if FEATURE_MARKET_QUOTES
     mask |= 1u << INFO_SCREEN_MARKETS;
+#endif
+#if FEATURE_RECIPES
+    mask |= 1u << INFO_SCREEN_RECIPE;
 #endif
     return mask;
 }
@@ -319,6 +328,77 @@ static void load_fuel(fuel_screen_data_t *out, bool wifi_connected)
 }
 #endif
 
+#if FEATURE_RECIPES
+// The recipe page: drawn for the orientation the user chose (a tall canvas for portrait on a wide
+// panel and the other way round, turned into the panel's own layout like a photo in portrait
+// orientation), with a recipe from the source or the last one. With no recipe at all the page is
+// skipped - nothing is redrawn - unless it is the only page there is: then a message is drawn.
+static esp_err_t render_recipe(canvas_t *native, const info_now_t *now, bool wifi_connected)
+{
+    bool landscape = config_manager_get_display_orientation() == DISPLAY_ORIENTATION_LANDSCAPE;
+    int long_side = native->width > native->height ? native->width : native->height;
+    int short_side = native->width > native->height ? native->height : native->width;
+    int width = landscape ? long_side : short_side;
+    int height = landscape ? short_side : long_side;
+
+    canvas_t target = *native;
+    uint8_t *turned = NULL;
+    if (width != native->width || height != native->height) {
+        turned = heap_caps_malloc((size_t) width * height * 3, MALLOC_CAP_SPIRAM);
+        if (!turned) {
+            return ESP_ERR_NO_MEM;
+        }
+        target.rgb = turned;
+        target.width = width;
+        target.height = height;
+    }
+    recipe_t *recipe = heap_caps_calloc(1, sizeof(*recipe), MALLOC_CAP_SPIRAM);
+    recipe_screen_data_t *data = calloc(1, sizeof(*data));
+    recipe_outcome_t *outcome = calloc(1, sizeof(*outcome));
+    esp_err_t err = ESP_ERR_NO_MEM;
+    if (recipe && data && outcome) {
+        recipe_options_t options;
+        config_manager_get_recipe_options(&options);
+        recipe_result_t result = recipe_service_load(recipe, outcome, &options, wifi_connected,
+                                                     width, height, landscape);
+        data->options = options;
+        data->grayscale = strncmp(BOARD_HAL_DISPLAY_TYPE, "gc", 2) == 0;
+        err = ESP_OK;
+        if (result == RECIPE_RESULT_NONE) {
+            uint32_t mask = config_manager_get_info_screens_mask() & info_screens_compiled_mask();
+            if (!(config_manager_get_agenda_todo_enabled() ||
+                  config_manager_get_agenda_cal_enabled())) {
+                mask &= ~(1u << INFO_SCREEN_AGENDA);
+            }
+            if (info_rotation_size(mask, INFO_SCREEN_COUNT) > 1) {
+                ESP_LOGW(TAG, "No recipe: this page is skipped");
+                err = ESP_ERR_NOT_FOUND;
+            }
+            data->status = wifi_connected ? RECIPE_SCREEN_NO_RECIPE : RECIPE_SCREEN_NO_NETWORK;
+        } else {
+            data->status = RECIPE_SCREEN_OK;
+            data->recipe = recipe;
+            data->warnings = outcome->warnings;
+            data->photo = outcome->photo;
+            data->photo_w = outcome->photo_w;
+            data->photo_h = outcome->photo_h;
+        }
+        if (err == ESP_OK) {
+            recipe_screen_render(&target, landscape, now, data);
+            if (turned) {
+                canvas_rotate_cw(&target, native);
+            }
+        }
+    }
+    free(outcome ? outcome->photo : NULL);
+    free(outcome);
+    free(data);
+    heap_caps_free(recipe);
+    heap_caps_free(turned);
+    return err;
+}
+#endif
+
 esp_err_t info_screens_show(int id, bool wifi_connected)
 {
     (void) wifi_connected;
@@ -395,6 +475,11 @@ esp_err_t info_screens_show(int id, bool wifi_connected)
         err = ESP_OK;
         break;
     }
+#endif
+#if FEATURE_RECIPES
+    case INFO_SCREEN_RECIPE:
+        err = render_recipe(&canvas, &now, wifi_connected);
+        break;
 #endif
 #if FEATURE_MARKET_QUOTES
     case INFO_SCREEN_MARKETS: {

@@ -59,6 +59,16 @@ MODULES = {
     "market-quotes": ["market_quotes", "market_service", "screen_markets"],
     "artworks": ["art_select", "art_caption", "art_sources", "art_store", "art_flow"],
     "schedule-pages": ["sched_pick"],
+    "recipes": [
+        "recipe_text",
+        "recipe_source",
+        "recipe_font",
+        "recipe_qr",
+        "recipe_layout",
+        "recipe_engine",
+        "recipe_service",
+        "screen_recipe",
+    ],
     "route-time": ["route_time", "route_service"],
     "upload-dedup": ["dedup", "dedup_payload", "dedup_service"],
 }

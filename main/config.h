@@ -958,6 +958,17 @@ typedef enum {
 #define ROUTE_PERCENT_DEFAULT 10
 #define ROUTE_MIN_EXCESS_DEFAULT 5
 #define ROUTE_LABEL_MAX_LEN 11
+
+// recipes feature: what the recipe page shows (one short text of "key=value" fields, see
+// recipe_source.h), the personal key of TheMealDB (a write-only credential), and three small files:
+// the last recipe that was shown (so a failed fetch can show it again), its picture as it was
+// downloaded, and the ids of the recipes shown lately
+#define NVS_RECIPE_OPTS_KEY "recipe_opts"
+#define NVS_RECIPE_MKEY_KEY "recipe_mkey"
+#define RECIPE_MEALDB_KEY_MAX_LEN 25
+#define RECIPE_LAST_PATH FS_MOUNT_POINT "/.recipe_last.bin"
+#define RECIPE_PHOTO_PATH FS_MOUNT_POINT "/.recipe_last.jpg"
+#define RECIPE_SEEN_PATH FS_MOUNT_POINT "/.recipe_seen.txt"
 #define ROUTE_KEY_MAX_LEN 105
 // market-quotes feature: the symbols of the markets page as typed, whether Yahoo Finance may be
 // used (default on), the personal keys of Twelve Data and Alpha Vantage (write-only credentials),

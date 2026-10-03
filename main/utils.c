@@ -42,6 +42,9 @@
 #include "route_service.h"
 #include "route_time.h"
 #endif
+#if FEATURE_RECIPES
+#include "recipe_source.h"
+#endif
 #include "cron.h"
 #include "debug_log.h"
 #include "display_flow.h"
@@ -1276,6 +1279,92 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     if (item && cJSON_IsTrue(item)) {
         config_manager_set_route_key_here("");
         route_service_forget();
+    }
+#endif
+#if FEATURE_RECIPES
+    {
+        // The recipe page: the choices are names of the lists in recipe_source.h (a name that is
+        // not in its list is ignored, like the other settings), saved together with one write. The
+        // key of TheMealDB is write-only like the other keys.
+        recipe_options_t recipe_options;
+        config_manager_get_recipe_options(&recipe_options);
+        bool recipe_changed = false;
+        struct {
+            const char *key;
+            const char *const *list;
+            int count;
+            int *field;
+        } names[] = {
+            {"recipe_source", RECIPE_SOURCE_NAMES, RECIPE_SOURCE_COUNT, &recipe_options.source},
+            {"recipe_variant", RECIPE_VARIANTS, RECIPE_VARIANT_COUNT, &recipe_options.variant},
+            {"recipe_property", RECIPE_PROPERTIES, RECIPE_PROPERTY_COUNT, &recipe_options.property},
+            {"recipe_health", RECIPE_HEALTH, RECIPE_HEALTH_COUNT, &recipe_options.health},
+            {"recipe_category", RECIPE_CATEGORIES, RECIPE_CATEGORY_COUNT, &recipe_options.category},
+            {"recipe_country", RECIPE_COUNTRIES, RECIPE_COUNTRY_COUNT, &recipe_options.country},
+            {"recipe_meal", RECIPE_MEALS, RECIPE_MEAL_COUNT, &recipe_options.meal},
+            {"recipe_sort", RECIPE_SORTS, RECIPE_SORT_COUNT, &recipe_options.sort},
+            {"recipe_mealdb_category", RECIPE_MEALDB_CATEGORIES, RECIPE_MEALDB_CATEGORY_COUNT,
+             &recipe_options.mealdb_category},
+        };
+        for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+            item = cJSON_GetObjectItem(root, names[i].key);
+            if (item && cJSON_IsString(item)) {
+                int index =
+                    recipe_list_index(names[i].list, names[i].count, cJSON_GetStringValue(item));
+                if (index >= 0) {
+                    *names[i].field = index;
+                    recipe_changed = true;
+                }
+            }
+        }
+        struct {
+            const char *key;
+            const int *values;
+            int count;
+            int *field;
+        } numbers[] = {
+            {"recipe_max_minutes", RECIPE_MAX_MINUTES, RECIPE_TIME_COUNT, &recipe_options.max_time},
+            {"recipe_min_rating", RECIPE_MIN_RATINGS, RECIPE_RATING_COUNT,
+             &recipe_options.min_rating},
+        };
+        for (size_t i = 0; i < sizeof(numbers) / sizeof(numbers[0]); i++) {
+            item = cJSON_GetObjectItem(root, numbers[i].key);
+            if (item && cJSON_IsNumber(item)) {
+                for (int k = 0; k < numbers[i].count; k++) {
+                    if (numbers[i].values[k] == item->valueint) {
+                        *numbers[i].field = k;
+                        recipe_changed = true;
+                    }
+                }
+            }
+        }
+        item = cJSON_GetObjectItem(root, "recipe_query");
+        if (item && cJSON_IsString(item)) {
+            snprintf(recipe_options.query, sizeof(recipe_options.query), "%s",
+                     cJSON_GetStringValue(item));
+            recipe_changed = true;
+        }
+        item = cJSON_GetObjectItem(root, "recipe_image");
+        if (item && cJSON_IsBool(item)) {
+            recipe_options.image = cJSON_IsTrue(item);
+            recipe_changed = true;
+        }
+        item = cJSON_GetObjectItem(root, "recipe_qr");
+        if (item && cJSON_IsBool(item)) {
+            recipe_options.qr = cJSON_IsTrue(item);
+            recipe_changed = true;
+        }
+        if (recipe_changed) {
+            config_manager_set_recipe_options(&recipe_options);
+        }
+        item = cJSON_GetObjectItem(root, "recipe_mealdb_key");
+        if (item && cJSON_IsString(item) && recipe_mealdb_key_valid(cJSON_GetStringValue(item))) {
+            config_manager_set_recipe_mealdb_key(cJSON_GetStringValue(item));
+        }
+        item = cJSON_GetObjectItem(root, "recipe_mealdb_key_clear");
+        if (item && cJSON_IsTrue(item)) {
+            config_manager_set_recipe_mealdb_key("");
+        }
     }
 #endif
 #if FEATURE_MARKET_QUOTES

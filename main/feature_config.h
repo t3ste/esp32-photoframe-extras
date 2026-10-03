@@ -184,6 +184,12 @@
 #define FEATURE_SCHEDULE_PAGES 0
 #endif
 
+#ifdef CONFIG_FEATURE_RECIPES
+#define FEATURE_RECIPES 1
+#else
+#define FEATURE_RECIPES 0
+#endif
+
 #ifdef CONFIG_FEATURE_UPLOAD_DEDUP
 #define FEATURE_UPLOAD_DEDUP 1
 #else
@@ -259,7 +265,7 @@
      FEATURE_UPLOAD_DEDUP || FEATURE_GLYPHS || FEATURE_INFO_SCREENS || FEATURE_CHORE_WHEEL ||      \
      FEATURE_WEATHER_SCREEN || FEATURE_FACT_OF_THE_DAY || FEATURE_FINANCE_SNAPSHOT ||              \
      FEATURE_FUEL_PRICES || FEATURE_MARKET_QUOTES || FEATURE_ROUTE_TIME || FEATURE_ARTWORKS ||     \
-     FEATURE_SCHEDULE_PAGES || FEATURE_MULTI_UPLOAD)
+     FEATURE_SCHEDULE_PAGES || FEATURE_RECIPES || FEATURE_MULTI_UPLOAD)
 
 // Second line of defence behind build.py and Kconfig: the Kconfig capability
 // symbols mirror the board headers, and this makes a disagreement a build error.

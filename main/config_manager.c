@@ -18,6 +18,9 @@
 #include "art_select.h"
 #include "art_store.h"
 #endif
+#if FEATURE_RECIPES
+#include "recipe_source.h"
+#endif
 #if FEATURE_ROUTE_TIME
 #include "route_time.h"
 #endif
@@ -246,6 +249,10 @@ static uint8_t route_min_excess = ROUTE_MIN_EXCESS_DEFAULT;
 static char route_label[ROUTE_LABEL_MAX_LEN];
 static char route_key_tomtom[ROUTE_KEY_MAX_LEN];
 static char route_key_here[ROUTE_KEY_MAX_LEN];
+#endif
+#if FEATURE_RECIPES
+static recipe_options_t recipe_opts = {.image = true};  // the recipe of the day, no filter
+static char recipe_mealdb_key[RECIPE_MEALDB_KEY_MAX_LEN];
 #endif
 #if FEATURE_MARKET_QUOTES
 static char market_symbols[INFO_LIST_MAX_LEN] = {0};
@@ -1479,6 +1486,18 @@ esp_err_t config_manager_init(void)
             nvs_get_str(nvs_handle, NVS_ROUTE_KEY_TT_KEY, route_key_tomtom, &key_len);
             key_len = sizeof(route_key_here);
             nvs_get_str(nvs_handle, NVS_ROUTE_KEY_HERE_KEY, route_key_here, &key_len);
+        }
+#endif
+#if FEATURE_RECIPES
+        {
+            char stored_options[RECIPE_OPTIONS_TEXT_MAX] = {0};
+            size_t options_len = sizeof(stored_options);
+            if (nvs_get_str(nvs_handle, NVS_RECIPE_OPTS_KEY, stored_options, &options_len) ==
+                ESP_OK) {
+                recipe_options_unpack(stored_options, &recipe_opts);
+            }
+            size_t mealdb_key_len = sizeof(recipe_mealdb_key);
+            nvs_get_str(nvs_handle, NVS_RECIPE_MKEY_KEY, recipe_mealdb_key, &mealdb_key_len);
         }
 #endif
 #if FEATURE_MARKET_QUOTES
@@ -4292,6 +4311,34 @@ void config_manager_set_route_key_here(const char *key)
 {
     copy_info_list(route_key_here, sizeof(route_key_here), key);
     agenda_nvs_set_str_or_erase(NVS_ROUTE_KEY_HERE_KEY, route_key_here);
+}
+#endif
+
+#if FEATURE_RECIPES
+void config_manager_get_recipe_options(recipe_options_t *out)
+{
+    *out = recipe_opts;
+}
+
+void config_manager_set_recipe_options(const recipe_options_t *options)
+{
+    recipe_opts = *options;
+    recipe_options_sanitize(&recipe_opts);
+    char text[RECIPE_OPTIONS_TEXT_MAX];
+    if (recipe_options_pack(&recipe_opts, text, sizeof(text)) > 0) {
+        agenda_nvs_set_str(NVS_RECIPE_OPTS_KEY, text);
+    }
+}
+
+const char *config_manager_get_recipe_mealdb_key(void)
+{
+    return recipe_mealdb_key;
+}
+
+void config_manager_set_recipe_mealdb_key(const char *key)
+{
+    copy_info_list(recipe_mealdb_key, sizeof(recipe_mealdb_key), key);
+    agenda_nvs_set_str_or_erase(NVS_RECIPE_MKEY_KEY, recipe_mealdb_key);
 }
 #endif
 

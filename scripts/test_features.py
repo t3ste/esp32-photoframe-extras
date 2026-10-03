@@ -168,6 +168,7 @@ class BundleTest(unittest.TestCase):
                 "route-time",
                 "artworks",
                 "schedule-pages",
+                "recipes",
             },
         )
 

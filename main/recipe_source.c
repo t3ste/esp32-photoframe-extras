@@ -56,6 +56,135 @@ void recipe_options_defaults(recipe_options_t *options)
     options->image = true;
 }
 
+static int clamp_index(int value, int count)
+{
+    return value >= 0 && value < count ? value : 0;
+}
+
+void recipe_options_sanitize(recipe_options_t *o)
+{
+    o->source = clamp_index(o->source, RECIPE_SOURCE_COUNT);
+    o->variant = clamp_index(o->variant, RECIPE_VARIANT_COUNT);
+    o->property = clamp_index(o->property, RECIPE_PROPERTY_COUNT);
+    o->health = clamp_index(o->health, RECIPE_HEALTH_COUNT);
+    o->category = clamp_index(o->category, RECIPE_CATEGORY_COUNT);
+    o->country = clamp_index(o->country, RECIPE_COUNTRY_COUNT);
+    o->meal = clamp_index(o->meal, RECIPE_MEAL_COUNT);
+    o->max_time = clamp_index(o->max_time, RECIPE_TIME_COUNT);
+    o->min_rating = clamp_index(o->min_rating, RECIPE_RATING_COUNT);
+    o->sort = clamp_index(o->sort, RECIPE_SORT_COUNT);
+    o->mealdb_category = clamp_index(o->mealdb_category, RECIPE_MEALDB_CATEGORY_COUNT);
+    // the search text: printable, single spaces, trimmed, and not longer than the buffer
+    char clean[RECIPE_QUERY_MAX];
+    size_t n = 0;
+    bool space = false;
+    o->query[RECIPE_QUERY_MAX - 1] = '\0';
+    for (const unsigned char *p = (const unsigned char *) o->query; *p && n + 1 < sizeof(clean);
+         p++) {
+        if (*p == ' ' || *p == '\t') {
+            space = n > 0;
+        } else if (*p >= 0x20 && *p != 0x7F) {
+            if (space) {
+                if (n + 2 >= sizeof(clean)) {
+                    break;
+                }
+                clean[n++] = ' ';
+                space = false;
+            }
+            clean[n++] = (char) *p;
+        }
+    }
+    clean[n] = '\0';
+    // never end in the middle of a UTF-8 character: drop a cut-off lead byte and its tail
+    size_t keep = n;
+    while (keep > 0 && ((unsigned char) clean[keep - 1] & 0xC0) == 0x80) {
+        keep--;
+    }
+    if (keep > 0 && ((unsigned char) clean[keep - 1] & 0xC0) == 0xC0) {
+        size_t lead = keep - 1;
+        unsigned char c = (unsigned char) clean[lead];
+        size_t need = c >= 0xF0 ? 4 : (c >= 0xE0 ? 3 : 2);
+        if (n - lead < need) {
+            n = lead;  // the character was cut
+        }
+    }
+    clean[n] = '\0';
+    memcpy(o->query, clean, n + 1);
+}
+
+size_t recipe_options_pack(const recipe_options_t *options, char *out, size_t out_len)
+{
+    if (!options || !out) {
+        return 0;
+    }
+    recipe_options_t o = *options;
+    recipe_options_sanitize(&o);
+    int n = snprintf(out, out_len,
+                     "src=%d;var=%d;pro=%d;hea=%d;cat=%d;cty=%d;mea=%d;tim=%d;rat=%d;srt=%d;mdb=%d;"
+                     "img=%d;qr=%d;q=%s",
+                     o.source, o.variant, o.property, o.health, o.category, o.country, o.meal,
+                     o.max_time, o.min_rating, o.sort, o.mealdb_category, o.image ? 1 : 0,
+                     o.qr ? 1 : 0, o.query);
+    return n > 0 && (size_t) n < out_len ? (size_t) n : 0;
+}
+
+void recipe_options_unpack(const char *text, recipe_options_t *options)
+{
+    recipe_options_defaults(options);
+    if (!text) {
+        return;
+    }
+    const char *p = text;
+    while (*p) {
+        const char *end = strchr(p, ';');
+        size_t len = end ? (size_t) (end - p) : strlen(p);
+        const char *eq = memchr(p, '=', len);
+        if (eq) {
+            size_t key_len = (size_t) (eq - p);
+            const char *value = eq + 1;
+            int number = atoi(value);
+            if (key_len == 1 && p[0] == 'q') {
+                // the search text takes the rest of the line, ';' included
+                snprintf(options->query, sizeof(options->query), "%s", value);
+                break;
+            }
+            if (key_len == 3) {
+                struct {
+                    const char *key;
+                    int *field;
+                } ints[] = {
+                    {"src", &options->source},
+                    {"var", &options->variant},
+                    {"pro", &options->property},
+                    {"hea", &options->health},
+                    {"cat", &options->category},
+                    {"cty", &options->country},
+                    {"mea", &options->meal},
+                    {"tim", &options->max_time},
+                    {"rat", &options->min_rating},
+                    {"srt", &options->sort},
+                    {"mdb", &options->mealdb_category},
+                };
+                for (size_t i = 0; i < sizeof(ints) / sizeof(ints[0]); i++) {
+                    if (strncmp(p, ints[i].key, 3) == 0) {
+                        *ints[i].field = number;
+                    }
+                }
+                if (strncmp(p, "img", 3) == 0) {
+                    options->image = number != 0;
+                }
+            } else if (key_len == 2 && strncmp(p, "qr", 2) == 0) {
+                options->qr = number != 0;
+            }
+        }
+        if (!end) {
+            break;
+        }
+        p = end + 1;
+    }
+    recipe_options_sanitize(options);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Requests
 // ---------------------------------------------------------------------------------------------

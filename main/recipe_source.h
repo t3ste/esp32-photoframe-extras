@@ -81,6 +81,30 @@ typedef struct {
 /** @brief The options as they are until the user chooses: the recipe of the day, no filter. */
 void recipe_options_defaults(recipe_options_t *options);
 
+/**
+ * @brief Brings every field into its range (an unknown source or list entry becomes the default,
+ * "no filter") and cleans the search text: control characters out, one space between words, at
+ * most RECIPE_QUERY_MAX - 1 bytes, no white space at the ends.
+ */
+void recipe_options_sanitize(recipe_options_t *options);
+
+/** @brief Length of the longest text recipe_options_pack() writes, with its terminator. */
+#define RECIPE_OPTIONS_TEXT_MAX 160
+
+/**
+ * @brief The options as a short text for the settings memory: "src=1;var=0;pro=0;hea=0;cat=8;
+ * cty=0;mea=1;tim=0;rat=0;srt=0;mdb=0;img=1;qr=0;q=Suppe". The search text comes last and
+ * takes the rest of the line, so it needs no escaping.
+ * @return the length written, 0 if `out` is too small.
+ */
+size_t recipe_options_pack(const recipe_options_t *options, char *out, size_t out_len);
+
+/**
+ * @brief Reads that text back into `options` (set to the defaults first): a field that is missing
+ * or unknown is ignored, one out of range is the default.
+ */
+void recipe_options_unpack(const char *text, recipe_options_t *options);
+
 // ---------------------------------------------------------------------------------------------
 // Requests
 // ---------------------------------------------------------------------------------------------

@@ -628,3 +628,115 @@ TEST(RecipeHistory, EmptyInputIsHarmless)
     EXPECT_FALSE(recipe_history_has(nullptr, "1"));
     EXPECT_FALSE(recipe_history_has(history, ""));
 }
+
+TEST(RecipeOptionsText, TheDefaultsRoundTrip)
+{
+    recipe_options_t options, back;
+    recipe_options_defaults(&options);
+    char text[RECIPE_OPTIONS_TEXT_MAX];
+    ASSERT_GT(recipe_options_pack(&options, text, sizeof(text)), 0u);
+    EXPECT_STREQ(text,
+                 "src=0;var=0;pro=0;hea=0;cat=0;cty=0;mea=0;tim=0;rat=0;srt=0;mdb=0;img=1;qr=0;q=");
+    recipe_options_unpack(text, &back);
+    EXPECT_EQ(memcmp(&options, &back, sizeof(options)), 0);
+}
+
+TEST(RecipeOptionsText, EverythingSetRoundTrips)
+{
+    recipe_options_t options;
+    recipe_options_defaults(&options);
+    options.source = RECIPE_SOURCE_SEARCH;
+    options.variant = 2;
+    options.property = 4;
+    options.health = 8;
+    options.category = 13;
+    options.country = 10;
+    options.meal = 6;
+    options.max_time = 4;
+    options.min_rating = 4;
+    options.sort = 2;
+    options.mealdb_category = 14;
+    options.image = false;
+    options.qr = true;
+    snprintf(options.query, sizeof(options.query), "Kartoffel Suppe");
+    char text[RECIPE_OPTIONS_TEXT_MAX];
+    ASSERT_GT(recipe_options_pack(&options, text, sizeof(text)), 0u);
+    recipe_options_t back;
+    recipe_options_unpack(text, &back);
+    EXPECT_EQ(memcmp(&options, &back, sizeof(options)), 0) << text;
+}
+
+TEST(RecipeOptionsText, TheSearchTextMayHoldTheSeparators)
+{
+    recipe_options_t options, back;
+    recipe_options_defaults(&options);
+    snprintf(options.query, sizeof(options.query), "a;b=c; q=d");
+    char text[RECIPE_OPTIONS_TEXT_MAX];
+    ASSERT_GT(recipe_options_pack(&options, text, sizeof(text)), 0u);
+    recipe_options_unpack(text, &back);
+    EXPECT_STREQ(back.query, "a;b=c; q=d");
+}
+
+TEST(RecipeOptionsText, UmlautsAreKept)
+{
+    recipe_options_t options, back;
+    recipe_options_defaults(&options);
+    snprintf(options.query, sizeof(options.query), "K\xC3\xA4sekuchen mit \xC3\x84pfeln");
+    char text[RECIPE_OPTIONS_TEXT_MAX];
+    ASSERT_GT(recipe_options_pack(&options, text, sizeof(text)), 0u);
+    recipe_options_unpack(text, &back);
+    EXPECT_STREQ(back.query, options.query);
+}
+
+TEST(RecipeOptionsText, MissingUnknownAndOutOfRangeFieldsAreTheDefaults)
+{
+    recipe_options_t o;
+    recipe_options_unpack("src=1;future=7;cat=99;rat=-3;img=0;zzz;=5;q=Brot", &o);
+    EXPECT_EQ(o.source, 1);
+    EXPECT_EQ(o.category, 0);    // out of range
+    EXPECT_EQ(o.min_rating, 0);  // negative
+    EXPECT_FALSE(o.image);
+    EXPECT_EQ(o.variant, 0);  // missing
+    EXPECT_STREQ(o.query, "Brot");
+    recipe_options_unpack("", &o);
+    EXPECT_EQ(o.source, 0);
+    EXPECT_TRUE(o.image);
+    recipe_options_unpack(nullptr, &o);
+    EXPECT_EQ(o.source, 0);
+    recipe_options_unpack("garbage without any structure", &o);
+    EXPECT_EQ(o.source, 0);
+    EXPECT_STREQ(o.query, "");
+}
+
+TEST(RecipeOptionsText, TheSearchTextIsCleanedAndCut)
+{
+    recipe_options_t o;
+    recipe_options_defaults(&o);
+    snprintf(o.query, sizeof(o.query), "  a \t  b\x01 c  ");
+    recipe_options_sanitize(&o);
+    EXPECT_STREQ(o.query, "a b c");
+    // a text as long as the buffer: cut inside it, never in the middle of a character
+    memset(o.query, 0, sizeof(o.query));
+    for (int i = 0; i < RECIPE_QUERY_MAX - 1; i++) {
+        o.query[i] = (i % 2 == 0) ? '\xC3' : '\xA4';  // C3 A4 = a-umlaut, over and over
+    }
+    recipe_options_sanitize(&o);
+    size_t n = strlen(o.query);
+    ASSERT_GT(n, 0u);
+    EXPECT_EQ(n % 2, 0u) << "ends inside a character";
+    EXPECT_LT(n, static_cast<size_t>(RECIPE_QUERY_MAX));
+}
+
+TEST(RecipeOptionsText, ATextBufferThatIsTooSmallGivesNothing)
+{
+    recipe_options_t options;
+    recipe_options_defaults(&options);
+    char text[20];
+    EXPECT_EQ(recipe_options_pack(&options, text, sizeof(text)), 0u);
+    EXPECT_EQ(recipe_options_pack(nullptr, text, sizeof(text)), 0u);
+    char big[RECIPE_OPTIONS_TEXT_MAX];
+    memset(options.query, 'x', RECIPE_QUERY_MAX - 1);
+    options.query[RECIPE_QUERY_MAX - 1] = '\0';
+    EXPECT_GT(recipe_options_pack(&options, big, sizeof(big)), 0u);  // the longest still fits
+    EXPECT_LT(strlen(big), static_cast<size_t>(RECIPE_OPTIONS_TEXT_MAX));
+}

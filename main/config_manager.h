@@ -9,6 +9,9 @@
 #include "cron.h"
 #include "esp_err.h"
 #include "feature_config.h"
+#if FEATURE_RECIPES
+#include "recipe_source.h"
+#endif
 
 esp_err_t config_manager_init(void);
 
@@ -554,6 +557,18 @@ const char *config_manager_get_route_key_tomtom(void);
 void config_manager_set_route_key_tomtom(const char *key);
 const char *config_manager_get_route_key_here(void);
 void config_manager_set_route_key_here(const char *key);
+#endif
+#if FEATURE_RECIPES
+// The recipe page (recipe_source.h): what the user chose - the source, the filters, the picture and
+// the QR code. Reading gives the defaults (the recipe of the day, no filter) until something was
+// saved.
+void config_manager_get_recipe_options(recipe_options_t *out);
+// Brings the options into range (see recipe_options_sanitize()) and saves them.
+void config_manager_set_recipe_options(const recipe_options_t *options);
+// The personal key of TheMealDB is write-only: never returned by the API, only by the export with
+// credentials. Empty = the development key.
+const char *config_manager_get_recipe_mealdb_key(void);
+void config_manager_set_recipe_mealdb_key(const char *key);
 #endif
 #if FEATURE_MARKET_QUOTES
 // The markets page (market_quotes.h): the symbols as typed ("AAPL, EUNL.DE"; empty = the built-in
