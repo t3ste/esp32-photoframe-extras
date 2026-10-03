@@ -96,18 +96,36 @@ void recipe_options_sanitize(recipe_options_t *o)
         }
     }
     clean[n] = '\0';
-    // never end in the middle of a UTF-8 character: drop a cut-off lead byte and its tail
-    size_t keep = n;
-    while (keep > 0 && ((unsigned char) clean[keep - 1] & 0xC0) == 0x80) {
-        keep--;
-    }
-    if (keep > 0 && ((unsigned char) clean[keep - 1] & 0xC0) == 0xC0) {
-        size_t lead = keep - 1;
-        unsigned char c = (unsigned char) clean[lead];
-        size_t need = c >= 0xF0 ? 4 : (c >= 0xE0 ? 3 : 2);
-        if (n - lead < need) {
-            n = lead;  // the character was cut
+    // only whole, well-formed UTF-8 characters: the text ends before the first byte that is not
+    // part of one (a character cut off by the length, or garbage). A prefix of a well-formed text
+    // is well-formed, so cleaning a cleaned text changes nothing.
+    size_t valid = 0;
+    while (valid < n) {
+        unsigned char c = (unsigned char) clean[valid];
+        size_t need;
+        if (c < 0x80) {
+            need = 1;
+        } else if (c >= 0xC2 && c <= 0xDF) {
+            need = 2;
+        } else if (c >= 0xE0 && c <= 0xEF) {
+            need = 3;
+        } else if (c >= 0xF0 && c <= 0xF4) {
+            need = 4;
+        } else {
+            break;
         }
+        bool whole = valid + need <= n;
+        for (size_t k = 1; whole && k < need; k++) {
+            whole = ((unsigned char) clean[valid + k] & 0xC0) == 0x80;
+        }
+        if (!whole) {
+            break;
+        }
+        valid += need;
+    }
+    n = valid;
+    while (n > 0 && clean[n - 1] == ' ') {
+        n--;  // the byte that ended the text may have had a blank before it
     }
     clean[n] = '\0';
     memcpy(o->query, clean, n + 1);

@@ -157,6 +157,49 @@ TEST(RecipeSearchUrl, LaterStagesDropFiltersOneGroupAtATime)
               "https://api.chefkoch.de/v2/recipes?query=&limit=20&offset=0&orderBy=2");
 }
 
+namespace
+{
+std::string sanitized_query(const std::string &query)
+{
+    recipe_options_t o;
+    recipe_options_defaults(&o);
+    memset(o.query, 0, sizeof(o.query));
+    memcpy(o.query, query.data(), std::min(query.size(), sizeof(o.query) - 1));
+    recipe_options_sanitize(&o);
+    return o.query;
+}
+}  // namespace
+
+TEST(RecipeOptions, TheSearchTextEndsOnAWholeUtf8CharacterAndCleaningItTwiceChangesNothing)
+{
+    EXPECT_EQ(sanitized_query("K\xC3\xA4se  und\tNuss"),
+              "K\xC3\xA4se und Nuss");                         // whole characters stay
+    EXPECT_EQ(sanitized_query("word\xC9\xE2\x80"), "word");    // a lead byte and a cut one
+    EXPECT_EQ(sanitized_query("K\xC3\xA4\xC3"), "K\xC3\xA4");  // a cut character at the end
+    EXPECT_EQ(sanitized_query("a\x80"
+                              "b"),
+              "a");                              // garbage: the text ends before it
+    EXPECT_EQ(sanitized_query("\xC0\x80"), "");  // an overlong form is no character
+    EXPECT_EQ(sanitized_query("x\xF0\x9F\x8D\xB2y"), "x\xF0\x9F\x8D\xB2y");  // four bytes, whole
+    EXPECT_EQ(sanitized_query("x\xF0\x9F\x8D"), "x");
+    // the length cut in the middle of a character
+    std::string long_text(RECIPE_QUERY_MAX - 2, 'a');
+    EXPECT_EQ(sanitized_query(long_text + "\xC3\xA4"), long_text);
+    // random bytes: whatever comes out, cleaning it again changes nothing and it is whole UTF-8
+    uint32_t state = 12345;
+    for (int i = 0; i < 20000; i++) {
+        std::string text;
+        size_t n = 1 + (state = state * 1664525u + 1013904223u) % 60;
+        for (size_t k = 0; k < n; k++) {
+            state = state * 1664525u + 1013904223u;
+            text += (char) ((state >> 16) % 3 == 0 ? 0x80 + (state >> 8) % 0x80
+                                                   : 0x20 + (state >> 8) % 0x5F);
+        }
+        std::string once = sanitized_query(text);
+        ASSERT_EQ(sanitized_query(once), once) << i;
+    }
+}
+
 TEST(RecipeSearchUrl, UmlautsArePercentEncodedAsUtf8)
 {
     recipe_options_t options;
