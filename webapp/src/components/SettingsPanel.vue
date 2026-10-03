@@ -3977,9 +3977,10 @@ async function performFactoryReset() {
                     />
                     <template v-if="settingsStore.deviceSettings.recipeSource === 'search'">
                       <div class="text-caption text-medium-emphasis mb-2">
-                        The time, the rating and the order are asked of Chefkoch itself. The other filters
-                        are added to the search words, so they narrow the choice but are not exact. With no
-                        filter a random recipe of the first thousand of the order is shown.
+                        The preparation time (the working time, not the total time the page shows), the
+                        rating and the order are asked of Chefkoch itself. The other filters are added to
+                        the search words, so they narrow the choice but are not exact. With no filter a
+                        random recipe of the first thousand of the order is shown.
                       </div>
                       <v-text-field
                         v-model="settingsStore.deviceSettings.recipeQuery"
@@ -4055,7 +4056,7 @@ async function performFactoryReset() {
                           <v-select
                             v-model="settingsStore.deviceSettings.recipeMaxMinutes"
                             :items="recipeTimeItems"
-                            label="Time"
+                            label="Preparation time"
                             variant="outlined"
                             density="compact"
                             hide-details

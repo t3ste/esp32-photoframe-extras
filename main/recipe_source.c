@@ -626,6 +626,28 @@ int recipe_day_position(int variant)
 }
 
 // Writes "name (amount unit note)" - the parts that exist - as one ingredient.
+// A note that starts with the comma that joins it to the rest ("0,5 Bund" + ", ersatzweise ...") is
+// put right behind it, without the space add_word() would put in between.
+static void add_note(char *detail, size_t cap, const char *note)
+{
+    if (note[0] != ',' && note[0] != ';') {
+        add_word(detail, cap, note);
+        return;
+    }
+    size_t len = strlen(detail);
+    if (len == 0) {  // nothing to join to: the separator goes
+        while (*note == ',' || *note == ';' || *note == ' ') {
+            note++;
+        }
+        add_word(detail, cap, note);
+        return;
+    }
+    size_t n = strlen(note);
+    if (len + n + 1 <= cap) {
+        memcpy(detail + len, note, n + 1);
+    }
+}
+
 static void ingredient_label(char *out, size_t cap, const char *name, const char *amount,
                              const char *unit, const char *note, bool paren)
 {
@@ -638,7 +660,7 @@ static void ingredient_label(char *out, size_t cap, const char *name, const char
     char detail[RECIPE_INGREDIENT_LEN] = {0};
     add_word(detail, sizeof(detail), amount);
     add_word(detail, sizeof(detail), clean_unit);
-    add_word(detail, sizeof(detail), clean_note);
+    add_note(detail, sizeof(detail), clean_note);
     if (detail[0] && paren) {
         snprintf(out, cap, "%s (%s)", clean_name, detail);
     } else {
@@ -684,16 +706,31 @@ bool recipe_parse_chefkoch_recipe(const char *json, const char *source_label, re
         snprintf(out->url, sizeof(out->url), "%s", str_of(recipe, "siteUrl"));
     }
 
-    // the category: the last entry of the breadcrumb that has a name
+    // the category: the breadcrumb is a path - its root ("Menüart", "Zubereitungsarten",
+    // "Spezielles"), a group and a leaf ("Menüart > Suppen > Gebundene") - and what is below the
+    // root tells what the recipe is: "Suppen / Gebundene"; a path of one entry gives that entry
     const cJSON *crumbs = cJSON_GetObjectItemCaseSensitive(recipe, "categoryBreadcrumb");
     const cJSON *crumb = NULL;
+    char names[3][RECIPE_CATEGORY_MAX];
+    int named = 0;
     cJSON_ArrayForEach(crumb, crumbs)
     {
-        char name[RECIPE_CATEGORY_MAX];
-        copy_clean(name, sizeof(name), cJSON_IsObject(crumb) ? str_of(crumb, "title") : "");
-        if (name[0]) {
-            snprintf(out->category, sizeof(out->category), "%s", name);
+        if (named == 3) {
+            break;
         }
+        copy_clean(names[named], sizeof(names[named]),
+                   cJSON_IsObject(crumb) ? str_of(crumb, "title") : "");
+        if (names[named][0]) {
+            named++;
+        }
+    }
+    if (named == 1) {
+        snprintf(out->category, sizeof(out->category), "%s", names[0]);
+    } else if (named == 2) {
+        snprintf(out->category, sizeof(out->category), "%s", names[1]);
+    } else if (named == 3) {
+        // the precisions keep the two names, " / " and the end of the string inside the field
+        snprintf(out->category, sizeof(out->category), "%.24s / %.28s", names[1], names[2]);
     }
     int minutes = (int) num_of(recipe, "totalTime");
     if (minutes <= 0) {

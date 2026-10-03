@@ -277,6 +277,8 @@ static bool try_layout(const recipe_t *r, const recipe_layout_input_t *in, const
         } else {
             snprintf(out->meta, sizeof(out->meta), "%s", category);
         }
+        // a long path of categories ends with an ellipsis rather than leave the page
+        trim_to_width(out->meta, out->meta_font, scale, g->width - margin_l - margin_r);
     }
     snprintf(out->source, sizeof(out->source), "%s: %s", r->german ? "Quelle" : "Source",
              r->source);

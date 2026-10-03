@@ -417,6 +417,61 @@ TEST(RecipeParseDay, AnItemWithoutARecipeAddressIsSkipped)
     EXPECT_STREQ(ids[1], "43");
 }
 
+TEST(RecipeParseChefkoch, TheCategoryIsWhatIsBelowTheRootOfThePath)
+{
+    auto category_of = [](const char *crumbs) {
+        std::string json =
+            std::string(
+                "{\"id\": \"7\", \"title\": \"T\", \"totalTime\": 10, "
+                "\"categoryBreadcrumb\": [") +
+            crumbs +
+            "], \"ingredientGroups\": [{\"header\": \" \", \"ingredients\": [{\"name\": \"Salz\", "
+            "\"unit\": \"\", \"amount\": 1.0}]}], \"instructions\": \"Schritt.\"}";
+        recipe_t recipe;
+        EXPECT_TRUE(recipe_parse_chefkoch_recipe(json.c_str(), "S", &recipe));
+        return std::string(recipe.category);
+    };
+    EXPECT_EQ(category_of("{\"title\": \"Menüart\"}, {\"title\": \"Suppen\"}, "
+                          "{\"title\": \"Gebundene\"}"),
+              "Suppen / Gebundene");
+    EXPECT_EQ(category_of("{\"title\": \"Menüart\"}, {\"title\": \"Dessert\"}"), "Dessert");
+    EXPECT_EQ(category_of("{\"title\": \"A\"}, {\"title\": \"B\"}, {\"title\": \"C\"}, "
+                          "{\"title\": \"D\"}"),
+              "B / C");  // deeper paths: the first two below the root
+    EXPECT_EQ(category_of("{\"title\": \"Dessert\"}"), "Dessert");  // only one entry
+    EXPECT_EQ(category_of("{\"title\": \" \"}, {\"title\": \"A\"}, {\"title\": \"B\"}"),
+              "B");  // an entry without a name does not count: A is the root
+    EXPECT_EQ(category_of(""), "");
+    std::string long_a(40, 'a'), long_b(40, 'b');
+    std::string crumbs =
+        "{\"title\": \"Root\"}, {\"title\": \"" + long_a + "\"}, {\"title\": \"" + long_b + "\"}";
+    EXPECT_EQ(category_of(crumbs.c_str()),
+              std::string(24, 'a') + " / " + std::string(28, 'b'));  // fits the field
+}
+
+TEST(RecipeParseChefkoch, ANoteThatStartsWithACommaIsJoinedWithoutASpace)
+{
+    auto first_ingredient = [](const char *unit, const char *note, double amount) {
+        char text[64];
+        snprintf(text, sizeof(text), "%g", amount);
+        std::string json =
+            std::string(
+                "{\"id\": \"7\", \"title\": \"T\", \"totalTime\": 10, "
+                "\"ingredientGroups\": [{\"header\": \" \", \"ingredients\": [{\"name\": "
+                "\"Basilikum\", \"amount\": ") +
+            text + ", \"unit\": \"" + unit + "\", \"usageInfo\": \"" + note +
+            "\"}]}], \"instructions\": \"Schritt.\"}";
+        recipe_t recipe;
+        EXPECT_TRUE(recipe_parse_chefkoch_recipe(json.c_str(), "S", &recipe));
+        return std::string(recipe.ingredients[0]);
+    };
+    EXPECT_EQ(first_ingredient("Bund", ", ersatzweise Thai-Basilikum", 0.5),
+              "Basilikum (0,5 Bund, ersatzweise Thai-Basilikum)");
+    EXPECT_EQ(first_ingredient("", ", frisch", 0),
+              "Basilikum (frisch)");  // nothing before it: no comma at the front
+    EXPECT_EQ(first_ingredient("Bund", "frisch", 2), "Basilikum (2 Bund frisch)");
+}
+
 TEST(RecipeParseChefkoch, ReadsTheRecipe)
 {
     recipe_t recipe;
@@ -426,7 +481,7 @@ TEST(RecipeParseChefkoch, ReadsTheRecipe)
     EXPECT_STREQ(recipe.id, "2001");
     EXPECT_TRUE(recipe.german);
     EXPECT_EQ(std::string(recipe.source), "Chefkoch " + byte(0x96) + " Rezept des Tages");
-    EXPECT_STREQ(recipe.category, "Suppen");  // the last breadcrumb with a name
+    EXPECT_STREQ(recipe.category, "Suppen");  // below the root of the path
     EXPECT_STREQ(recipe.time, "35 Min.");
     EXPECT_STREQ(recipe.url, "https://www.chefkoch.de/rezepte/2001/");  // the short form
     EXPECT_STREQ(

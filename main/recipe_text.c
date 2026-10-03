@@ -380,8 +380,9 @@ size_t recipe_text_clean(const char *utf8, char *out, size_t out_cap, bool *out_
     }
     out[sink.len] = '\0';
 
-    // pass 2, in place: one space between words, no space around a line break, no blank lines,
-    // no white space at either end
+    // pass 2, in place: one space between words (none before a comma or semicolon: "Bund , nach
+    // Geschmack" is how a source writes it), no space around a line break, no blank lines, no white
+    // space at either end
     size_t w = 0;
     bool pending_space = false;
     bool pending_break = false;
@@ -395,7 +396,7 @@ size_t recipe_text_clean(const char *utf8, char *out, size_t out_cap, bool *out_
             if (w > 0) {
                 if (pending_break) {
                     out[w++] = '\n';
-                } else if (pending_space) {
+                } else if (pending_space && c != ',' && c != ';') {
                     out[w++] = ' ';
                 }
             }

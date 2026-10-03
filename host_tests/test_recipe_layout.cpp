@@ -513,6 +513,26 @@ TEST(RecipeLayout, TheMetaLineHasCategoryAndTimeOrAWordForNone)
     delete l;
 }
 
+TEST(RecipeLayout, ALongCategoryPathEndsWithAnEllipsisInsteadOfLeavingThePage)
+{
+    recipe_t recipe = sample();
+    recipe_layout_t *l = new recipe_layout_t;
+    recipe_layout_input_t in = input(true, true, nullptr);
+    std::string path;
+    for (int i = 0; i < 4; i++) {
+        path += "Sehr lange Kategorie / ";
+    }
+    snprintf(recipe.category, sizeof(recipe.category), "%s", path.c_str());
+    recipe_layout_build(&recipe, &in, 480, 800, false, l);
+    int width = recipe_font_text_width(l->meta_font, l->meta, strlen(l->meta), l->scale);
+    EXPECT_LE(width, 480);
+    EXPECT_EQ((uint8_t) l->meta[strlen(l->meta) - 1], 0x85);  // the ellipsis of the code
+    EXPECT_LT(strlen(l->meta), strlen(path.c_str()));
+    recipe_layout_build(&recipe, &in, 800, 480, true, l);
+    EXPECT_LE(recipe_font_text_width(l->meta_font, l->meta, strlen(l->meta), l->scale), 800);
+    delete l;
+}
+
 TEST(RecipeLayout, ALongTitleTakesTwoLinesAndAVeryLongOneEndsWithAnEllipsis)
 {
     recipe_t recipe = sample();

@@ -170,6 +170,17 @@ TEST(RecipeClean, WhiteSpaceIsTidied)
     EXPECT_EQ(clean(""), "");
 }
 
+TEST(RecipeClean, NoSpaceBeforeACommaOrSemicolon)
+{
+    // sources write "0,5 Bund , ersatzweise ..." and "(n. B. , scharfe)"
+    EXPECT_EQ(clean("0,5 Bund , ersatzweise Basilikum"), "0,5 Bund, ersatzweise Basilikum");
+    EXPECT_EQ(clean("Salz ; Pfeffer"), "Salz; Pfeffer");
+    EXPECT_EQ(clean("a  ,  b"), "a, b");
+    EXPECT_EQ(clean("a ,"), "a,");
+    EXPECT_EQ(clean(", a"), ", a");  // nothing before it: stays
+    EXPECT_EQ(clean("2 - 3 EL"), "2 - 3 EL");
+}
+
 TEST(RecipeClean, ANullInputGivesAnEmptyText)
 {
     char out[8] = "xxxxxxx";
