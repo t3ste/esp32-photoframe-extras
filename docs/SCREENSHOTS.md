@@ -60,6 +60,8 @@ charts say how many days they cover.
 | Fuel prices (Germany) | <img src="screens/info-fuel-prices.png" width="400" alt="The fuel-price page"> | [FUEL_PRICES.md](FUEL_PRICES.md) |
 | Fuel prices with the travel time in the header (one way longer than usual) | <img src="screens/info-fuel-route.png" width="400" alt="The fuel-price page with the travel time in the header"> | [ROUTE_TIME.md](ROUTE_TIME.md) |
 | Markets (stocks, ETFs, indices, crypto, currency pairs) | <img src="screens/info-markets.png" width="400" alt="The markets page"> | [MARKET_QUOTES.md](MARKET_QUOTES.md) |
+| Recipe (an invented one, with a made-up picture and the QR code), landscape | <img src="screens/info-recipe.png" width="400" alt="The recipe page in landscape"> | [RECIPES.md](RECIPES.md) |
+| Recipe, portrait | <img src="screens/info-recipe-portrait.png" width="250" alt="The recipe page in portrait"> | [RECIPES.md](RECIPES.md) |
 
 ### In German, with umlauts
 

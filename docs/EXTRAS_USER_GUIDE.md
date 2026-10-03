@@ -28,6 +28,7 @@ something does not show up. Each section ends with a link to the detailed page f
 | ... the cheapest petrol stations (Germany) | `fuel-prices` | the same box | a free Tankerkoenig key and a place |
 | ... stocks, ETFs, indices, crypto, currency pairs | `market-quotes` | the same box | nothing; two free keys are optional |
 | ... the travel time there and back to work, red when a jam makes it longer | `route-time` | the fuel page | a free TomTom or HERE key |
+| ... a cooking recipe with its picture (Chefkoch, TheMealDB) | `recipes` | the same box | nothing; the filters are optional |
 | A schedule that always shows one page (the fuel prices at 06:30, the Agenda hourly) | `schedule-pages` | Settings -> Agenda -> Schedule | nothing |
 | A painting, drawing or print from a museum at each rotation | `artworks` | Settings -> Auto Rotate -> mode *Artworks* | nothing; a Smithsonian key is optional |
 | Art albums for your frame | `scripts/fetch_art.py` (a PC helper) | on your computer | Python and Node.js |
@@ -226,6 +227,16 @@ A line is `Fact`, `Topic|Fact` or `Topic|Fact|Question`; empty lines and lines s
 16 KB. The facts go round in the order of your list, one per day. An empty box removes your list and brings back the built-in
 facts. (Needs storage.) More: [FACT_OF_THE_DAY.md](FACT_OF_THE_DAY.md).
 
+### A recipe
+
+<img src="screens/info-recipe.png" width="400" alt="The recipe page">
+
+Tick **Recipe** and choose where it comes from: the **recipe of the day** of Chefkoch (classic, vegetarian or vegan), a **Chefkoch search** with the
+filters you set (category, country, type of meal, diet, time, rating, order - all optional) or **TheMealDB** (English, by category). The page is drawn for the
+orientation you set under Settings -> General, in the biggest text that fits; a recipe without a picture or too long for the page is skipped, and if
+nothing is found the filters are relaxed step by step (the page says so) or the last recipe is shown again with a warning. A small QR code can lead to the
+recipe. The frame must be online when the page is drawn. More: [RECIPES.md](RECIPES.md).
+
 ### Exchange rates
 
 <img src="screens/info-exchange-rates.png" width="400" alt="The exchange-rate page">
@@ -340,4 +351,4 @@ The frame's debug log (Settings -> Maintenance -> Debug Logging: switch it on, t
 [CALDAV.md](CALDAV.md) - [CALDAV_TODO.md](CALDAV_TODO.md) - [MULTI_UPLOAD.md](MULTI_UPLOAD.md) -
 [UPLOAD_DEDUP.md](UPLOAD_DEDUP.md) - [GLYPHS.md](GLYPHS.md) - [ART_FETCH.md](ART_FETCH.md) - [CHORE_WHEEL.md](CHORE_WHEEL.md) -
 [WEATHER_SCREEN.md](WEATHER_SCREEN.md) - [FACT_OF_THE_DAY.md](FACT_OF_THE_DAY.md) - [FINANCE_SNAPSHOT.md](FINANCE_SNAPSHOT.md) -
-[FUEL_PRICES.md](FUEL_PRICES.md) - [MARKET_QUOTES.md](MARKET_QUOTES.md)
+[FUEL_PRICES.md](FUEL_PRICES.md) - [MARKET_QUOTES.md](MARKET_QUOTES.md) - [RECIPES.md](RECIPES.md)

@@ -50,6 +50,7 @@ python build.py --board waveshare_photopainter_73 --with extras
 | `route-time` | Travel time there and back between two addresses in the header of the fuel page, with the traffic of now (TomTom, HERE with a free key); a way that takes longer than usual is a red block with a "!" | `fuel-prices` | [ROUTE_TIME.md](ROUTE_TIME.md) |
 | `artworks` | Artworks rotation mode: a painting, drawing or print from the Rijksmuseum, SMK or the Smithsonian (public domain / CC0) per rotation, kept in an album for wakes without network, deleting the oldest to keep free space, with a small caption | `overlays` | [ARTWORKS.md](ARTWORKS.md) |
 | `schedule-pages` | Pages per Agenda schedule: each schedule draws its own pages, the smaller number wins when two overlap, a minimum time (or a hold time per schedule) keeps one display from replacing another at once, the photo rotation gives way; without any page assigned nothing changes | `info-screens` | [SCHEDULE_PAGES.md](SCHEDULE_PAGES.md) |
+| `recipes` | Recipe page: one cooking recipe with its picture - Chefkoch (recipe of the day or a search with filters, German) or TheMealDB (by category, English) - in the biggest text that fits, in landscape and portrait, with an optional QR code of the recipe; the filters are set in the Web UI | `info-screens` | [RECIPES.md](RECIPES.md) |
 | `upload-dedup` | Duplicate detection at upload: a per-album MD5 index, refuse or warn, by file or by pixels, background indexing of earlier images, duplicate report | - | [UPLOAD_DEDUP.md](UPLOAD_DEDUP.md) |
 | `multi-upload` | Web UI: upload several images at once - photos converted one after the other, pre-rendered EPDGZ/PNG files as they are | - | [MULTI_UPLOAD.md](MULTI_UPLOAD.md) |
 | `fixes` | General bug fixes and robustness improvements | - | |
@@ -61,7 +62,7 @@ for the name, the build only ever sees its members - so a build with `extras` is
 
 | Bundle | Members |
 | --- | --- |
-| `extras` | everything added after the first fork release: `webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `upload-dedup`, `glyphs`, `info-screens`, `chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes` |
+| `extras` | everything added after the first fork release: `webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `upload-dedup`, `glyphs`, `info-screens`, `chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`, `route-time`, `artworks`, `schedule-pages`, `recipes` |
 
 What the members need is added as usual (`extras` pulls in `agenda` and `overlays`). `--without fuel-prices` takes a member out again, and
 `--without extras` takes all of them out of `--all-features`. A member that the board cannot build is skipped with a notice instead of stopping the

@@ -79,6 +79,7 @@ needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
 | 📈 `market-quotes` | A full-screen markets page: up to four stocks, ETFs, indices, crypto or currency pairs with the last price, the daily change and a 30-day line - Yahoo Finance without a key, with Twelve Data and Alpha Vantage (free keys) as fallbacks | - | [docs](docs/MARKET_QUOTES.md) |
 | ⛽ `fuel-prices` | A full-screen fuel-price page: the cheapest petrol stations around your place with the price like on the pump - Germany only, needs a free Tankerkoenig API key | - | [docs](docs/FUEL_PRICES.md) |
 | 🚗 `route-time` | The travel time there and back between two addresses in the header of the fuel page, with the traffic of now (TomTom, HERE; a free key), a way that takes longer than usual as a red block with a "!" | - | [docs](docs/ROUTE_TIME.md) |
+| 🍲 `recipes` | A full-screen recipe page: one cooking recipe with its picture from Chefkoch (recipe of the day or a search with filters; German) or TheMealDB (English), the ingredients and the preparation in the biggest text that fits, landscape and portrait, with an optional QR code | - | [docs](docs/RECIPES.md) |
 | 🖌️ `artworks` | A rotation mode with a painting, drawing or print from the Rijksmuseum, SMK or the Smithsonian (public domain / CC0), kept in an album for wakes without network, with a small caption | - | [docs](docs/ARTWORKS.md) |
 | 🗓️ `schedule-pages` | Each Agenda schedule can draw its own pages (the Agenda, weather, fuel prices, ...); the schedule with the smaller number wins when two overlap, and a minimum time keeps one display from replacing another at once - nothing changes until a schedule is given pages | - | [docs](docs/SCHEDULE_PAGES.md) |
 | ♊ `upload-dedup` | The same image uploaded twice is refused (or flagged): a per-album MD5 index, optionally by the decoded pixels, background indexing of earlier images and a duplicate report | - | [docs](docs/UPLOAD_DEDUP.md) |
@@ -381,6 +382,9 @@ This project is based on the ESP32-S3-PhotoPainter sample code. Please refer to 
 - Original PhotoPainter sample: Waveshare ESP32-S3-PhotoPainter
 - E-paper drivers: Waveshare
 - ESP-IDF: Espressif Systems
+- Recipe page (`recipes`, optional): the text is set in [Noto Sans](https://fonts.google.com/noto) (SIL Open Font License 1.1, see
+  [docs/third_party/NotoSans-OFL.txt](docs/third_party/NotoSans-OFL.txt)); the recipes and pictures come from Chefkoch and [TheMealDB](https://www.themealdb.com) and belong to their
+  authors (see [docs/RECIPES.md](docs/RECIPES.md))
 - Weather condition icons (Settings → Overlays → "Weather condition display", optional): two
   selectable sets, both re-rendered at a small fixed size for this project's overlay bar (see
   `scripts/generate_weather_icons.py`) -

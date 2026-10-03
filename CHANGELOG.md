@@ -19,6 +19,17 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Added
 
+- **Recipe page** (`--with recipes`, [docs/RECIPES.md](docs/RECIPES.md); part of `extras`, needs `info-screens`): an information page with **one cooking recipe and its picture** - the title in red,
+  the category and time in blue, the ingredients on the left with bullets, the preparation on the right in paragraphs, the picture at the top right and an optional small QR code at the bottom
+  right; in portrait the ingredients and the picture are on top and the preparation runs below over the full width. Sources: **Chefkoch** (the recipe of the day, classic / vegetarian / vegan, or a
+  search with filters: words, category, country, type of meal, diet, property, time, rating, order; German) and **TheMealDB** (by category; English); the labels follow the source's language. The
+  text uses the **largest size at which everything fits** (Noto Sans, SIL OFL, compiled in as bitmaps, 12-30 px, scaled up on big panels); the text flows narrower next to the picture and the code
+  and never overlaps; a recipe without a picture or too long for the page is skipped. Errors: **three tries with exactly the filters that were set**, only then the filters are relaxed step by step
+  (the page says so), and when nothing can be had at all the last recipe is shown again with a warning (none ever fetched: the page is skipped). Characters and step numbers of the sources are
+  cleaned. The options are one NVS text plus TheMealDB's optional write-only key; Web UI card in the Agenda tab; `GET/PATCH /api/config` fields `recipe_*`. New: `recipe_font.c` and
+  `scripts/gen_recipe_font.py`, `recipe_text.c`, `recipe_source.c`, `recipe_layout.c`, `recipe_qr.c`, `recipe_engine.c`, `recipe_service.c`, `screen_recipe.c` (everything but the glue is pure:
+  153 host tests, also under AddressSanitizer / UBSan, with invented sample answers; `host_tests/render_recipe.cpp` draws the page for all panels without a frame). The sources are unofficial or
+  free interfaces (see the docs for their terms).
 - **Travel time on the fuel page** (`--with route-time`, [docs/ROUTE_TIME.md](docs/ROUTE_TIME.md); part of `extras`, needs `fuel-prices`): the header of the fuel page shows how long the drive
   there and back between two addresses takes **right now**, with the traffic (`Hin 28 min  Rück 31 min`); a way that takes more than the usual time by a percentage (10) **and** a number of
   minutes (5) - both settable - is a **red block with a "!"**. Sources: TomTom first, HERE second (a free key of one or both; a refused key, no answer or no requests left

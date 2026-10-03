@@ -38,6 +38,7 @@ Over the API: `GET /api/config` reports `info_screens` (the ticked pages, by nam
 | Exchange rates | `finance-snapshot` | [FINANCE_SNAPSHOT.md](FINANCE_SNAPSHOT.md) |
 | Fuel prices | `fuel-prices` | [FUEL_PRICES.md](FUEL_PRICES.md) |
 | Markets (stocks, ETFs, crypto) | `market-quotes` | [MARKET_QUOTES.md](MARKET_QUOTES.md) |
+| Recipe | `recipes` | [RECIPES.md](RECIPES.md) |
 
 The drawing toolkit that the pages share also has big stroke digits (`main/screen_digits.c`) for numbers that should fill a
 quarter of the panel.
@@ -46,7 +47,8 @@ quarter of the panel.
 
 The pages use the language of the on-display text - the overlay language setting (Settings -> Overlays -> Overlay language:
 English or German), the same the Agenda follows; a build without the `overlays` option stays English. German month and weekday
-names come with real umlauts thanks to the `glyphs` option.
+names come with real umlauts thanks to the `glyphs` option. The recipe page is the exception: its labels follow the language of the
+source (a German recipe is labelled in German, a TheMealDB recipe in English).
 
 ## How it works
 
