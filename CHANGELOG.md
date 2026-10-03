@@ -186,7 +186,7 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Fixed
 
-- **Every TLS connection of a build with `agenda` leaked 200-400 bytes of internal heap** (found with the recipe page, which fetches three times a drawing). The `agenda` option switches on the cross-signed
+- **Every TLS connection of a build with `agenda` leaked 200-400 bytes of internal heap** (found with a heap trace while testing the recipe page of the extended edition, which fetches three times a drawing). The `agenda` option switches on the cross-signed
   verification of ESP-IDF's certificate bundle (`CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY`, needed for Google Calendar); its callback builds a certificate for the trusted root out of separate
   `calloc()`s, and `mbedtls_x509_crt_free()` frees only the structure and the list nodes, so the name buffers were lost after every verification. A heap trace of one request showed exactly those allocations
   (`esp_crt_ca_cb_callback` -> `esp_crt_copy_asn1`); the free heap before each request then fell by a constant 200 B, with plain HTTP by nothing. New `main/tls_ca_cb_fix.c` (compiled with `agenda` when the
