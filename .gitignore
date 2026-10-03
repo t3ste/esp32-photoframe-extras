@@ -66,3 +66,6 @@ docs/diagrams/
 
 # Drafts that are kept local until the maintainer publishes them
 /docs/REPOS_AND_BRANCHES.md
+
+# The maintainer's sample script and layout pictures for the recipes idea: kept local
+/recipe/
