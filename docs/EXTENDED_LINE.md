@@ -214,6 +214,11 @@ flashed and reported; a new base version gets its own numbers.
 (run on the Waveshare only, in short sessions - so it stays a **pre-release**), the clearer markets / exchange-rate / fuel pages (trading day in the header, one-line footer) and the Fit /
 orientation settings of the artworks mode. Same procedure: tag as `t3stier`, the workflow builds the draft, title and notes by hand, then published as a pre-release.
 
+**Third candidate, 2026-10-03:** `v218.7.1-rc3` on the same base (the base `main` now also has the TLS heap-leak fix). It adds the recipe page, the travel time on the fuel page, the pages per
+Agenda schedule, the restructured Agenda tab of the Web UI and the TLS fix. All of these ran on the Waveshare only (USB powered, short sessions), so it stays a **pre-release**; section 7 lists what
+has not been seen. The base was fixed first (`main` 323341d, CI and Build Firmware green), merged here, the check set run (all green: 1037 host tests, the proofs, the compile matrix for Waveshare,
+M5Paper and XIAO EE02), the extended repository's CI and Build Firmware green, and then tagged. Same procedure: tag as `t3stier`, the workflow builds the draft, title and notes by hand, then published.
+
 Quick check that everything is still in step: `git ls-remote t3stier`, `git ls-remote origin` and `git ls-remote extras` must show the same commit for
 `refs/heads/extras` (first two) and `refs/heads/main` (the third); the base `refs/heads/main` of the first two is the base.
 
