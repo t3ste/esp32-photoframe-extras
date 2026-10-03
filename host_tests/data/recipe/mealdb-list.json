@@ -1,0 +1,24 @@
+{
+ "meals": [
+  {
+   "strMeal": "Beispiel Stew",
+   "strMealThumb": "https://img.example.invalid/meals/a.jpg",
+   "idMeal": "5001"
+  },
+  {
+   "strMeal": "Example Pie",
+   "strMealThumb": "https://img.example.invalid/meals/b.jpg",
+   "idMeal": "5002"
+  },
+  {
+   "strMeal": "No Picture Dish",
+   "strMealThumb": "",
+   "idMeal": "5003"
+  },
+  {
+   "strMeal": "No Id",
+   "strMealThumb": "https://img.example.invalid/meals/c.jpg",
+   "idMeal": ""
+  }
+ ]
+}

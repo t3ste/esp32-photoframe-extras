@@ -1,0 +1,159 @@
+{
+ "id": "2003",
+ "title": "Beispiel-Gemüsesuppe",
+ "subtitle": "",
+ "siteUrl": "https://www.example.invalid/rezepte/2001/Beispiel-Gemuesesuppe.html",
+ "slug": "Beispiel-Gemuesesuppe",
+ "preparationTime": 20,
+ "cookingTime": 15,
+ "restingTime": 0,
+ "totalTime": 35,
+ "difficulty": 2,
+ "servings": 4,
+ "isPremium": false,
+ "isPlus": false,
+ "hasImage": true,
+ "previewImageUrlTemplate": "https://img.example.invalid/rezepte/2001/bilder/7/<format>/beispiel-gemuesesuppe.jpg",
+ "categoryBreadcrumb": [
+  {
+   "id": "1",
+   "title": "Menüart",
+   "url": "https://www.example.invalid/rs/s0g1/Menueart.html"
+  },
+  {
+   "id": "5",
+   "title": "Suppen",
+   "url": "https://www.example.invalid/rs/s0g5/Suppen.html"
+  },
+  {
+   "id": "9",
+   "title": " ",
+   "url": ""
+  }
+ ],
+ "instructions": "",
+ "ingredientsText": "",
+ "fullTags": [
+  {
+   "id": 1,
+   "name": "Suppe"
+  }
+ ],
+ "ingredientGroups": [
+  {
+   "header": " ",
+   "ingredients": [
+    {
+     "id": "i",
+     "name": "Karotte(n)",
+     "unit": "",
+     "unitId": "3",
+     "amount": 3.0,
+     "isBasic": false,
+     "usageInfo": "",
+     "url": null,
+     "foodId": "1",
+     "productGroup": null,
+     "blsKey": "X",
+     "previewImageUrlTemplate": "",
+     "sponsoring": null
+    },
+    {
+     "id": "i",
+     "name": "Zwiebel(n), rote",
+     "unit": "",
+     "unitId": "3",
+     "amount": 1.0,
+     "isBasic": false,
+     "usageInfo": "",
+     "url": null,
+     "foodId": "1",
+     "productGroup": null,
+     "blsKey": "X",
+     "previewImageUrlTemplate": "",
+     "sponsoring": null
+    },
+    {
+     "id": "i",
+     "name": "Gemüsebrühe",
+     "unit": "ml",
+     "unitId": "3",
+     "amount": 750.0,
+     "isBasic": false,
+     "usageInfo": "",
+     "url": null,
+     "foodId": "1",
+     "productGroup": null,
+     "blsKey": "X",
+     "previewImageUrlTemplate": "",
+     "sponsoring": null
+    },
+    {
+     "id": "i",
+     "name": "Öl zum Braten",
+     "unit": "",
+     "unitId": "3",
+     "amount": 0.0,
+     "isBasic": false,
+     "usageInfo": "",
+     "url": null,
+     "foodId": "1",
+     "productGroup": null,
+     "blsKey": "X",
+     "previewImageUrlTemplate": "",
+     "sponsoring": null
+    }
+   ]
+  },
+  {
+   "header": "Zum Würzen:",
+   "ingredients": [
+    {
+     "id": "i",
+     "name": "Petersilie",
+     "unit": "Bund",
+     "unitId": "3",
+     "amount": 0.5,
+     "isBasic": false,
+     "usageInfo": "frisch",
+     "url": null,
+     "foodId": "1",
+     "productGroup": null,
+     "blsKey": "X",
+     "previewImageUrlTemplate": "",
+     "sponsoring": null
+    },
+    {
+     "id": "i",
+     "name": "Salz und Pfeffer",
+     "unit": "",
+     "unitId": "3",
+     "amount": 0.0,
+     "isBasic": false,
+     "usageInfo": "",
+     "url": null,
+     "foodId": "1",
+     "productGroup": null,
+     "blsKey": "X",
+     "previewImageUrlTemplate": "",
+     "sponsoring": null
+    },
+    {
+     "id": "i",
+     "name": "",
+     "unit": "",
+     "unitId": "3",
+     "amount": 1.0,
+     "isBasic": false,
+     "usageInfo": "",
+     "url": null,
+     "foodId": "1",
+     "productGroup": null,
+     "blsKey": "X",
+     "previewImageUrlTemplate": "",
+     "sponsoring": null
+    }
+   ]
+  }
+ ]
+}

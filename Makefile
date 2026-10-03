@@ -113,7 +113,7 @@ test:
 	@echo "Running the fork's feature tests (source auth, CalDAV, duplicates, glyphs, info screens and their pages)..."
 	@for t in source_auth_test caldav_test vtodo_test dedup_test glyph_extras_test glyph_text_test \
 		screen_canvas_test screen_digits_test info_screens_core_test screens_test \
-		fact_pack_test finance_test fuel_test market_test market_service_test art_test art_caption_draw_test sched_pick_test route_test route_service_test; do \
+		fact_pack_test finance_test fuel_test market_test market_service_test art_test art_caption_draw_test sched_pick_test route_test route_service_test recipe_text_test recipe_source_test; do \
 		./host_tests/build/$$t || exit 1; \
 	done
 	@echo ""

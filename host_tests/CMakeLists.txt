@@ -155,6 +155,58 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# The text cleaning of the recipe page (build option recipes): UTF-8 into the font's code, HTML, steps,
+# paragraphs, times and amounts
+add_executable(
+  recipe_text_test
+  test_recipe_text.cpp
+  ../main/recipe_text.c
+)
+
+target_link_libraries(
+  recipe_text_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  recipe_text_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# The sources of the recipe page: the lists, the requests and the readers of the Chefkoch and TheMealDB answers
+# (invented answers of data/recipe, the real cJSON)
+add_executable(
+  recipe_source_test
+  test_recipe_source.cpp
+  ../main/recipe_source.c
+  ../main/recipe_text.c
+  ../main/json_scan.c
+  ${CJSON_DIR}/cJSON.c
+)
+
+target_compile_definitions(
+  recipe_source_test
+  PRIVATE
+  RECIPE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/recipe"
+)
+
+target_link_libraries(
+  recipe_source_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  recipe_source_test
+  PRIVATE
+  ${CJSON_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # The device side of the travel time on the PC: the settings and the HTTP helper are faked, the answers are the
 # test answers of data/route
 add_executable(
@@ -949,6 +1001,8 @@ gtest_discover_tests(cron_test)
 gtest_discover_tests(sched_pick_test)
 gtest_discover_tests(route_test)
 gtest_discover_tests(route_service_test)
+gtest_discover_tests(recipe_text_test)
+gtest_discover_tests(recipe_source_test)
 gtest_discover_tests(wake_schedule_test)
 gtest_discover_tests(http_auth_test)
 gtest_discover_tests(source_auth_test)

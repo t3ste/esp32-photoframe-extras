@@ -1,0 +1,282 @@
+{
+ "count": 4321,
+ "queryId": "abc",
+ "results": [
+  {
+   "recipe": {
+    "createdAt": "2020-01-01T10:00:00+01:00",
+    "difficulty": 1,
+    "editor": {
+     "deleted": false,
+     "displayName": "editor",
+     "hasAvatar": false,
+     "id": "ueditor",
+     "rank": 1,
+     "role": "user",
+     "username": "editor"
+    },
+    "hasImage": true,
+    "hasVideo": false,
+    "id": "1001",
+    "imageCount": 3,
+    "isPlus": false,
+    "isPremium": false,
+    "isRejected": false,
+    "isSubmitted": true,
+    "nutrition": {
+     "kCalories": 200
+    },
+    "owner": {
+     "deleted": false,
+     "displayName": "owner",
+     "hasAvatar": false,
+     "id": "uowner",
+     "rank": 1,
+     "role": "user",
+     "username": "owner"
+    },
+    "preparationTime": 15,
+    "previewImageUrlTemplate": "https://img.example.invalid/rezepte/1001/bilder/1/<format>/bild.jpg",
+    "rating": {
+     "numVotes": 10,
+     "rating": 4.7
+    },
+    "siteUrl": "https://www.example.invalid/rezepte/1001/Beispielsuppe-mit-Linsen.html",
+    "slug": "Beispielsuppe-mit-Linsen",
+    "subtitle": "Ein erfundenes Beispiel",
+    "title": "Beispielsuppe mit Linsen"
+   },
+   "score": 1.5
+  },
+  {
+   "recipe": {
+    "createdAt": "2020-01-01T10:00:00+01:00",
+    "difficulty": 2,
+    "editor": {
+     "deleted": false,
+     "displayName": "editor",
+     "hasAvatar": false,
+     "id": "ueditor",
+     "rank": 1,
+     "role": "user",
+     "username": "editor"
+    },
+    "hasImage": true,
+    "hasVideo": false,
+    "id": "1002",
+    "imageCount": 3,
+    "isPlus": false,
+    "isPremium": true,
+    "isRejected": false,
+    "isSubmitted": true,
+    "nutrition": {
+     "kCalories": 200
+    },
+    "owner": {
+     "deleted": false,
+     "displayName": "owner",
+     "hasAvatar": false,
+     "id": "uowner",
+     "rank": 1,
+     "role": "user",
+     "username": "owner"
+    },
+    "preparationTime": 20,
+    "previewImageUrlTemplate": "https://img.example.invalid/rezepte/1002/bilder/1/<format>/bild.jpg",
+    "rating": {
+     "numVotes": 10,
+     "rating": 4.9
+    },
+    "siteUrl": "https://www.example.invalid/rezepte/1002/Premium-Gericht.html",
+    "slug": "Premium-Gericht",
+    "subtitle": "Ein erfundenes Beispiel",
+    "title": "Premium-Gericht"
+   },
+   "score": 1.5
+  },
+  {
+   "recipe": {
+    "createdAt": "2020-01-01T10:00:00+01:00",
+    "difficulty": 2,
+    "editor": {
+     "deleted": false,
+     "displayName": "editor",
+     "hasAvatar": false,
+     "id": "ueditor",
+     "rank": 1,
+     "role": "user",
+     "username": "editor"
+    },
+    "hasImage": false,
+    "hasVideo": false,
+    "id": "1003",
+    "imageCount": 0,
+    "isPlus": false,
+    "isPremium": false,
+    "isRejected": false,
+    "isSubmitted": true,
+    "nutrition": {
+     "kCalories": 200
+    },
+    "owner": {
+     "deleted": false,
+     "displayName": "owner",
+     "hasAvatar": false,
+     "id": "uowner",
+     "rank": 1,
+     "role": "user",
+     "username": "owner"
+    },
+    "preparationTime": 25,
+    "previewImageUrlTemplate": "https://img.example.invalid/rezepte/1003/bilder/1/<format>/bild.jpg",
+    "rating": {
+     "numVotes": 10,
+     "rating": 4.2
+    },
+    "siteUrl": "https://www.example.invalid/rezepte/1003/Gericht-ohne-Bild.html",
+    "slug": "Gericht-ohne-Bild",
+    "subtitle": "Ein erfundenes Beispiel",
+    "title": "Gericht ohne Bild"
+   },
+   "score": 1.5
+  },
+  {
+   "recipe": {
+    "createdAt": "2020-01-01T10:00:00+01:00",
+    "difficulty": 2,
+    "editor": {
+     "deleted": false,
+     "displayName": "editor",
+     "hasAvatar": false,
+     "id": "ueditor",
+     "rank": 1,
+     "role": "user",
+     "username": "editor"
+    },
+    "hasImage": true,
+    "hasVideo": false,
+    "id": "1004",
+    "imageCount": 3,
+    "isPlus": false,
+    "isPremium": false,
+    "isRejected": true,
+    "isSubmitted": true,
+    "nutrition": {
+     "kCalories": 200
+    },
+    "owner": {
+     "deleted": false,
+     "displayName": "owner",
+     "hasAvatar": false,
+     "id": "uowner",
+     "rank": 1,
+     "role": "user",
+     "username": "owner"
+    },
+    "preparationTime": 25,
+    "previewImageUrlTemplate": "https://img.example.invalid/rezepte/1004/bilder/1/<format>/bild.jpg",
+    "rating": {
+     "numVotes": 10,
+     "rating": 3.0
+    },
+    "siteUrl": "https://www.example.invalid/rezepte/1004/Abgelehntes-Rezept.html",
+    "slug": "Abgelehntes-Rezept",
+    "subtitle": "Ein erfundenes Beispiel",
+    "title": "Abgelehntes Rezept"
+   },
+   "score": 1.5
+  },
+  {
+   "recipe": {
+    "createdAt": "2020-01-01T10:00:00+01:00",
+    "difficulty": 2,
+    "editor": {
+     "deleted": false,
+     "displayName": "editor",
+     "hasAvatar": false,
+     "id": "ueditor",
+     "rank": 1,
+     "role": "user",
+     "username": "editor"
+    },
+    "hasImage": true,
+    "hasVideo": false,
+    "id": "1005",
+    "imageCount": 3,
+    "isPlus": false,
+    "isPremium": false,
+    "isRejected": false,
+    "isSubmitted": true,
+    "nutrition": {
+     "kCalories": 200
+    },
+    "owner": {
+     "deleted": false,
+     "displayName": "owner",
+     "hasAvatar": false,
+     "id": "uowner",
+     "rank": 1,
+     "role": "user",
+     "username": "owner"
+    },
+    "preparationTime": 40,
+    "previewImageUrlTemplate": "https://img.example.invalid/rezepte/1005/bilder/1/<format>/bild.jpg",
+    "rating": {
+     "numVotes": 10,
+     "rating": 0.0
+    },
+    "siteUrl": "https://www.example.invalid/rezepte/1005/Rezept-ohne-Bewertung.html",
+    "slug": "Rezept-ohne-Bewertung",
+    "subtitle": "Ein erfundenes Beispiel",
+    "title": "Rezept ohne Bewertung"
+   },
+   "score": 1.5
+  },
+  {
+   "recipe": {
+    "createdAt": "2020-01-01T10:00:00+01:00",
+    "difficulty": 3,
+    "editor": {
+     "deleted": false,
+     "displayName": "editor",
+     "hasAvatar": false,
+     "id": "ueditor",
+     "rank": 1,
+     "role": "user",
+     "username": "editor"
+    },
+    "hasImage": true,
+    "hasVideo": false,
+    "id": "1006",
+    "imageCount": 3,
+    "isPlus": false,
+    "isPremium": false,
+    "isRejected": false,
+    "isSubmitted": true,
+    "nutrition": {
+     "kCalories": 200
+    },
+    "owner": {
+     "deleted": false,
+     "displayName": "owner",
+     "hasAvatar": false,
+     "id": "uowner",
+     "rank": 1,
+     "role": "user",
+     "username": "owner"
+    },
+    "preparationTime": 90,
+    "previewImageUrlTemplate": "https://img.example.invalid/rezepte/1006/bilder/1/<format>/bild.jpg",
+    "rating": {
+     "numVotes": 10,
+     "rating": 4.55
+    },
+    "siteUrl": "https://www.example.invalid/rezepte/1006/Süßer-Käsekuchen.html",
+    "slug": "Süßer-Käsekuchen",
+    "subtitle": "Ein erfundenes Beispiel",
+    "title": "Süßer Käsekuchen"
+   },
+   "score": 1.5
+  }
+ ]
+}
