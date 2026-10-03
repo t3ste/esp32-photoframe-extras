@@ -517,12 +517,45 @@ TEST(RecipeEngineSearch, TheRecipesShownLatelyAreRemembered)
     EXPECT_NE(seen[0], seen[1]);
     EXPECT_NE(seen[1], seen[2]);
     EXPECT_NE(seen[0], seen[2]);
-    // all three are in the list now: the fourth try finds nothing new and relaxes... then gives up
-    // on this list (the same answer): the last recipe
-    world.have_last = true;
-    world.last = *r.recipe;
+    // all three are in the list now: the fourth drawing shows one of them again - with the filters
+    // as they are set and without a warning (it used to relax the filters and show a recipe that
+    // did not fit them)
     run(r, world, search_options());
-    EXPECT_EQ(r.result, RECIPE_RESULT_LAST);
+    ASSERT_EQ(r.result, RECIPE_RESULT_NEW);
+    EXPECT_EQ(r.out.warnings, 0u);
+    EXPECT_EQ(r.out.stage, 0);
+    EXPECT_TRUE(r.recipe->id == seen[0] || r.recipe->id == seen[1] || r.recipe->id == seen[2]);
+}
+
+TEST(RecipeEngineSearch, AnotherPageIsAskedWhenEveryResultOfThePageWasShownLately)
+{
+    World world;
+    world.dice = {0, 0};
+    serve_search(world);  // always the same six results, of 4321
+    world.serve_details();
+    world.serve_pictures();
+    Fetched r;
+    r.history = "1001\n1002\n1003\n1004\n1005\n1006";
+    run(r, world, search_options());
+    ASSERT_EQ(r.result, RECIPE_RESULT_NEW);
+    // two pages were asked for (the world answers with the same one: then a repeat)
+    EXPECT_EQ(count_matching(world, "api.chefkoch.de/v2/recipes?"), 2);
+    EXPECT_EQ(r.out.warnings, 0u);
+    EXPECT_EQ(r.out.stage, 0);
+}
+
+TEST(RecipeEngineSearch, APageWithAnUnseenResultIsNotAskedTwice)
+{
+    World world;
+    world.dice = {0, 0};
+    serve_search(world);
+    world.serve_details();
+    world.serve_pictures();
+    Fetched r;
+    r.history = "1001";  // one of the six results was shown lately, the others were not
+    run(r, world, search_options());
+    ASSERT_EQ(r.result, RECIPE_RESULT_NEW);
+    EXPECT_EQ(count_matching(world, "api.chefkoch.de/v2/recipes?"), 1);
 }
 
 TEST(RecipeEngineSearch, SimpleMeansTheSimplestRecipesOnly)
@@ -742,6 +775,21 @@ TEST(RecipeEngineMealDb, ACategoryListAndALookup)
     EXPECT_FALSE(r.recipe->german);
     EXPECT_STREQ(r.recipe->source, "TheMealDB");
     EXPECT_EQ(r.history, "5001");
+}
+
+TEST(RecipeEngineMealDb, WhenEveryRecipeOfTheCategoryWasShownLatelyOneIsShownAgain)
+{
+    World world;
+    world.dice = {0};
+    serve_mealdb(world);
+    world.serve_pictures();
+    Fetched r;
+    r.history = "5001\n5002\n5003";
+    run(r, world, mealdb_options(10));  // Seafood: its three recipes are all in the list
+    ASSERT_EQ(r.result, RECIPE_RESULT_NEW);
+    EXPECT_EQ(r.out.warnings, 0u);  // not another category, not a warning
+    EXPECT_EQ(r.out.stage, 0);
+    EXPECT_EQ(count_matching(world, "filter.php?c=Seafood"), 1);
 }
 
 TEST(RecipeEngineMealDb, NoCategoryIsARandomRecipe)

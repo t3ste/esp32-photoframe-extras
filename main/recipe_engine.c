@@ -20,6 +20,7 @@ typedef struct {
     recipe_outcome_t *out;
     recipe_t *candidate;
     unsigned long start_ms;
+    bool repeat_ok;  // every recipe that fits the filters was shown lately: one may be shown again
 } engine_t;
 
 // Whether another request may be made: the time of the run is not up and the number of requests
@@ -117,7 +118,7 @@ static bool fetch_photo(engine_t *e, const recipe_t *recipe, int box_w, int box_
 static bool accept(engine_t *e, bool use_history)
 {
     recipe_t *r = e->candidate;
-    if (use_history && recipe_history_has(e->history, r->id)) {
+    if (use_history && !e->repeat_ok && recipe_history_has(e->history, r->id)) {
         return false;
     }
     if (e->options->image && !r->image_url[0]) {
@@ -185,6 +186,26 @@ static try_result_t try_day(engine_t *e)
     return tried > 0 ? TRY_EMPTY : TRY_NETWORK;
 }
 
+// The candidates that can be shown: with a picture if pictures are on, not premium, simple
+// enough if "Einfach" is chosen, and - if `skip_seen` - not shown lately. Writes their indexes.
+static int pick_usable(const engine_t *e, const recipe_candidate_t *found, int count, int stage,
+                       bool skip_seen, int *usable)
+{
+    int n = 0;
+    for (int i = 0; i < count; i++) {
+        const recipe_candidate_t *c = &found[i];
+        if (!c->usable || (e->options->image && !c->has_image) ||
+            (skip_seen && recipe_history_has(e->history, c->id))) {
+            continue;
+        }
+        if (stage < 1 && e->options->property == 1 && c->difficulty > 1) {
+            continue;  // "Einfach": the simplest recipes only
+        }
+        usable[n++] = i;
+    }
+    return n;
+}
+
 static try_result_t try_search(engine_t *e, int stage)
 {
     char url[512];
@@ -195,6 +216,7 @@ static try_result_t try_search(engine_t *e, int stage)
     int total = -1;
     int count = 0;
     bool answered = false;
+    int usable[RECIPE_SEARCH_PAGE];
     for (int round = 0; round < 2; round++) {
         int offset = recipe_pick_offset(total, RECIPE_SEARCH_PAGE, e->env->random(e->env->ctx));
         if (!recipe_search_url(e->options, stage, offset, RECIPE_SEARCH_PAGE, url, sizeof(url))) {
@@ -209,7 +231,15 @@ static try_result_t try_search(engine_t *e, int stage)
         answered = true;
         count = recipe_parse_chefkoch_search(body, found, RECIPE_SEARCH_PAGE, &total);
         free(body);
-        if (count > 0 || total <= 0 || offset == 0) {
+        if (count > 0) {
+            // every result of this page was shown lately and there are more pages: another page
+            if (round == 1 || total <= RECIPE_SEARCH_PAGE ||
+                pick_usable(e, found, count, stage, true, usable) > 0) {
+                break;
+            }
+            continue;
+        }
+        if (total <= 0 || offset == 0) {
             break;  // else: the page was beyond the end of the results - ask again inside them
         }
     }
@@ -217,19 +247,13 @@ static try_result_t try_search(engine_t *e, int stage)
         free(found);
         return answered ? TRY_EMPTY : TRY_NETWORK;
     }
-    // the usable ones, in a random rotation of the order of the answer
-    int usable[RECIPE_SEARCH_PAGE];
-    int n = 0;
-    for (int i = 0; i < count; i++) {
-        const recipe_candidate_t *c = &found[i];
-        if (!c->usable || (e->options->image && !c->has_image) ||
-            recipe_history_has(e->history, c->id)) {
-            continue;
-        }
-        if (stage < 1 && e->options->property == 1 && c->difficulty > 1) {
-            continue;  // "Einfach": the simplest recipes only
-        }
-        usable[n++] = i;
+    // the usable ones, in a random rotation of the order of the answer; if all that fit the
+    // filters were shown lately, one of them is shown again - that is better than a recipe that
+    // does not fit the filters (and the page would say that it was relaxed)
+    int n = pick_usable(e, found, count, stage, true, usable);
+    if (n == 0) {
+        n = pick_usable(e, found, count, stage, false, usable);
+        e->repeat_ok = n > 0;
     }
     try_result_t result = TRY_EMPTY;
     if (n > 0) {
@@ -279,11 +303,15 @@ static try_result_t try_mealdb(engine_t *e, int stage)
         }
         int usable[60];
         int n = 0;
-        for (int i = 0; i < count; i++) {
-            if ((!e->options->image || found[i].has_image) &&
-                !recipe_history_has(e->history, found[i].id)) {
-                usable[n++] = i;
+        for (int pass = 0; pass < 2 && n == 0; pass++) {
+            // pass 1: all were shown lately - one is shown again rather than another category
+            for (int i = 0; i < count; i++) {
+                if ((!e->options->image || found[i].has_image) &&
+                    (pass == 1 || !recipe_history_has(e->history, found[i].id))) {
+                    usable[n++] = i;
+                }
             }
+            e->repeat_ok = pass == 1 && n > 0;
         }
         try_result_t result = answered ? TRY_EMPTY : TRY_NETWORK;
         if (n > 0) {
@@ -330,6 +358,7 @@ static try_result_t try_mealdb(engine_t *e, int stage)
 
 static try_result_t try_once(engine_t *e, int stage)
 {
+    e->repeat_ok = false;
     switch (e->options->source) {
     case RECIPE_SOURCE_SEARCH:
         return try_search(e, stage);
@@ -366,8 +395,15 @@ recipe_result_t recipe_engine_run(const recipe_options_t *options, const recipe_
     if (!candidate) {
         return RECIPE_RESULT_NONE;
     }
-    engine_t e = {options,     canvas, env,       history,
-                  history_cap, out,    candidate, env->now_ms(env->ctx)};
+    engine_t e = {.options = options,
+                  .canvas = canvas,
+                  .env = env,
+                  .history = history,
+                  .history_cap = history_cap,
+                  .out = out,
+                  .candidate = candidate,
+                  .start_ms = env->now_ms(env->ctx),
+                  .repeat_ok = false};
 
     bool server_answered = false;  // some try reached the source and found nothing usable
     if (network_up) {
