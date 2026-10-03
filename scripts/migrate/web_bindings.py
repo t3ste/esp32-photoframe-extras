@@ -114,6 +114,8 @@ def feature_sets():
         if name not in enabled:
             sets.append({"name": f"all without {name}", "features": enabled})
     for combination in COMBINATIONS:
+        if not all(name in names for name in combination):
+            continue  # a line of this repository without some of the options
         sets.append(
             {
                 "name": "+".join(combination),
