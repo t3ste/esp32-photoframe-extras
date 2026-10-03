@@ -28,8 +28,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   without traffic) or typed. The display shows only a name you choose; **the addresses are in an export only if it includes the credentials**; the keys are write-only and never
   logged, nor are the addresses. No old time is ever shown: without a time the header is as before. New: `route_time.c` (pure: requests, readers of both providers' answers,
   the believable-route and too-long rules; 34 host tests incl. cut-off and changed answers), `route_service.c` (the providers in order, the five-minute memory; 20 host tests with the
-  HTTP layer faked), the header in `screen_fuel.c`, `POST /api/route/geocode` and `/api/route/check`; web: `utils/routeKey.js`. **Not yet run with a real key** - the test answers are
-  assembled from the providers' documentation (the answers of an invalid key were recorded).
+  HTTP layer faked), the header in `screen_fuel.c`, `POST /api/route/geocode` and `/api/route/check`; web: `utils/routeKey.js`. Run with a real TomTom key on one frame (the address look-up, the check of both ways and the fuel page taking the travel time);
+  **not seen yet:** HERE, the red block on the panel. The test answers are assembled from the providers' documentation (the answers of an invalid key were recorded).
 - **Pages per Agenda schedule** (`--with schedule-pages`, [docs/SCHEDULE_PAGES.md](docs/SCHEDULE_PAGES.md); part of `extras`, needs `info-screens`): each schedule of the Agenda can draw
   its own pages (chips under the schedule card; a rotation counter of its own), so that a schedule at 06:30 always shows the fuel page while the hourly one shows the Agenda. When schedules
   overlap, **the smaller number wins** (the order of the list is the priority, with up/down arrows), and no display replaces another within the **minimum time between two displays**

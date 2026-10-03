@@ -8,4 +8,6 @@ Used by `host_tests/test_route.cpp` (the readers of main/route_time.c) and `test
 Berlin Hauptbahnhof, Alexanderplatz) and invented numbers. The error answers `*-error-401.json` were recorded on 2026-10-03 from
 the live services with an invalid key; the other error answers follow the documentation.
 
-When a key of each provider is at hand, replace the success answers with recorded ones (and keep the fields these tests read).
+On 2026-10-03 a real TomTom key was used through a frame: the look-up, the check and the travel time worked, so the readers cope with the real answers. The raw bodies cannot be had
+from the frame (its key is write-only), so these files are still assembled ones: to replace the success answers with recorded ones a key is needed outside the frame - for a key
+of each provider, record them (public places only) and keep the fields these tests read.

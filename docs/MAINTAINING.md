@@ -295,6 +295,8 @@ build), and the xtensa GCC 15.2 crashes now and then with `internal compiler err
 overwrites `main/webapp` with the bundle of its last set - regenerate it (`--step webapp --step splash`, outside the IDF
 shell) before a firmware-only build. A `-Werror=format-truncation` that the host compiler does not show turns up in the
 device build: give `snprintf` buffers for `%d` at least 12 bytes.
+`long` is 32 bit on xtensa and 64 bit in the host tests: arithmetic that can pass 2^31 (a time in seconds times a
+percentage) needs `int64_t` - a host test cannot show the difference.
 
 ## 8. Continuous integration
 
@@ -454,6 +456,13 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
 - Useful endpoints: `GET /api/config`, `PATCH /api/config`, `GET /api/climate-history`, `POST /api/rotate`,
   OTA endpoints; documented in [API.md](API.md). What a configuration file for the web UI's import may and may not
   contain: [DEMO_PACKAGE.md](DEMO_PACKAGE.md) and `main/utils.c`'s `apply_config_from_json()`.
+- **Web UI changes without flashing**: serve the sources with Vite's dev server and proxy `/api` to the frame - a few lines with the
+  JS API (`createServer({ root, configFile, server: { proxy: { '/api': { target: 'http://<frame>', changeOrigin: true } } } })`) in a
+  helper outside the repository, with `VITE_FEATURES` set to the options of the build (an empty string is a build with none) - and
+  drive the page with Playwright and the local Chrome. `page.route()` answers or alters requests on their way (a `GET /api/config`
+  with other values, an endpoint with a scripted answer), so nothing of it has to exist on the frame; do not press *Save*. The dev
+  server prints Vue's warnings for names a template uses but the script lacks, which a build does not. The frame itself serves the
+  web UI of the last firmware it was flashed with.
 - OTA end-to-end test recipe: flash a dev build that is older than the latest release, open Updates, check, install,
   verify the frame reboots into the release with settings kept and state `idle`.
 - Measure before you guess: the climate-history slowness was first blamed on "50,000 readings" and the device had
@@ -469,6 +478,9 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
   `GET /api/config` returns some credentials in plain text (`access_token`, `http_header_value`,
   `telegram_bot_token`, `openai_api_key`, `google_api_key`); `wifi_password`, the device password and the
   agenda/ToDo URLs are write-only.
+- The web UI shows what the frame stores (calendar names, addresses and the like). A screenshot of a real frame's settings, or a
+  printed `GET /api/config`, is personal data: replace the values in the request on its way (`page.route`) before capturing,
+  report only whether a setting is set, and delete captures that show real data.
 - Outward-facing and irreversible actions need the maintainer's confirmation each time (section 1, rule 4).
 - **Claude Code specifics**: its permission classifier has denied real flashes ("Real-World Transactions"), force
   pushes ("Git Destructive") and edits of its own permission settings ("Self-Modification"). When a call is denied,
@@ -503,6 +515,7 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
 | `gh run watch --exit-status` returns 1 for a green run | Unreliable | `gh run view <id> --json status,conclusion` |
 | Climate History shows only a spinner | Handler built up to ~50k readings as pretty JSON | Bounded to 1000 points (`history_decimate.h`), compact JSON |
 | Browser console "Password field is not contained in a form" | Vuetify password fields with a placeholder | Harmless, left as is |
+| A switch, list or button of the Settings page does nothing in a build with only some options (no build error) | The template part and the script part it uses are fenced by different options; Vite builds it, Vue only warns when the page is drawn; `SettingsPanel.vue` is in `.prettierignore` and the ESLint ignores, so no tool looks at it | `python scripts/migrate/web_bindings.py`; put the script part under the same option as the template part |
 | Hand-edited file lost its edits | `gate.py apply` re-run | Restore from git; never re-apply on manually edited files |
 | `PRIV_REQUIRES` ignores a Kconfig condition | Early requirement expansion | `idf_component_optional_requires(PRIVATE x)` |
 | Handler registration fails at boot (`HANDLERS_FULL`) | `max_uri_handlers` too small | Raise the base + per-feature count |

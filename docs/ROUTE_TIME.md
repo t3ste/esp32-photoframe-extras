@@ -3,9 +3,10 @@
 > **Build option:** compiled in only with `python build.py --with route-time` (needs `fuel-prices`; the build pulls it in with what it needs), part of
 > the `extras` bundle and of every full build. Without it the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
 >
-> **Status:** built and tested on a PC, compiled for the boards, and its requests, error handling and the settings were checked on a frame with a key
-> of the right shape (the service answered "invalid key" as it should). It has **not yet run with a real key** - the test answers of the providers
-> are assembled from their documentation. Please report what you see.
+> **Status:** built and tested on a PC, compiled for the boards, and run on one frame (Waveshare PhotoPainter 7.3", 2026-10-03) with a real **TomTom** key: the address
+> look-up, the check of both directions (the frame's log: `Places checked: ... (TomTom)`) and the fuel page taking the travel time (`Travel time: ...`). **Not seen yet:**
+> HERE (it is only asked when TomTom fails), a way that takes too long - the red block on the panel - and the provider terms of use. The test answers in
+> `host_tests/data/route/` are still assembled from the providers' documentation. Please report what you see.
 
 The header of the [fuel-price page](FUEL_PRICES.md) can show **how long the drive there and back takes right now**, with the traffic - for a
 commute: to see in the morning whether a jam or road works make you leave earlier. A way that takes more than usual is drawn as a **red block with a
@@ -96,5 +97,5 @@ check, no old time after a failure) is tested on the PC with the HTTP layer fake
 PhotoPainter 7.3") the endpoints answered, with a key of the right shape that no service knows, the way the providers answer an invalid key (both were asked, in order; the frame's log says
 "the key was refused"), the Web UI card was driven in a browser (look-up, limits, name, keys, save; and, with the two route endpoints answered by a script, the choice among several places, an address edited
 afterwards or while a check is on its way, and a frame that already holds checked places), and a fuel page was drawn with the travel time switched on but not checked: no
-time, the page as before. **Not seen yet:** a real answer of
-TomTom or HERE, and the red block on the panel itself.
+time, the page as before. With a real TomTom key on the same frame the address look-up (addresses, streets, up to five places, umlauts), the check of both ways and the
+travel time of the fuel page worked. **Not seen yet:** a real answer of HERE, and the red block on the panel itself.
