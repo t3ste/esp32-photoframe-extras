@@ -130,7 +130,7 @@ static const char *warning_text(unsigned flag, bool german)
     case RECIPE_WARN_NO_IMAGE:
         return german ? "Kein Bild" : "No image";
     case RECIPE_WARN_NO_NETWORK:
-        return german ? "Offline" : "Offline";
+        return "Offline";  // the same word in both languages
     default:
         return "";
     }
@@ -465,6 +465,9 @@ static bool try_layout(const recipe_t *r, const recipe_layout_input_t *in, const
 bool recipe_layout_build(const recipe_t *recipe, const recipe_layout_input_t *input, int width,
                          int height, bool landscape, recipe_layout_t *out)
 {
+    if (out) {
+        memset(out, 0, sizeof(*out));  // whatever happens below, the callers get a defined layout
+    }
     if (!recipe || !input || !out || width < 100 || height < 100) {
         return false;
     }
@@ -506,8 +509,15 @@ void recipe_layout_draw(canvas_t *canvas, const recipe_t *recipe, const recipe_l
                         const recipe_qr_t *qr, const uint8_t *photo, int photo_w, int photo_h,
                         bool grayscale)
 {
-    int scale = l->scale;
+    if (!canvas || !recipe || !l) {
+        return;
+    }
     canvas_fill(canvas, CANVAS_WHITE);
+    if (l->scale < 1 || !l->title_font || !l->meta_font || !l->head_font || !l->ing_font ||
+        !l->body_font || !l->small_font || !l->warn_font) {
+        return;  // a layout that was not built (a panel under 100 pixels): a white page
+    }
+    int scale = l->scale;
 
     // the header
     for (int i = 0; i < l->title_count; i++) {

@@ -655,6 +655,52 @@ TEST(RecipeLayout, TheCodeIsInTheCornerAndAWholeNumberOfPixelsPerModule)
     delete l;
 }
 
+TEST(RecipeLayout, APanelThatIsTooSmallLeavesADefinedLayoutAndDrawsAWhitePage)
+{
+    recipe_t recipe = sample();
+    recipe_layout_input_t in = input(true, true, nullptr);
+    recipe_layout_t *l = new recipe_layout_t;
+    memset(l, 0xAB, sizeof(*l));  // what an uninitialised layout looks like
+    for (int size : {1, 50, 99}) {
+        memset(l, 0xAB, sizeof(*l));
+        EXPECT_FALSE(recipe_layout_build(&recipe, &in, size, size, true, l));
+        recipe_layout_t zero;
+        memset(&zero, 0, sizeof(zero));
+        EXPECT_EQ(memcmp(l, &zero, sizeof(zero)), 0) << size;  // nothing of the 0xAB is left
+        // drawing it (as screen_recipe.c does with the result of the build) must not fall over
+        std::vector<uint8_t> rgb((size_t) size * size * 3, 0x55);
+        canvas_t canvas = {rgb.data(), size, size};
+        recipe_layout_draw(&canvas, &recipe, l, nullptr, nullptr, 0, 0, false);
+        for (uint8_t v : rgb)
+            ASSERT_EQ(v, 255);  // white
+    }
+    // bad arguments leave a defined layout too
+    memset(l, 0xAB, sizeof(*l));
+    EXPECT_FALSE(recipe_layout_build(nullptr, &in, 800, 480, true, l));
+    recipe_layout_t zero;
+    memset(&zero, 0, sizeof(zero));
+    EXPECT_EQ(memcmp(l, &zero, sizeof(zero)), 0);
+    memset(l, 0xAB, sizeof(*l));
+    EXPECT_FALSE(recipe_layout_build(&recipe, nullptr, 800, 480, true, l));
+    EXPECT_EQ(memcmp(l, &zero, sizeof(zero)), 0);
+    EXPECT_FALSE(recipe_layout_build(&recipe, &in, 800, 480, true, nullptr));  // and no crash
+    delete l;
+}
+
+TEST(RecipeLayout, DrawingWithNothingGivesNothingAndDoesNotFallOver)
+{
+    recipe_t recipe = sample();
+    recipe_layout_input_t in = input(true, true, nullptr);
+    recipe_layout_t *l = new recipe_layout_t;
+    recipe_layout_build(&recipe, &in, 800, 480, true, l);
+    std::vector<uint8_t> rgb(800 * 480 * 3, 0);
+    canvas_t canvas = {rgb.data(), 800, 480};
+    recipe_layout_draw(nullptr, &recipe, l, nullptr, nullptr, 0, 0, false);
+    recipe_layout_draw(&canvas, nullptr, l, nullptr, nullptr, 0, 0, false);
+    recipe_layout_draw(&canvas, &recipe, nullptr, nullptr, nullptr, 0, 0, false);
+    delete l;
+}
+
 TEST(RecipeLayout, AnEmptyRecipeIsLaidOutWithoutTrouble)
 {
     recipe_t recipe;
