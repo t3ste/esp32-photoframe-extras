@@ -186,6 +186,14 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Fixed
 
+- **Every TLS connection of a build with `agenda` leaked 200-400 bytes of internal heap** (found with the recipe page, which fetches three times a drawing). The `agenda` option switches on the cross-signed
+  verification of ESP-IDF's certificate bundle (`CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY`, needed for Google Calendar); its callback builds a certificate for the trusted root out of separate
+  `calloc()`s, and `mbedtls_x509_crt_free()` frees only the structure and the list nodes, so the name buffers were lost after every verification. A heap trace of one request showed exactly those allocations
+  (`esp_crt_ca_cb_callback` -> `esp_crt_copy_asn1`); the free heap before each request then fell by a constant 200 B, with plain HTTP by nothing. New `main/tls_ca_cb_fix.c` (compiled with `agenda` when the
+  option is on): `--wrap=mbedtls_ssl_conf_ca_cb` swaps the bundle's callback for one that calls it and packs the buffers it returned into one block that the certificate owns as its raw buffer, so mbedtls frees
+  everything; a certificate that has a raw buffer is left alone, so a later ESP-IDF that frees its own is not affected. Checked on the frame: the trace shows no certificate allocation any more, the free heap
+  stays level over 11 requests in a row, and the verification is the same as before for a normal host, Google Calendar (cross-signed) and the hosts that must be refused (self-signed, wrong host, untrusted root).
+  A frame that sleeps was not affected (every wake starts afresh); one that never sleeps and fetches often lost memory until it restarted.
 - **The Web UI of a build with only some of the options had parts that did nothing.** The Settings page fences a template part and the script part it uses separately, and four of them
   were fenced by the wrong option: the calendar switches of the Agenda tab sat under the alarm clock (a build with `agenda` but not `alarmclock` had Calendar and Extra calendar
   switches that moved but changed no setting), the temperature unit list of the climate option sat under the alarm clock too (empty with `climate` alone), the message line (`showSnackbar`)
