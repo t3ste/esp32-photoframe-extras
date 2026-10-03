@@ -31,7 +31,7 @@ import { isMarketKey } from "../utils/marketKey";
 import { isArtAlbumName, isArtKey } from "../utils/artKey";
 // #endif
 // #if FEATURE_ROUTE_TIME
-import { reactive } from "vue";
+import { nextTick, reactive } from "vue";
 import { isRouteKey } from "../utils/routeKey";
 // #endif
 
@@ -957,14 +957,56 @@ const routeState = reactive({
   lookup: ["", ""], // what the last lookup said, per end
   check: null, // the answer of the last successful check
   message: "", // why the last check failed
+  lookedUp: ["", ""], // the text each list of places was found for
+  checkedText: ["", ""], // the text each end had when the frame took its place over
+  checking: false, // a check is writing its result: the watch below must not read the fields meanwhile
 });
+const routeText = (which) =>
+  (which === 0
+    ? settingsStore.deviceSettings.routeFrom
+    : settingsStore.deviceSettings.routeTo
+  ).trim();
+// A place is only offered for the text it was found for: an address that is edited afterwards must
+// be looked up again, or the frame would be given a place that is not the one typed.
 const routeReady = computed(() =>
   routeEnds.every(
     (end) =>
       routeState.choice[end.which] >= 0 &&
-      routeState.candidates[end.which][routeState.choice[end.which]]
+      routeState.candidates[end.which][routeState.choice[end.which]] &&
+      routeState.lookedUp[end.which] === routeText(end.which)
   )
 );
+// What the frame holds as taken over counts only while the text is still the one it was taken over for.
+function routeTakenOver(end) {
+  const ds = settingsStore.deviceSettings;
+  return ds.routeChecked && !!ds[end.found] && routeState.checkedText[end.which] === routeText(end.which);
+}
+watch(
+  () => [
+    settingsStore.deviceSettings.routeChecked,
+    settingsStore.deviceSettings.routeFromFound,
+    settingsStore.deviceSettings.routeToFound,
+  ],
+  () => {
+    // the settings were loaded: the texts now are the ones that were taken over (a check names its own)
+    if (!routeState.checking) routeState.checkedText = [routeText(0), routeText(1)];
+  },
+  { immediate: true }
+);
+for (const end of routeEnds) {
+  watch(
+    () => routeText(end.which),
+    (text) => {
+      if (text !== routeState.lookedUp[end.which]) {
+        routeState.candidates[end.which] = [];
+        routeState.choice[end.which] = -1;
+        routeState.lookup[end.which] = "";
+      }
+      // the last check was for the addresses as they were: its times are not those of this route
+      if (text !== routeState.checkedText[end.which]) routeState.check = null;
+    }
+  );
+}
 
 const routeReasons = {
   no_key: "Enter the key of TomTom or HERE below first.",
@@ -995,6 +1037,7 @@ async function routeLookup(which) {
   routeState.candidates[which] = [];
   routeState.choice[which] = -1;
   routeState.lookup[which] = "";
+  routeState.lookedUp[which] = text;
   if (!text) {
     routeState.lookup[which] = "Type an address first.";
     return;
@@ -1027,29 +1070,37 @@ async function routeCheck() {
   routeState.busy = true;
   routeState.message = "";
   routeState.check = null;
+  const sentTexts = [routeText(0), routeText(1)]; // what the frame is given, whatever is typed meanwhile
   try {
     const answer = await routePost("/api/route/check", {
-      from_text: ds.routeFrom.trim(),
+      from_text: sentTexts[0],
       from,
-      to_text: ds.routeTo.trim(),
+      to_text: sentTexts[1],
       to,
     });
     if (answer.status === "ok") {
-      routeState.check = answer;
+      routeState.checking = true;
       ds.routeChecked = true;
       ds.routeFrom = ds.routeFrom.trim();
       ds.routeTo = ds.routeTo.trim();
       ds.routeFromFound = from.label;
       ds.routeToFound = to.label;
-      // a first time to go by: the times of now, to be adopted as they are or changed
-      if (!ds.routeRefThereMin) ds.routeRefThereMin = answer.there_min;
-      if (!ds.routeRefBackMin) ds.routeRefBackMin = answer.back_min;
+      routeState.checkedText = sentTexts;
+      // only an answer for the addresses that are still typed is offered for the times
+      if (routeText(0) === sentTexts[0] && routeText(1) === sentTexts[1]) {
+        routeState.check = answer;
+        // a first time to go by: the times of now, to be adopted as they are or changed
+        if (!ds.routeRefThereMin) ds.routeRefThereMin = answer.there_min;
+        if (!ds.routeRefBackMin) ds.routeRefBackMin = answer.back_min;
+      }
+      await nextTick(); // the watch on the fields has run (and left them alone) by now
     } else {
       routeState.message = routeReason(answer);
     }
   } catch {
     routeState.message = "The frame did not answer.";
   } finally {
+    routeState.checking = false;
     routeState.busy = false;
   }
 }
@@ -3351,10 +3402,7 @@ async function performFactoryReset() {
                   />
                 </v-radio-group>
                 <div
-                  v-if="
-                    settingsStore.deviceSettings.routeChecked &&
-                    settingsStore.deviceSettings[end.found]
-                  "
+                  v-if="routeTakenOver(end)"
                   class="text-caption mt-1"
                 >
                   <v-icon size="small" color="success">mdi-check-circle</v-icon>
@@ -3390,8 +3438,12 @@ async function performFactoryReset() {
                   {{ routeState.check.free_back_min }} min)</span
                 >. The places are stored on the frame now; Save Settings keeps the rest.
               </div>
-              <div v-else-if="!settingsStore.deviceSettings.routeChecked" class="text-caption mb-2">
+              <div
+                v-else-if="!routeEnds.every((end) => routeTakenOver(end))"
+                class="text-caption mb-2"
+              >
                 Not checked yet: the page shows no travel time until both places are taken over.
+                An address that was changed has to be looked up and checked again.
               </div>
               <div class="text-subtitle-2 mb-1">The usual time</div>
               <div class="text-caption text-medium-emphasis mb-2">

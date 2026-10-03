@@ -50,7 +50,9 @@ An address is turned into coordinates by the provider, once, when you take it ov
 4. The frame stores the **coordinates**, so a provider other than the one that found the address routes the same points, and nothing is looked up again when
    the page is drawn.
 5. If you change an address text afterwards, the place found for the old one is dropped: the page shows no travel time until the new one is checked.
-   Without a check the frame never draws a travel time.
+   Without a check the frame never draws a travel time. The Web UI follows the same rule: a place is offered only for the text it was found for, so an address
+   that is edited after **Find** has to be looked up again, and one that is edited after the check is shown as not taken over (and its times cannot be adopted) until it
+   is checked again.
 
 ## Sources and keys
 
@@ -92,6 +94,7 @@ answers assembled from the providers' documentation (`host_tests/data/route/`; t
 that cuts off and changes bytes of them; the device side (the order of the providers, the fallback, the five-minute memory, the places that are only taken over after the
 check, no old time after a failure) is tested on the PC with the HTTP layer faked; the header is drawn on every panel size in both languages. On a frame (Waveshare
 PhotoPainter 7.3") the endpoints answered, with a key of the right shape that no service knows, the way the providers answer an invalid key (both were asked, in order; the frame's log says
-"the key was refused"), the Web UI card was driven in a browser (look-up, limits, name, keys, save), and a fuel page was drawn with the travel time switched on but not checked: no
+"the key was refused"), the Web UI card was driven in a browser (look-up, limits, name, keys, save; and, with the two route endpoints answered by a script, the choice among several places, an address edited
+afterwards or while a check is on its way, and a frame that already holds checked places), and a fuel page was drawn with the travel time switched on but not checked: no
 time, the page as before. **Not seen yet:** a real answer of
 TomTom or HERE, and the red block on the panel itself.
