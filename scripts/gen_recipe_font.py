@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "main" / "recipe_font_data.c"
 
-# (style, pixel size): what the layout asks for. Body text goes 16..12, the title 30/24/19,
+# (style, pixel size): what the layout asks for. Body text goes 22..12, the title 30/24/19,
 # the headings and the small lines have their own.
 FONTS = [
     ("regular", 12),
@@ -33,7 +33,11 @@ FONTS = [
     ("regular", 14),
     ("regular", 15),
     ("regular", 16),
+    ("regular", 17),
+    ("regular", 18),
     ("regular", 19),
+    ("regular", 20),
+    ("regular", 22),
     ("regular", 24),
     ("regular", 30),
     ("bold", 12),

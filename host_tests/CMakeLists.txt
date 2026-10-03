@@ -34,6 +34,20 @@ else()
   set(CJSON_DIR "${cjson_SOURCE_DIR}")
 endif()
 
+# The QR code generator behind the recipe page's code (qrcodegen, MIT): the copy of the firmware's qrcode component
+# (managed_components/ is not in the repository), else the same library from upstream.
+set(QRCODEGEN_LOCAL "${CMAKE_CURRENT_SOURCE_DIR}/../managed_components/espressif__qrcode")
+if(EXISTS "${QRCODEGEN_LOCAL}/qrcodegen.c")
+  set(QRCODEGEN_DIR "${QRCODEGEN_LOCAL}")
+else()
+  FetchContent_Declare(
+    qrcodegen
+    URL https://github.com/nayuki/QR-Code-generator/archive/refs/tags/v1.8.0.tar.gz
+  )
+  FetchContent_MakeAvailable(qrcodegen)
+  set(QRCODEGEN_DIR "${qrcodegen_SOURCE_DIR}/c")
+endif()
+
 # Enable testing
 enable_testing()
 
@@ -740,6 +754,75 @@ endforeach()
 target_link_libraries(screens_test GTest::gtest_main m)
 target_link_libraries(render_screens PNG::PNG m)
 
+# The recipe page (build option recipes): the layout, the fonts, the text, the sources and the QR code. The tests and
+# the render harness share the sources.
+set(RECIPE_SCREEN_SOURCES
+  ../main/recipe_layout.c
+  ../main/recipe_font.c
+  ../main/recipe_font_data.c
+  ../main/recipe_qr.c
+  ../main/recipe_text.c
+  ../main/recipe_source.c
+  ../main/json_scan.c
+  ../main/screen_canvas.c
+  ../main/glyph_extras.c
+  ../components/epaper_src/Fonts/font24.c
+  ${CJSON_DIR}/cJSON.c
+  ${QRCODEGEN_DIR}/qrcodegen.c
+)
+
+add_executable(
+  render_recipe
+  render_recipe.cpp
+  ${RECIPE_SCREEN_SOURCES}
+)
+
+target_compile_definitions(
+  render_recipe
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  RECIPE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/recipe"
+)
+
+target_include_directories(
+  render_recipe
+  PRIVATE
+  ${CJSON_DIR}
+  ${QRCODEGEN_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
+target_link_libraries(render_recipe PNG::PNG m)
+
+add_executable(
+  recipe_layout_test
+  test_recipe_layout.cpp
+  ${RECIPE_SCREEN_SOURCES}
+)
+
+target_compile_definitions(
+  recipe_layout_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  RECIPE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/recipe"
+)
+
+target_include_directories(
+  recipe_layout_test
+  PRIVATE
+  ${CJSON_DIR}
+  ${QRCODEGEN_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
+target_link_libraries(recipe_layout_test GTest::gtest_main m)
+
 # Microphone level maths (RMS/peak in dBFS, text bar) behind the console level test
 # (voice-stop feature)
 add_executable(
@@ -1003,6 +1086,7 @@ gtest_discover_tests(route_test)
 gtest_discover_tests(route_service_test)
 gtest_discover_tests(recipe_text_test)
 gtest_discover_tests(recipe_source_test)
+gtest_discover_tests(recipe_layout_test)
 gtest_discover_tests(wake_schedule_test)
 gtest_discover_tests(http_auth_test)
 gtest_discover_tests(source_auth_test)
