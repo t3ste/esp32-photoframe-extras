@@ -210,7 +210,7 @@ which to run after which change.
 | Cross-reference | `python scripts/migrate/xref.py [set ...]` | a symbol defined only in a guarded-out region, or in a header included conditionally (seconds instead of a build) | not a compile |
 | All-off C sources | `python scripts/migrate/alloff_source.py` | with every guard resolved "off", each C/H file equals the upstream text at `BASELINE` (175 files; intended differences listed in the script) | build wiring, web |
 | All-off web sources | `python scripts/migrate/alloff_web.py` | same for the 33 web sources that reach the device bundle (runs the real directive plugin through node; only `webapp/index-demo.html` may differ) | build output |
-| Names in the web sources | `python scripts/migrate/web_bindings.py` | for every feature set (each alone, the full build, the full build without each, some combinations) every name a template uses is defined in its script - a fenced-out script part under a template part that stays builds without a word and fails in the browser | needs node and `npm ci` in `webapp/`; not run by CI yet |
+| Names in the web sources | `python scripts/migrate/web_bindings.py` | for every feature set (each alone, the full build, the full build without each, some combinations) every name a template uses is defined in its script - a fenced-out script part under a template part that stays builds without a word and fails in the browser | needs node and `npm ci --ignore-scripts` in `webapp/`; run by CI (`feature-tooling`) |
 | Binary acceptance A | `python scripts/verify_baseline.py --board <b>` (IDF shell) | Kconfig symbols, ELF `nm`, `.bin` size equal to an upstream build; `--all-features` variants compare against the old fork | **feeds both builds the same prebuilt web assets - cannot see web differences** |
 | Web bundle byte compare | manual, below | the all-off web bundle is byte-identical to a build of upstream's own webapp | - |
 | Compile matrix | `python scripts/feature_matrix.py --board <b> off fixes single ...` (IDF shell) | every flag alone, none, all compile (`--full` also links) | runtime |
@@ -290,7 +290,7 @@ not PowerShell.
 
 - `ci.yml` (push/PR to `main`/`dev`, also callable): **format-check** (Node 18, Python 3.11, clang-format-18),
   **host-tests** (`make test`), **feature-tooling** (unit tests, `check_capabilities`, `xref`, `alloff_source`,
-  `alloff_web`; needs `fetch-depth: 0` because the baseline is a commit in history). About 2 minutes.
+  `alloff_web`, `web_bindings` after an `npm ci --ignore-scripts` of `webapp/`; needs `fetch-depth: 0` because the baseline is a commit in history). About 2 minutes.
 - `build.yml` "Build Firmware" (push to `main`, tags `v*`, PRs, manual `workflow_dispatch`, and the `release:
   published` event): calls `ci`, then **16 builds** (8 boards x `plain`/`full`), ~16 **feature-compile** jobs,
   the **release** job and **deploy-pages**. About 13 minutes.
