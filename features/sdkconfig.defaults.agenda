@@ -5,5 +5,6 @@ CONFIG_FEATURE_AGENDA=y
 # Cross-signed roots: calendar.google.com's chain ends at "GTS Root R4", which is
 # cross-signed by the older GlobalSign root the certificate bundle trusts. Without this
 # option a Google Calendar ICS fetch fails with "No matching trusted root certificate".
+# (ESP-IDF's callback for it leaks a few hundred bytes per connection; main/tls_ca_cb_fix.c repairs that.)
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
 CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y

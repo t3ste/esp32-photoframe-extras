@@ -31,6 +31,7 @@ MODULES = {
         "agenda_renderer",
         "calendar_ics",
         "todo",
+        "tls_ca_cb_fix",
     ],
     "chimes": ["chime"],
     "climate": ["climate_history"],

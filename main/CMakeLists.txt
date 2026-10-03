@@ -50,7 +50,7 @@ if(CONFIG_FORK_CLIMATE_CORE)
 endif()
 if(CONFIG_FEATURE_AGENDA)
     list(APPEND SOURCES "agenda_color_profile.c" "agenda_manager.c" "agenda_renderer.c"
-                        "calendar_ics.c" "todo.c")
+                        "calendar_ics.c" "todo.c" "tls_ca_cb_fix.c")
 endif()
 if(CONFIG_FEATURE_CHIMES)
     list(APPEND SOURCES "chime.c")
@@ -133,6 +133,15 @@ idf_component_register(
     PRIV_REQUIRES ${PRIV_REQUIRES} 
     EMBED_FILES ${MAIN_EMBED_FILES}
 )
+
+# The cross-signed verification of the certificate bundle (switched on by the agenda's sdkconfig)
+# leaks a few hundred bytes per TLS connection; tls_ca_cb_fix.c repairs that by wrapping the
+# registration of its callback.
+if(CONFIG_FEATURE_AGENDA AND CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY)
+    # -u: the wrapper is first asked for by mbedtls' archive, which the linker reads after main's
+    target_link_libraries(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=mbedtls_ssl_conf_ca_cb"
+                          "-Wl,-u,__wrap_mbedtls_ssl_conf_ca_cb")
+endif()
 
 # Embed splash screen EPDGZ files (generated at build time by generate_splash.py)
 target_add_binary_data(${COMPONENT_LIB} "splash_data/splash.epdgz" BINARY)
