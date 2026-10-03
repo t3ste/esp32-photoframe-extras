@@ -103,12 +103,22 @@ def feature_sets():
     names = [f.name for f in features.FEATURES]
     sets = [
         {"name": "none", "features": []},
-        {"name": "all", "features": list(features.resolve(BOARD, all_features=True).enabled)},
+        {
+            "name": "all",
+            "features": list(features.resolve(BOARD, all_features=True).enabled),
+        },
     ]
     for name in names:
-        sets.append({"name": f"only {name}", "features": list(features.resolve(BOARD, [name]).enabled)})
+        sets.append(
+            {
+                "name": f"only {name}",
+                "features": list(features.resolve(BOARD, [name]).enabled),
+            }
+        )
         try:
-            enabled = list(features.resolve(BOARD, all_features=True, excluded=[name]).enabled)
+            enabled = list(
+                features.resolve(BOARD, all_features=True, excluded=[name]).enabled
+            )
         except features.FeatureError:
             continue  # something else needs it
         if name not in enabled:
