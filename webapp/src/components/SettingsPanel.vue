@@ -34,6 +34,9 @@ import { isArtAlbumName, isArtKey } from "../utils/artKey";
 import { nextTick, reactive } from "vue";
 import { isRouteKey } from "../utils/routeKey";
 // #endif
+// #if FEATURE_RECIPES
+import { isMealDbKey } from "../utils/recipeKey";
+// #endif
 
 const settingsStore = useSettingsStore();
 const appStore = useAppStore();
@@ -928,6 +931,7 @@ const infoScreenLabels = {
   finance: "Exchange rates",
   fuel: "Fuel prices",
   markets: "Markets",
+  recipe: "Recipe",
 };
 // A page's own settings are shown only while the page is ticked.
 const infoScreenOn = (name) => settingsStore.deviceSettings.infoScreens.includes(name);
@@ -980,6 +984,127 @@ async function removeMarketKey(which) {
       const name = which === "twelvedata" ? "Twelvedata" : "Alphavantage";
       settingsStore.deviceSettings[`marketKey${name}Configured`] = false;
       settingsStore.deviceSettings[`marketKey${name}`] = "";
+    }
+  } catch {
+    /* the frame is not reachable: the key stays */
+  }
+}
+// #endif
+// #if FEATURE_RECIPES
+// What the recipe page offers: the names are those of the frame (main/recipe_source.c). The words of
+// the Chefkoch filters are German because Chefkoch is: they are what the search is asked for.
+const recipeSourceItems = [
+  { title: "Chefkoch - recipe of the day (German)", value: "day" },
+  { title: "Chefkoch - search with filters (German)", value: "search" },
+  { title: "TheMealDB - by category (English)", value: "mealdb" },
+];
+const recipeVariantItems = [
+  { title: "Classic", value: "classic" },
+  { title: "Vegetarian", value: "vegetarian" },
+  { title: "Vegan", value: "vegan" },
+];
+const recipeFilterItems = (names) => [
+  { title: "No filter", value: "" },
+  ...names.map((name) => ({ title: name, value: name })),
+];
+const recipePropertyItems = recipeFilterItems(["Einfach", "Schnell", "Basisrezepte", "Preiswert"]);
+const recipeHealthItems = recipeFilterItems([
+  "Vegetarisch",
+  "Vegan",
+  "Kalorienarm",
+  "Low Carb",
+  "Ketogen",
+  "Paleo",
+  "Fettarm",
+  "Vollwert",
+]);
+const recipeCategoryItems = recipeFilterItems([
+  "Auflauf",
+  "Pizza",
+  "Salat",
+  "Tarte",
+  "Fingerfood",
+  "Dips",
+  "Saucen",
+  "Suppe",
+  "Brot und Brötchen",
+  "Süßspeise",
+  "Kuchen",
+  "Torte",
+  "Getränke",
+]);
+const recipeCountryItems = recipeFilterItems([
+  "Deutschland",
+  "Italien",
+  "Spanien",
+  "Frankreich",
+  "Griechenland",
+  "Türkei",
+  "Asien",
+  "Indien",
+  "Japan",
+  "Mexiko",
+]);
+const recipeMealItems = recipeFilterItems([
+  "Hauptspeise",
+  "Vorspeise",
+  "Beilage",
+  "Dessert",
+  "Snack",
+  "Frühstück",
+]);
+const recipeTimeItems = [
+  { title: "No limit", value: 0 },
+  { title: "Up to 15 minutes", value: 15 },
+  { title: "Up to 30 minutes", value: 30 },
+  { title: "Up to 1 hour", value: 60 },
+  { title: "Up to 2 hours", value: 120 },
+];
+const recipeRatingItems = [
+  { title: "Any", value: 0 },
+  { title: "2 stars and more", value: 20 },
+  { title: "3 stars and more", value: 30 },
+  { title: "4 stars and more", value: 40 },
+  { title: "Top (4.5 and more)", value: 45 },
+];
+const recipeSortItems = [
+  { title: "Recommended", value: "recommended" },
+  { title: "Best rated", value: "rating" },
+  { title: "Newest", value: "newest" },
+];
+const recipeMealdbItems = [
+  { title: "Any category (a random recipe)", value: "" },
+  ...[
+    "Beef",
+    "Breakfast",
+    "Chicken",
+    "Dessert",
+    "Goat",
+    "Lamb",
+    "Miscellaneous",
+    "Pasta",
+    "Pork",
+    "Seafood",
+    "Side",
+    "Starter",
+    "Vegan",
+    "Vegetarian",
+  ].map((name) => ({ title: name, value: name })),
+];
+const mealDbKeyRule = (value) =>
+  !value || isMealDbKey(value) || "Letters and digits only, up to 24 characters";
+
+// Removes the personal key of TheMealDB from the frame (it is write-only, there is no way to read it).
+async function removeMealDbKey() {
+  try {
+    const response = await fetch("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipe_mealdb_key_clear: true }),
+    });
+    if (response.ok) {
+      settingsStore.deviceSettings.recipeMealdbKeyConfigured = false;
+      settingsStore.deviceSettings.recipeMealdbKey = "";
     }
   } catch {
     /* the frame is not reachable: the key stays */
@@ -3813,6 +3938,196 @@ async function performFactoryReset() {
                       </v-btn>
                       <span class="text-caption text-medium-emphasis">{{ factsMessage }}</span>
                     </div>
+                  </div>
+<!-- #endif -->
+<!-- #if FEATURE_RECIPES -->
+                  <v-checkbox
+                    v-model="settingsStore.deviceSettings.infoScreens"
+                    value="recipe"
+                    label="Recipe"
+                    density="compact"
+                    hide-details
+                  />
+                  <div v-if="infoScreenOn('recipe')" class="ml-4 pl-4 mb-3 border-s">
+                    <div class="text-caption text-medium-emphasis mt-2 mb-2">
+                      Recipe: a cooking recipe with its picture, drawn for the orientation of the display
+                      (Settings -> General). A recipe without a picture, or with more text than fits, is
+                      skipped. If nothing is found in three tries the filters are relaxed step by step and
+                      the page says so; if nothing can be loaded at all the last recipe is shown again with
+                      a warning. Needs the frame to be online when the page is drawn.
+                    </div>
+                    <v-select
+                      v-model="settingsStore.deviceSettings.recipeSource"
+                      :items="recipeSourceItems"
+                      label="Source"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      class="mb-2"
+                    />
+                    <v-select
+                      v-if="settingsStore.deviceSettings.recipeSource === 'day'"
+                      v-model="settingsStore.deviceSettings.recipeVariant"
+                      :items="recipeVariantItems"
+                      label="Recipe of the day"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      class="mb-2"
+                    />
+                    <template v-if="settingsStore.deviceSettings.recipeSource === 'search'">
+                      <div class="text-caption text-medium-emphasis mb-2">
+                        The time, the rating and the order are asked of Chefkoch itself. The other filters
+                        are added to the search words, so they narrow the choice but are not exact. With no
+                        filter a random recipe of the first thousand of the order is shown.
+                      </div>
+                      <v-text-field
+                        v-model="settingsStore.deviceSettings.recipeQuery"
+                        label="Search words (optional)"
+                        maxlength="47"
+                        variant="outlined"
+                        density="compact"
+                        hide-details
+                        class="mb-2"
+                      />
+                      <v-row dense>
+                        <v-col cols="12" sm="6">
+                          <v-select
+                            v-model="settingsStore.deviceSettings.recipeCategory"
+                            :items="recipeCategoryItems"
+                            label="Category"
+                            variant="outlined"
+                            density="compact"
+                            hide-details
+                          />
+                        </v-col>
+                        <v-col cols="12" sm="6">
+                          <v-select
+                            v-model="settingsStore.deviceSettings.recipeCountry"
+                            :items="recipeCountryItems"
+                            label="Country or cuisine"
+                            variant="outlined"
+                            density="compact"
+                            hide-details
+                          />
+                        </v-col>
+                        <v-col cols="12" sm="6">
+                          <v-select
+                            v-model="settingsStore.deviceSettings.recipeMeal"
+                            :items="recipeMealItems"
+                            label="Type of meal"
+                            variant="outlined"
+                            density="compact"
+                            hide-details
+                          />
+                        </v-col>
+                        <v-col cols="12" sm="6">
+                          <v-select
+                            v-model="settingsStore.deviceSettings.recipeHealth"
+                            :items="recipeHealthItems"
+                            label="Diet"
+                            variant="outlined"
+                            density="compact"
+                            hide-details
+                          />
+                        </v-col>
+                        <v-col cols="12" sm="6">
+                          <v-select
+                            v-model="settingsStore.deviceSettings.recipeProperty"
+                            :items="recipePropertyItems"
+                            label="Property"
+                            variant="outlined"
+                            density="compact"
+                            hide-details
+                          />
+                        </v-col>
+                        <v-col cols="12" sm="6">
+                          <v-select
+                            v-model="settingsStore.deviceSettings.recipeSort"
+                            :items="recipeSortItems"
+                            label="Order"
+                            variant="outlined"
+                            density="compact"
+                            hide-details
+                          />
+                        </v-col>
+                        <v-col cols="12" sm="6">
+                          <v-select
+                            v-model="settingsStore.deviceSettings.recipeMaxMinutes"
+                            :items="recipeTimeItems"
+                            label="Time"
+                            variant="outlined"
+                            density="compact"
+                            hide-details
+                          />
+                        </v-col>
+                        <v-col cols="12" sm="6">
+                          <v-select
+                            v-model="settingsStore.deviceSettings.recipeMinRating"
+                            :items="recipeRatingItems"
+                            label="Rating"
+                            variant="outlined"
+                            density="compact"
+                            hide-details
+                          />
+                        </v-col>
+                      </v-row>
+                    </template>
+                    <template v-if="settingsStore.deviceSettings.recipeSource === 'mealdb'">
+                      <v-select
+                        v-model="settingsStore.deviceSettings.recipeMealdbCategory"
+                        :items="recipeMealdbItems"
+                        label="Category"
+                        variant="outlined"
+                        density="compact"
+                        hide-details
+                        class="mb-2"
+                      />
+                      <v-text-field
+                        v-model="settingsStore.deviceSettings.recipeMealdbKey"
+                        label="TheMealDB key (optional)"
+                        :placeholder="
+                          settingsStore.deviceSettings.recipeMealdbKeyConfigured
+                            ? 'A key is saved'
+                            : 'The free test key is used'
+                        "
+                        :rules="[mealDbKeyRule]"
+                        type="password"
+                        autocomplete="off"
+                        variant="outlined"
+                        density="compact"
+                        hide-details="auto"
+                        class="mb-2"
+                      >
+                        <template
+                          v-if="settingsStore.deviceSettings.recipeMealdbKeyConfigured"
+                          #append-inner
+                        >
+                          <v-btn size="x-small" variant="text" @click="removeMealDbKey">
+                            Remove
+                          </v-btn>
+                        </template>
+                      </v-text-field>
+                      <div class="text-caption text-medium-emphasis mb-2">
+                        Without a key of your own the free test key "1" is used, which TheMealDB offers for
+                        development and learning; a key of a supporter of theirs is meant for use that is
+                        public. The key is stored on the frame and never shown again.
+                      </div>
+                    </template>
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.recipeImage"
+                      label="Show the picture"
+                      color="primary"
+                      density="compact"
+                      hide-details
+                    />
+                    <v-switch
+                      v-model="settingsStore.deviceSettings.recipeQr"
+                      label="QR code of the recipe's address"
+                      color="primary"
+                      density="compact"
+                      hide-details
+                    />
                   </div>
 <!-- #endif -->
                 </v-expansion-panel-text>

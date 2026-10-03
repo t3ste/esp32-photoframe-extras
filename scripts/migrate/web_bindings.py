@@ -36,6 +36,7 @@ COMBINATIONS = [
     ("agenda", "alarmclock"),
     ("agenda", "info-screens", "fuel-prices", "route-time"),
     ("agenda", "info-screens", "schedule-pages"),
+    ("agenda", "info-screens", "recipes"),
     ("agenda", "caldav", "caldav-todo", "webcal", "source-auth"),
     ("info-screens", "market-quotes", "chore-wheel"),
     ("alarmclock", "voice-stop"),

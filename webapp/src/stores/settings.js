@@ -16,6 +16,9 @@ import { isArtAlbumName, isArtKey } from "../utils/artKey";
 import { isRouteKey } from "../utils/routeKey";
 // #endif
 // #endif
+// #if FEATURE_RECIPES
+import { isMealDbKey } from "../utils/recipeKey";
+// #endif
 
 export const useSettingsStore = defineStore("settings", () => {
   const API_BASE = "";
@@ -338,6 +341,26 @@ export const useSettingsStore = defineStore("settings", () => {
     routeKeyTomtomConfigured: false,
     routeKeyHere: "",
     routeKeyHereConfigured: false,
+// #endif
+// #if FEATURE_RECIPES
+    // The recipe page (see docs/RECIPES.md): the source, the filters (the names the frame uses; ""
+    // is no filter), the picture and the QR code; the key of TheMealDB is write-only
+    recipeSource: "day",
+    recipeVariant: "classic",
+    recipeQuery: "",
+    recipeProperty: "",
+    recipeHealth: "",
+    recipeCategory: "",
+    recipeCountry: "",
+    recipeMeal: "",
+    recipeMaxMinutes: 0,
+    recipeMinRating: 0,
+    recipeSort: "recommended",
+    recipeMealdbCategory: "",
+    recipeImage: true,
+    recipeQr: false,
+    recipeMealdbKey: "",
+    recipeMealdbKeyConfigured: false,
 // #endif
 // #if FEATURE_SCHEDULE_PAGES
     // Pages per Agenda schedule (see docs/SCHEDULE_PAGES.md): per schedule the pages it draws
@@ -762,6 +785,23 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.routeKeyTomtomConfigured = data.route_key_tomtom_configured === true;
       deviceSettings.value.routeKeyHereConfigured = data.route_key_here_configured === true;
 // #endif
+// #if FEATURE_RECIPES
+      deviceSettings.value.recipeSource = data.recipe_source ?? "day";
+      deviceSettings.value.recipeVariant = data.recipe_variant ?? "classic";
+      deviceSettings.value.recipeQuery = data.recipe_query ?? "";
+      deviceSettings.value.recipeProperty = data.recipe_property ?? "";
+      deviceSettings.value.recipeHealth = data.recipe_health ?? "";
+      deviceSettings.value.recipeCategory = data.recipe_category ?? "";
+      deviceSettings.value.recipeCountry = data.recipe_country ?? "";
+      deviceSettings.value.recipeMeal = data.recipe_meal ?? "";
+      deviceSettings.value.recipeMaxMinutes = data.recipe_max_minutes ?? 0;
+      deviceSettings.value.recipeMinRating = data.recipe_min_rating ?? 0;
+      deviceSettings.value.recipeSort = data.recipe_sort ?? "recommended";
+      deviceSettings.value.recipeMealdbCategory = data.recipe_mealdb_category ?? "";
+      deviceSettings.value.recipeImage = data.recipe_image !== false;
+      deviceSettings.value.recipeQr = data.recipe_qr === true;
+      deviceSettings.value.recipeMealdbKeyConfigured = data.recipe_mealdb_key_configured === true;
+// #endif
 // #if FEATURE_SCHEDULE_PAGES
       deviceSettings.value.agendaCronPages = Array.isArray(data.agenda_cron_pages)
         ? data.agenda_cron_pages
@@ -1069,6 +1109,26 @@ export const useSettingsStore = defineStore("settings", () => {
         : {}),
       ...(isRouteKey(deviceSettings.value.routeKeyHere)
         ? { route_key_here: deviceSettings.value.routeKeyHere }
+        : {}),
+// #endif
+// #if FEATURE_RECIPES
+      recipe_source: deviceSettings.value.recipeSource,
+      recipe_variant: deviceSettings.value.recipeVariant,
+      recipe_query: deviceSettings.value.recipeQuery,
+      recipe_property: deviceSettings.value.recipeProperty,
+      recipe_health: deviceSettings.value.recipeHealth,
+      recipe_category: deviceSettings.value.recipeCategory,
+      recipe_country: deviceSettings.value.recipeCountry,
+      recipe_meal: deviceSettings.value.recipeMeal,
+      recipe_max_minutes: deviceSettings.value.recipeMaxMinutes,
+      recipe_min_rating: deviceSettings.value.recipeMinRating,
+      recipe_sort: deviceSettings.value.recipeSort,
+      recipe_mealdb_category: deviceSettings.value.recipeMealdbCategory,
+      recipe_image: deviceSettings.value.recipeImage,
+      recipe_qr: deviceSettings.value.recipeQr,
+      // write-only: sent only when something valid was typed (an empty value means "not touched")
+      ...(isMealDbKey(deviceSettings.value.recipeMealdbKey)
+        ? { recipe_mealdb_key: deviceSettings.value.recipeMealdbKey }
         : {}),
 // #endif
 // #if FEATURE_SCHEDULE_PAGES
