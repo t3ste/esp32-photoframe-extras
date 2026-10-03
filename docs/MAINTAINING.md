@@ -210,12 +210,13 @@ which to run after which change.
 | Cross-reference | `python scripts/migrate/xref.py [set ...]` | a symbol defined only in a guarded-out region, or in a header included conditionally (seconds instead of a build) | not a compile |
 | All-off C sources | `python scripts/migrate/alloff_source.py` | with every guard resolved "off", each C/H file equals the upstream text at `BASELINE` (175 files; intended differences listed in the script) | build wiring, web |
 | All-off web sources | `python scripts/migrate/alloff_web.py` | same for the 33 web sources that reach the device bundle (runs the real directive plugin through node; only `webapp/index-demo.html` may differ) | build output |
+| Names in the web sources | `python scripts/migrate/web_bindings.py` | for every feature set (each alone, the full build, the full build without each, some combinations) every name a template uses is defined in its script - a fenced-out script part under a template part that stays builds without a word and fails in the browser | needs node and `npm ci` in `webapp/`; not run by CI yet |
 | Binary acceptance A | `python scripts/verify_baseline.py --board <b>` (IDF shell) | Kconfig symbols, ELF `nm`, `.bin` size equal to an upstream build; `--all-features` variants compare against the old fork | **feeds both builds the same prebuilt web assets - cannot see web differences** |
 | Web bundle byte compare | manual, below | the all-off web bundle is byte-identical to a build of upstream's own webapp | - |
 | Compile matrix | `python scripts/feature_matrix.py --board <b> off fixes single ...` (IDF shell) | every flag alone, none, all compile (`--full` also links) | runtime |
 | Host tests | section 7 | 314 tests: upstream tests on the all-off code + module tests + "(fork)" image variants | hardware |
 
-After **any** edit to a shared file: `alloff_source.py`, `alloff_web.py`, `xref.py`, host tests, plus a real build
+After **any** edit to a shared file: `alloff_source.py`, `alloff_web.py`, `xref.py`, host tests (and `web_bindings.py` after a web change), plus a real build
 of the board you touched. After an **upstream merge** or a **web change**: also the manual bundle compare and
 `verify_baseline.py` for one board with the hardware (waveshare) and one without (`seeedstudio_xiao_ee02`).
 
@@ -572,7 +573,7 @@ fix; the rest are standing notes, not work items.
 | `features/` | `sdkconfig.defaults.<feature>` overlays |
 | `sdkconfig.defaults` | Base sdkconfig (note `CONFIG_ESP_TLS_INSECURE`: without a pinned certificate, HTTPS image/ICS fetches do not verify the server) |
 | `scripts/features.py`, `boards.py`, `check_capabilities.py`, `feature_matrix.py` | Feature registry, board tables, checks, compile matrix |
-| `scripts/verify_baseline.py`, `scripts/migrate/` | Equality proofs (`alloff_source.py`, `alloff_web.py`, `xref.py`), the one-off `gate.py` and its `maps/` |
+| `scripts/verify_baseline.py`, `scripts/migrate/` | Equality proofs (`alloff_source.py`, `alloff_web.py`, `xref.py`), the per-feature-set check of the web sources (`web_bindings.py`), the one-off `gate.py` and its `maps/` |
 | `scripts/generate_manifests.py`, `launch_demo.py` | Web flasher manifests, local demo server |
 | `scripts/test_*.py` | Tooling unit tests (41) |
 | `webapp/` | Vue web UI; `feature-directives.js`, `vite.config.js`, `vite.config.demo.js`, `index-demo.html`, `src/` |

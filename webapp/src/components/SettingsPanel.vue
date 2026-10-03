@@ -32,6 +32,11 @@ const appStore = useAppStore();
 const snackbar = ref(false);
 const snackbarText = ref("");
 const snackbarColor = ref("success");
+function showSnackbar(text, color) {
+  snackbarText.value = text;
+  snackbarColor.value = color;
+  snackbar.value = true;
+}
 
 // #endif
 // #if FEATURE_OFFLINE_HOTSPOT
@@ -54,11 +59,6 @@ async function handleStopHotspot() {
   await settingsStore.stopApHotspot();
   hotspotBusy.value = false;
   hotspotMessage.value = "Hotspot stopping - the device is reconnecting to its saved WiFi network.";
-}
-function showSnackbar(text, color) {
-  snackbarText.value = text;
-  snackbarColor.value = color;
-  snackbar.value = true;
 }
 
 // #endif
@@ -474,13 +474,13 @@ const alarmTuneOptions = [
   { title: "F4–A4–C5–A4 – warm and calm", value: 4 },
   { title: "C5–G4–E5–C5 – distinctive, a little more dynamic", value: 5 },
 ];
+// #endif
+// #if FEATURE_CLIMATE
 const climateTempUnitOptions = [
   { title: "Celsius (default)", value: "celsius" },
   { title: "Fahrenheit", value: "fahrenheit" },
 ];
 
-// #endif
-// #if FEATURE_CLIMATE
 // Reference legend only (never sent to the device - classification always
 // happens firmware-side, in Celsius, from the identical table). Bad is
 // everything outside these bounds; Super is the innermost range; any gap
@@ -586,6 +586,8 @@ const alarmArmedModel = computed({
     }
   },
 });
+// #endif
+// #if FEATURE_AGENDA
 const calendarAbEnabledModel = computed({
   get: () => settingsStore.deviceSettings.agendaCalEnabled,
   set: (val) => {
@@ -3026,6 +3028,7 @@ async function performFactoryReset() {
               </v-col>
             </v-row>
 
+<!-- #if FEATURE_ERROR_BANNER -->
             <v-divider class="my-6" />
 
             <div class="text-subtitle-2 mb-2">Error Overlay</div>
@@ -3055,6 +3058,7 @@ async function performFactoryReset() {
               to preview what it looks like. Overlays onto the current image if there is one,
               otherwise shows it on a blank screen.
             </div>
+<!-- #endif -->
           </v-tabs-window-item>
 
 <!-- #endif -->
