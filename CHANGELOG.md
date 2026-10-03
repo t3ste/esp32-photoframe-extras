@@ -148,6 +148,12 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Changed
 
+- **The Agenda tab of the Web UI is a list of sections** instead of one long page: *ToDo*, *Calendar*, *Extra ICS Calendars*, *Schedule*, *Information screens* and *Appearance and colors*. They start closed; the header of each says
+  what is on (`Calendar on`, `Schedule 3 schedules`, `Information screens Fuel prices, Markets`), and the ones you opened stay open the next time (kept in the browser only). Settings that depend on another are
+  **left out** while that one is off, instead of sitting there greyed out: the settings of an information page (its explanation, the members of the chore wheel, the symbols, *Use Yahoo Finance* and the keys of the
+  markets page, the fuel key and the travel time card ...) show only while the page is ticked; the Calendar's display options only while the Calendar is on (its address fields stay, since it cannot be switched on
+  without one), *Right-align forecast* only with the forecast on, the extra calendars only with the Calendar on; the layout choice for ToDo and Calendar is greyed out unless both are on. Nothing was removed and
+  no setting changed its meaning. Only with `--with agenda`; a build without it has no Agenda tab.
 - **The information pages with data from the internet say when the data were fetched, and the charts say how long they run.** Weather, exchange rates, fuel prices and markets end with a small
   note, `Updated 30 Sep 14:35` (`Stand 30.09. 14:35`) - the local time of the fetch; the markets page shows the time of its newest fetch, so a page drawn from the kept prices says how old they are.
   Without a clock that was ever set there is no note (a wrong time is worse than none). The fuel page's footer, which had the time only, has the same note now. The exchange-rate and markets
@@ -169,6 +175,12 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Fixed
 
+- **The Web UI of a build with only some of the options had parts that did nothing.** The Settings page fences a template part and the script part it uses separately, and four of them
+  were fenced by the wrong option: the calendar switches of the Agenda tab sat under the alarm clock (a build with `agenda` but not `alarmclock` had Calendar and Extra calendar
+  switches that moved but changed no setting), the temperature unit list of the climate option sat under the alarm clock too (empty with `climate` alone), the message line (`showSnackbar`)
+  was only there with the offline hotspot although the error banner, the chimes and the duplicate search use it, and the error-overlay card with its test button showed in builds
+  without `error-banner` and failed when pressed. Fixed. `scripts/migrate/web_bindings.py` now checks every feature set for this (see [docs/MAINTAINING.md](docs/MAINTAINING.md)); the
+  full build and a build with no option were not affected, and the all-off proof is unchanged.
 - **Markets: the chart could end a day early.** Yahoo's daily bars lag: a bar without a close is left out, and the bar of a day that has just ended may not be complete, so a frame that
   fetched at midnight could still show the close of the day before yesterday. The page now also takes the latest price Yahoo states for the symbol (`regularMarketPrice` at
   `regularMarketTime`) as the newest point when that is of a later day than the last bar, and the log says which day each chart ended on (`<symbol> from Yahoo Finance: 30 points, the newest of 2026-10-01`).

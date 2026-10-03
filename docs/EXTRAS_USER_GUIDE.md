@@ -36,6 +36,9 @@ something does not show up. Each section ends with a link to the detailed page f
 
 All of this happens in **Settings -> Agenda**, in the same address fields the Agenda always had (Calendar A-E and the ToDo list).
 
+The tab is a list of sections - *ToDo*, *Calendar*, *Extra ICS Calendars*, *Schedule*, *Information screens*, *Appearance and colors* - that start closed. The header of each says what is on, and the sections you opened stay open the
+next time. Settings that belong to something you have not switched on are not shown: tick a page under *Information screens* (Markets, say) and its symbols and keys appear; switch the Calendar on and its display options appear.
+
 <img src="screens/agenda-grid-a.png" width="480" alt="The Agenda as a 7-day grid">
 
 *The Calendar column as a 7-day grid (Settings -> Agenda -> Layout). The other layouts and a colour profile: [SCREENSHOTS.md](SCREENSHOTS.md).*
