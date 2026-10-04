@@ -953,6 +953,29 @@ const schedulePageItems = computed(() =>
     enabled: settingsStore.deviceSettings.infoScreens.includes(name),
   }))
 );
+// A page that is on (ToDo & Calendar, or ticked under Information screens) but would never
+// actually be drawn: every schedule has its own pages, and none of them include it, so the shared
+// rotation - the only other way a page gets shown - never runs. Empty while at least one schedule
+// has no pages of its own (it still falls back to the shared rotation, which then still shows
+// everything that is ticked).
+const orphanedActivePages = computed(() => {
+  const ds = settingsStore.deviceSettings;
+  const pages = ds.agendaCronPages.slice(0, ds.agendaCron.length);
+  if (!pages.length || !pages.every((names) => names && names.length)) {
+    return [];
+  }
+  const assigned = new Set(pages.flat());
+  const active = [];
+  if ((ds.agendaTodoEnabled || ds.agendaCalEnabled) && !assigned.has("agenda")) {
+    active.push("agenda");
+  }
+  for (const name of ds.infoScreens) {
+    if (name !== "agenda" && !assigned.has(name)) {
+      active.push(name);
+    }
+  }
+  return [...new Set(active)].map((name) => infoScreenLabels[name] || name);
+});
 // #endif
 // #endif
 // #if FEATURE_FUEL_PRICES
@@ -3376,6 +3399,17 @@ async function performFactoryReset() {
                     hide-details
                     style="max-width: 420px"
                   />
+                  <v-alert
+                    v-if="orphanedActivePages.length"
+                    type="warning"
+                    density="compact"
+                    variant="tonal"
+                    class="mt-2"
+                  >
+                    {{ orphanedActivePages.join(", ") }} {{ orphanedActivePages.length > 1 ? "are" : "is" }} on,
+                    but every schedule above has its own pages and none of them include it - it will never be
+                    drawn. Add it to a schedule, or clear one schedule's pages to let the shared rotation show it.
+                  </v-alert>
 <!-- #else -->
                   <div class="text-caption text-medium-emphasis mb-2">
                     Independent from the Auto-Rotate schedule above - applies while ToDo, Calendar, or a
