@@ -1254,6 +1254,7 @@ add_executable(
   epdgz_decode_test
   test_epdgz_decode.cpp
   ../main/image_processor.c
+  ../main/glyph_extras.c
   stubs/esp_stubs.c
   stubs/fake_display_manager.c
   stubs/fake_config_manager.c
