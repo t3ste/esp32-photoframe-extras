@@ -12,20 +12,25 @@ A picture of every page, and of the Agenda it takes turns with: [SCREENSHOTS.md]
 
 ## Settings
 
-Settings -> Agenda -> **Information screens**: tick the pages that take part. The Agenda is ticked by default, so a firmware
-with this option behaves as before until a page is added.
+Settings -> Agenda -> **Information screens**: tick the other pages that take part. The Agenda itself has **no tick here** - ToDo
+and Calendar already each have their own on/off switch in their own sections, and a third switch for the page both feed could
+only duplicate or disagree with them - it takes part exactly when ToDo or Calendar is on. A firmware with this option behaves as
+before (plain Agenda) until another page is ticked.
 
-- One ticked page: every run of the schedule draws that page. Tick only "Agenda" for the plain Agenda.
-- Several ticked pages: they take turns in a fixed order (Agenda first, then the others in the order of the list). With a
-  schedule of `0 */12 *` and the Agenda plus the chore wheel ticked, the frame shows the Agenda at 00:00 and the chore wheel at 12:00.
-- Nothing ticked: the Agenda (a rotation cannot be empty).
+- Nothing ticked (the default): the Agenda, exactly as without this option.
+- One or more ticked: they take turns with the Agenda, in a fixed order (Agenda first when it has something to show, then the
+  others in the order of the list). With a schedule of `0 */12 *` and the chore wheel ticked, ToDo or Calendar on, the frame
+  shows the Agenda at 00:00 and the chore wheel at 12:00.
 - With `--with schedule-pages` each schedule can draw pages of its own, with priorities and a minimum time between two displays: [SCHEDULE_PAGES.md](SCHEDULE_PAGES.md).
 - The schedule is active as soon as a page other than the Agenda is ticked, even if neither ToDo nor a calendar is switched on.
-  An Agenda without ToDo and calendars has nothing to show and is skipped in the rotation.
+  An Agenda without ToDo and calendars has nothing to show and is skipped in the rotation - never counted as "ticked" for this,
+  whatever a client sends for it over the API (see below).
 
-Over the API: `GET /api/config` reports `info_screens` (the ticked pages, by name: `agenda`, `chore-wheel`, `weather`, `fact`, `finance`, `fuel`, `markets`) and
-`info_screens_available` (the pages this firmware contains); `PATCH /api/config` accepts `info_screens` as a list of names
-(unknown names are ignored).
+Over the API: `GET /api/config` reports `info_screens` (the ticked pages, by name: `chore-wheel`, `weather`, `fact`, `finance`,
+`fuel`, `markets`, `recipe` - an `agenda` entry may still be present from an older client; the general rotation always has Agenda
+regardless of this field, so one there has no effect either way) and `info_screens_available` (the pages this firmware contains,
+`agenda` included - it is still a name a *schedule's own* page list can use, see [SCHEDULE_PAGES.md](SCHEDULE_PAGES.md)); `PATCH
+/api/config` accepts `info_screens` as a list of names (unknown names are ignored).
 
 ## The pages
 
