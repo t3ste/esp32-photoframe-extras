@@ -15,13 +15,19 @@ by another within a minimum time.
 (Settings -> Agenda -> Information screens). And while **no** schedule has a page ticked, nothing of this option is in force - not the
 priorities, not the minimum time - the frame behaves as without the option.
 
+**A schedule may only draw a page that is also ticked under Information screens.** The two lists are kept in step on purpose: a
+page a schedule was given, then switched off under Information screens, stops being drawn by that schedule instead of continuing
+to show on its old assignment while looking "off" everywhere else - ticking it again there brings it straight back (the Web UI
+keeps the schedule's chip ticked, only greyed out, while this is the case). A schedule whose ticked pages have all become
+unavailable this way draws the shared rotation instead, exactly like a schedule with no pages ticked at all.
+
 ## Settings
 
 Settings -> **Agenda** -> Schedule. Under each schedule card:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| Pages this schedule draws | none | The pages of this firmware as chips (Agenda, chore wheel, weather, fact of the day, exchange rates, fuel prices, markets). None ticked: the shared rotation. Several ticked: they take turns on this schedule, with a rotation counter of its own |
+| Pages this schedule draws | none | The pages of this firmware as chips (ToDo & Calendar, chore wheel, weather, fact of the day, exchange rates, fuel prices, markets). None ticked: the shared rotation. Several ticked: they take turns on this schedule, with a rotation counter of its own. A chip is greyed out (and its tick is kept, not cleared) while that page is not ticked under Information screens below - tick it there to bring it back |
 | Keep this display at least (minutes) | 0 | The **hold time** of this schedule: how long its display should stay before another one may replace it. 0: the common minimum time below |
 | Up / down arrows | - | Move the schedule: **the order is the priority**, Schedule 1 is the highest |
 | Minimum time between two displays | 15 | The common minimum time, 0-240 minutes. 0 resolves only schedules that fire in the same minute |

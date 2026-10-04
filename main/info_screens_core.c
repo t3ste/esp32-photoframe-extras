@@ -316,6 +316,16 @@ int info_rotation_pick(uint32_t mask, uint32_t counter, int bit_count)
     return -1;
 }
 
+uint32_t info_screens_effective_mask(uint32_t stored_mask, uint32_t compiled_mask,
+                                     uint32_t ticked_mask, bool agenda_has_content, int agenda_bit)
+{
+    uint32_t mask = stored_mask & compiled_mask & ticked_mask;
+    if (!agenda_has_content && agenda_bit >= 0 && agenda_bit < 32) {
+        mask &= ~(1u << agenda_bit);
+    }
+    return mask;
+}
+
 int info_parse_list(const char *text, char *names, size_t name_len, int max)
 {
     int count = 0;

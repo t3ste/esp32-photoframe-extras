@@ -128,6 +128,16 @@ int info_rotation_pick(uint32_t mask, uint32_t counter, int bit_count);
 int info_rotation_size(uint32_t mask, int bit_count);
 
 /**
+ * @brief Which of a set of pages actually draw right now: compiled into this firmware, and - for a
+ * page a specific schedule was given (`stored_mask` comes from that schedule, not from the general
+ * "Information screens" tick list) - also currently ticked there, so a schedule cannot keep drawing
+ * a page the user has since switched off elsewhere. The Agenda bit is dropped on top of that when
+ * `agenda_has_content` is false (an Agenda with neither ToDo nor Calendar on has nothing to show).
+ */
+uint32_t info_screens_effective_mask(uint32_t stored_mask, uint32_t compiled_mask,
+                                     uint32_t ticked_mask, bool agenda_has_content, int agenda_bit);
+
+/**
  * @brief Splits a list typed by a user ("Anna, Ben; Clara" or one per line) into names: separators
  * are `,` `;` and line breaks, names are trimmed, empty ones dropped, long ones cut to `name_len -
  * 1` bytes without splitting a UTF-8 character. Returns how many names were written (at most

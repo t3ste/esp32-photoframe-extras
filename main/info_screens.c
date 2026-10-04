@@ -114,10 +114,9 @@ bool info_screens_extra_enabled(void)
 
 int info_screens_next(bool agenda_has_content)
 {
-    uint32_t mask = config_manager_get_info_screens_mask() & info_screens_compiled_mask();
-    if (!agenda_has_content) {
-        mask &= ~(1u << INFO_SCREEN_AGENDA);
-    }
+    uint32_t stored = config_manager_get_info_screens_mask();
+    uint32_t mask = info_screens_effective_mask(stored, info_screens_compiled_mask(), stored,
+                                                agenda_has_content, INFO_SCREEN_AGENDA);
     uint32_t counter = config_manager_get_info_screens_rotation();
     int pick = info_rotation_pick(mask, counter, INFO_SCREEN_COUNT);
     if (pick < 0) {
@@ -132,14 +131,18 @@ int info_screens_next(bool agenda_has_content)
 #if FEATURE_SCHEDULE_PAGES
 int info_screens_next_for(uint32_t mask, int schedule, bool agenda_has_content)
 {
-    mask &= info_screens_compiled_mask();
-    if (!agenda_has_content) {
-        mask &= ~(1u << INFO_SCREEN_AGENDA);
-    }
+    // A schedule may only draw a page that is also currently ticked under "Information screens" -
+    // otherwise a page the user has since switched off there would keep being drawn by a schedule
+    // that was given it earlier. When nothing of this schedule's pages is available right now, -1
+    // tells the caller to fall back to the shared rotation, the same as a schedule with no pages at
+    // all.
+    mask = info_screens_effective_mask(mask, info_screens_compiled_mask(),
+                                       config_manager_get_info_screens_mask(), agenda_has_content,
+                                       INFO_SCREEN_AGENDA);
     uint32_t counter = config_manager_get_sched_rotation(schedule);
     int pick = info_rotation_pick(mask, counter, INFO_SCREEN_COUNT);
     if (pick < 0) {
-        return INFO_SCREEN_AGENDA;
+        return -1;
     }
     if (info_rotation_size(mask, INFO_SCREEN_COUNT) > 1) {
         config_manager_set_sched_rotation(schedule, (uint16_t) (counter + 1));

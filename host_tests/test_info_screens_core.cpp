@@ -154,6 +154,29 @@ TEST(InfoCore, RotationShowsEveryScreenOnceInARow)
     EXPECT_EQ(seen, (std::vector<int>{1, 2, 5, 1, 2, 5}));
 }
 
+// bit 0 is Agenda throughout these tests (matching INFO_SCREEN_AGENDA's real value of 0).
+TEST(InfoCore, EffectiveMaskIsWhatIsStoredCompiledAndTicked)
+{
+    // Stored (a schedule's own pages) has bit 3 (fuel), compiled has everything, ticked has
+    // everything except bit 3: the schedule was given a page since switched off elsewhere.
+    EXPECT_EQ(info_screens_effective_mask(0b1000, 0xFFFFFFFFu, 0b0111, true, 0), 0u);
+    // Ticking it again (in "Information screens") makes the schedule draw it again.
+    EXPECT_EQ(info_screens_effective_mask(0b1000, 0xFFFFFFFFu, 0b1111, true, 0), 0b1000u);
+    // Not compiled into this firmware at all: stays out whatever is ticked.
+    EXPECT_EQ(info_screens_effective_mask(0b1000, 0b0111, 0xFFFFFFFFu, true, 0), 0u);
+}
+
+TEST(InfoCore, EffectiveMaskDropsAgendaWithoutContent)
+{
+    EXPECT_EQ(info_screens_effective_mask(0b1011, 0xFFFFFFFFu, 0xFFFFFFFFu, true, 0), 0b1011u);
+    EXPECT_EQ(info_screens_effective_mask(0b1011, 0xFFFFFFFFu, 0xFFFFFFFFu, false, 0), 0b1010u);
+    // Agenda was the only page: nothing is left once it is dropped.
+    EXPECT_EQ(info_screens_effective_mask(0b0001, 0xFFFFFFFFu, 0xFFFFFFFFu, false, 0), 0u);
+    // An out-of-range Agenda bit (defensive: never actually happens) changes nothing.
+    EXPECT_EQ(info_screens_effective_mask(0b1011, 0xFFFFFFFFu, 0xFFFFFFFFu, false, 32), 0b1011u);
+    EXPECT_EQ(info_screens_effective_mask(0b1011, 0xFFFFFFFFu, 0xFFFFFFFFu, false, -1), 0b1011u);
+}
+
 namespace
 {
 

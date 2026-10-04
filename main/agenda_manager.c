@@ -361,7 +361,15 @@ esp_err_t agenda_manager_run(bool wifi_connected)
         uint32_t mask = schedule >= 0 ? config_manager_get_sched_mask(schedule) : 0;
         if (mask != 0) {
             screen = info_screens_next_for(mask, schedule, agenda_has_content);
-            ESP_LOGI(TAG, "Schedule %d draws the %s page", schedule + 1, info_screen_name(screen));
+            if (screen >= 0) {
+                ESP_LOGI(TAG, "Schedule %d draws the %s page", schedule + 1,
+                         info_screen_name(screen));
+            } else {
+                ESP_LOGI(TAG,
+                         "Schedule %d's pages are all unavailable right now - the shared rotation "
+                         "draws instead",
+                         schedule + 1);
+            }
         }
     }
     if (screen < 0) {
