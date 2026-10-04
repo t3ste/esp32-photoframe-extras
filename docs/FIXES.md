@@ -24,6 +24,9 @@ corrections and hardening changes over upstream's own behavior, gated behind one
   date parser (`--with agenda`) let `mktime()` work out daylight saving itself (`tm_isdst = -1`) instead of a
   zero-initialized `struct tm` forcing standard time - without this, a time read back during DST landed exactly
   one hour ahead of the real time.
+- **JPEG decoding**: the photo pipeline works out the size of a decoded JPEG again in 64 bit (`main/jpeg_size_check.h`) and refuses a header whose size does not add
+  up - esp_jpeg multiplies the sides of the header in 32 bit, so a header of 40000 x 35792 pixels came out as a 72 KB buffer that the decoder then wrote 4.3 GB into. It
+  also looks at the result of the header read, which it used to ignore.
 - **OTA update check**: reads GitHub's releases API response the same way the weather/headline overlays already
   do (accumulated via the HTTP client's event callback), instead of a fixed-length read that failed whenever
   GitHub answered with `Transfer-Encoding: chunked` rather than a fixed `Content-Length`.
