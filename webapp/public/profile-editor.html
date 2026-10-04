@@ -242,6 +242,23 @@ const labels = {
 };
 const COLOR_KEYS = Object.keys(labels);
 
+// Text that goes into markup is escaped; a profile file can hold any text.
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// A colour in a profile is one of the six palette names or "#rrggbb" - what the frame accepts, too.
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+function validColor(v){ return typeof v==='string' && (Object.prototype.hasOwnProperty.call(P, v) || HEX6.test(v)); }
+const MODES = ['color','mono-normal','mono-invert'];
+const OPTIONAL_COLOR_KEYS = ['iconBg','iconBgMarked'];
+// A profile name: text only, no control characters, not too long, and not a name that means
+// something to an object.
+function cleanProfileName(name){
+  let n = (typeof name==='string' ? name : '').replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,60);
+  if(['__proto__','constructor','prototype'].includes(n)) n += '_';
+  return n;
+}
+
 const TODAY_ISO = '2026-09-17';
 const days = [
   {label:'Thu 17.', date:'2026-09-17', low:10, high:19},
@@ -357,6 +374,15 @@ if(!state.marked) state.marked = {};
 if(!state.customProfiles) state.customProfiles = {};
 if(typeof state.activeCustomProfile === 'undefined') state.activeCustomProfile = null;
 if(typeof state.headerFollowsEntries !== 'boolean') state.headerFollowsEntries = false;
+// What the browser kept may stem from an earlier import: colours must still be colours.
+(function cleanStoredState(){
+  const base = fresh();
+  if(!state.colors || typeof state.colors!=='object') state.colors = {};
+  [...COLOR_KEYS, ...OPTIONAL_COLOR_KEYS].forEach(k=>{ if(!validColor(state.colors[k])) state.colors[k] = base.colors[k]; });
+  if(!MODES.includes(state.mode)) state.mode = 'color';
+  if(!MARK_VALUES.includes(state.mark)) state.mark = 'none';
+  if(typeof state.customProfiles!=='object' || Array.isArray(state.customProfiles)) state.customProfiles = {};
+})();
 if(typeof state.headerFollowsEntriesColor !== 'boolean') state.headerFollowsEntriesColor = false;
 if(typeof state.headerFollowsEntriesColorSafeInk !== 'boolean') state.headerFollowsEntriesColorSafeInk = false;
 if(typeof state.dayheadLeaderLine !== 'boolean') state.dayheadLeaderLine = false;
@@ -485,16 +511,16 @@ function renderEntries(){
 
 function showNote(msg, kind){
   let note=document.querySelector('#profileNote');
-  note.innerHTML=msg; note.className='note status-'+(kind||'info');
+  note.textContent=msg; note.className='note status-'+(kind||'info');
   clearTimeout(showNote.t);
-  showNote.t=setTimeout(()=>{ note.innerHTML=''; note.className='note'; }, 4000);
+  showNote.t=setTimeout(()=>{ note.textContent=''; note.className='note'; }, 4000);
 }
 
 function swatchCell(hexValue){
   if(hexValue === null || typeof hexValue === 'undefined'){
     return '<span class="muted">–</span>';
   }
-  const v = hexValue.toUpperCase();
+  const v = esc(String(hexValue).toUpperCase());
   return '<span class="swatch-cell"><span class="swatch" style="background:'+v+'"></span><span class="hexcode">'+v+'</span></span>';
 }
 
@@ -668,7 +694,7 @@ function render(){
   let top=document.createElement('div'); top.className='top';
   let left=document.createElement('span'); left.className='top-left';
   const topCalendarLabels = Object.keys(calNames).map(k=>({key:k, name:calNames[k], color: base.monoV?base.topInk:hex(state.colors[k])}));
-  left.innerHTML = topCalendarLabels.map(o=>'<span style="color:'+o.color+'">'+o.name+'</span>').join(' &nbsp; ');
+  left.innerHTML = topCalendarLabels.map(o=>'<span style="color:'+esc(o.color)+'">'+esc(o.name)+'</span>').join(' &nbsp; ');
   let mid=document.createElement('span'); mid.textContent='17.09.2026   09:02';
   let right=document.createElement('span'); right.className='top-right'; right.textContent='26°C   49%';
   top.append(left, mid, right);
@@ -796,11 +822,14 @@ function buildProfilePayload(name){
 
 function applyProfilePayload(p){
   if(!p || typeof p !== 'object' || !p.colors) throw new Error('Invalid format: colors is missing.');
+  if(typeof p.colors !== 'object') throw new Error('Invalid format: colors is not an object.');
   const missing = COLOR_KEYS.filter(k=>!(k in p.colors));
   if(missing.length) throw new Error('Missing color values: '+missing.join(', '));
-  state.colors = {...p.colors};
-  if(typeof state.colors.iconBg === 'undefined') state.colors.iconBg = ICON_BG_DEFAULT;
-      if(typeof state.colors.iconBgMarked === 'undefined') state.colors.iconBgMarked = ICON_BG_DEFAULT;
+  const wrong = [...COLOR_KEYS, ...OPTIONAL_COLOR_KEYS].filter(k=>k in p.colors && !validColor(p.colors[k]));
+  if(wrong.length) throw new Error('Not a color (a palette name or #rrggbb): '+wrong.join(', '));
+  if(typeof p.mode !== 'undefined' && !MODES.includes(p.mode)) throw new Error('Unknown mode.');
+  state.colors = {};
+  [...COLOR_KEYS, ...OPTIONAL_COLOR_KEYS].forEach(k=>{ state.colors[k] = k in p.colors ? p.colors[k] : ICON_BG_DEFAULT; });
   state.mode = p.mode || 'color';
   state.mark = MARK_VALUES.includes(p.mark) ? p.mark : 'none';
   state.headerFollowsEntries = !!p.headerFollowsEntries;
@@ -821,7 +850,7 @@ document.querySelector('#save').onclick=()=>{
   const suggested=state.activeCustomProfile||'';
   const name=window.prompt('Name for this color profile', suggested);
   if(!name) return;
-  const trimmed=name.trim(); if(!trimmed) return;
+  const trimmed=cleanProfileName(name); if(!trimmed) return;
   state.customProfiles[trimmed]=buildProfilePayload(trimmed);
   state.profile='Custom'; state.activeCustomProfile=trimmed;
   localStorage.setItem('spectra6-profile-editor', JSON.stringify(state));
@@ -871,7 +900,7 @@ document.querySelector('#importProfileFile').onchange=(ev)=>{
     try{
       const data=JSON.parse(reader.result);
       applyProfilePayload(data);
-      const importedName = data.name && String(data.name).trim() || file.name.replace(/\.json$/i,'');
+      const importedName = cleanProfileName(data.name) || cleanProfileName(file.name.replace(/\.json$/i,'')) || 'Imported';
       state.customProfiles[importedName]=buildProfilePayload(importedName);
       state.profile='Custom'; state.activeCustomProfile=importedName;
       localStorage.setItem('spectra6-profile-editor', JSON.stringify(state));
