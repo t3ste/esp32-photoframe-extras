@@ -318,13 +318,24 @@ def is_gate(expression):
     return bool(re.search(GATE_NAME, expression)) and bool(GATE_ONLY.match(expression))
 
 
+# What is left of a gate expression once its names are 0/1: nothing else is ever evaluated.
+PLAIN_TRUTH = re.compile(r"(?:[01()\s]|\band\b|\bor\b|\bnot\b)+")
+
+
+def eval_truth(text):
+    """Value of a 0/1 expression made of and/or/not and parentheses only."""
+    if not PLAIN_TRUTH.fullmatch(text):
+        raise ValueError(f"not a plain 0/1 expression: {text!r}")
+    return bool(eval(text, {"__builtins__": {}}, {}))
+
+
 def truth_value(expression, value):
     """Evaluate a tag expression with every FEATURE_/FORK_ name set to 'value'."""
     text = re.sub(rf"defined\(\s*{GATE_NAME}\s*\)", "1" if value else "0", expression)
     text = re.sub(rf"\b{GATE_NAME}\b", "1" if value else "0", text)
     text = text.replace("||", " or ").replace("&&", " and ")
     text = re.sub(r"!(?!=)", " not ", text)
-    return bool(eval(text, {"__builtins__": {}}, {}))
+    return eval_truth(text)
 
 
 def evaluate(lines, value):
