@@ -216,6 +216,11 @@ static bool source_auth_allow_http = false;
 static uint16_t info_screens_mask = 1;  // only the agenda, until a screen is switched on
 static uint16_t info_screens_rotation = 0;
 #if FEATURE_SCHEDULE_PAGES
+// One bit per information screen (info_screens.h's INFO_SCREEN_COUNT, currently 8 - update this
+// mask by hand if that ever grows past 8; config_manager.c does not include info_screens.h, so
+// the two cannot share the constant directly). A narrower mask here silently drops a schedule's
+// assignment of the uncovered screen(s) - found live: 0x7F (7 bits) dropped Recipe (bit 7).
+#define SCHED_PAGE_MASK_BITS 0xFF
 static uint16_t sched_masks[MAX_CRON_RULES];
 static uint16_t sched_holds[MAX_CRON_RULES];
 static uint16_t sched_rotation[MAX_CRON_RULES];
@@ -3905,7 +3910,7 @@ static void sched_pages_load(const char *text)
             p = end + 1;
             hold = strtol(p, &end, 10);
         }
-        sched_masks[i] = (uint16_t) (mask & 0x7F);  // the bits of the information screens
+        sched_masks[i] = (uint16_t) (mask & SCHED_PAGE_MASK_BITS);
         sched_holds[i] =
             (uint16_t) (hold < 0 ? 0 : (hold > SCHED_GAP_MAX_MIN ? SCHED_GAP_MAX_MIN : hold));
         p = end;
@@ -3981,7 +3986,7 @@ void config_manager_set_sched_pages(const uint16_t masks[MAX_CRON_RULES],
                                     const uint16_t holds[MAX_CRON_RULES])
 {
     for (int i = 0; i < MAX_CRON_RULES; i++) {
-        sched_masks[i] = masks[i] & 0x7F;
+        sched_masks[i] = masks[i] & SCHED_PAGE_MASK_BITS;
         sched_holds[i] = holds[i] > SCHED_GAP_MAX_MIN ? SCHED_GAP_MAX_MIN : holds[i];
     }
     sched_pages_persist();
