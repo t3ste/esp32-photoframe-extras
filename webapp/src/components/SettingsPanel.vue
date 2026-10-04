@@ -909,19 +909,6 @@ async function clearDebugLog() {
 }
 
 // #if FEATURE_INFO_SCREENS
-// The schedule of the Agenda also drives the information screens, so it is not greyed out while
-// one of them is in the rotation.
-const agendaScheduleDisabled = computed(
-  () =>
-    !(
-      settingsStore.deviceSettings.agendaTodoEnabled ||
-      settingsStore.deviceSettings.agendaCalEnabled ||
-      // #if FEATURE_SCHEDULE_PAGES
-      settingsStore.deviceSettings.agendaCronPages.some((names) => names && names.length) ||
-      // #endif
-      settingsStore.deviceSettings.infoScreens.some((name) => name !== "agenda")
-    )
-);
 // The names of the pages, in the list of the Agenda tab and for the schedules. "agenda" is its own
 // internal name (also the settings tab and the schedule section are called "Agenda"), but the page
 // it names is specifically the ToDo + Calendar page - labelled accordingly to tell the two apart.
@@ -935,38 +922,81 @@ const infoScreenLabels = {
   markets: "Markets",
   recipe: "Recipe",
 };
+// ToDo & Calendar has no tick of its own under Information screens (its ToDo and Calendar
+// sections above already each have one, and a third one for the combined page only duplicated
+// them and could disagree with both - ToDo and Calendar on, this one off, and the data neither
+// section promises would silently never show): it is on exactly when ToDo or Calendar is.
+const agendaPageAvailable = computed(
+  () => settingsStore.deviceSettings.agendaTodoEnabled || settingsStore.deviceSettings.agendaCalEnabled
+);
+// Whether a page is available right now, wherever that matters for the schedule below: ToDo &
+// Calendar per agendaPageAvailable, every other page by its own tick under Information screens.
+function pageAvailable(name) {
+  return name === "agenda" ? agendaPageAvailable.value : settingsStore.deviceSettings.infoScreens.includes(name);
+}
 // A page's own settings are shown only while the page is ticked.
 const infoScreenOn = (name) => settingsStore.deviceSettings.infoScreens.includes(name);
 const infoScreenSummary = computed(() => {
-  const names = settingsStore.deviceSettings.infoScreens;
+  // "agenda" has no tick in this list anymore (see agendaPageAvailable) - left out here too, even
+  // though it may still be in the stored list from before this changed.
+  const names = settingsStore.deviceSettings.infoScreens.filter((name) => name !== "agenda");
   return names.length ? names.map((name) => infoScreenLabels[name] || name).join(", ") : "none";
 });
 // #if FEATURE_SCHEDULE_PAGES
+// A schedule's own pages, restricted to the ones available right now (see pageAvailable) - a page
+// since made unavailable does not count as one of this schedule's pages anymore, same as the
+// firmware's info_screens_next_for() already treats it (it falls back to the shared rotation).
+function schedulePagesOf(index) {
+  return (settingsStore.deviceSettings.agendaCronPages[index] || []).filter(pageAvailable);
+}
+// Whether any schedule has a page that would actually draw right now - not merely "was given
+// one", which can be stale (see the agenda_manager.c fix this mirrors).
+const schedulePagesEffective = computed(() =>
+  settingsStore.deviceSettings.agendaCron.some((_, i) => schedulePagesOf(i).length > 0)
+);
+// #endif
+// The schedule of the Agenda also drives the information screens, so it is not greyed out while
+// one of them is in the rotation.
+const agendaScheduleDisabled = computed(
+  () =>
+    !(
+      agendaPageAvailable.value ||
+      // #if FEATURE_SCHEDULE_PAGES
+      schedulePagesEffective.value ||
+      // #endif
+      settingsStore.deviceSettings.infoScreens.some((name) => name !== "agenda")
+    )
+);
+// #if FEATURE_SCHEDULE_PAGES
 // The pages a schedule can be given: the ones this firmware has, with the names of the page list.
-// `enabled` is false for a page not currently ticked under Information screens below - the chip
-// stays visible (so an existing, now-stale pick of it is still shown, not silently dropped) but
-// greyed out and unclickable; RotationSchedule.vue reads it as its own `disabled` per chip.
+// `enabled` is false for a page not available right now (see pageAvailable) - the chip stays
+// visible (so an existing, now-stale pick of it is still shown, not silently dropped) but greyed
+// out and unclickable; RotationSchedule.vue reads it as its own `disabled` per chip.
 const schedulePageItems = computed(() =>
   settingsStore.deviceSettings.infoScreensAvailable.map((name) => ({
     value: name,
     title: infoScreenLabels[name] || name,
-    enabled: settingsStore.deviceSettings.infoScreens.includes(name),
+    enabled: pageAvailable(name),
   }))
 );
-// A page that is on (ToDo & Calendar, or ticked under Information screens) but would never
-// actually be drawn: every schedule has its own pages, and none of them include it, so the shared
-// rotation - the only other way a page gets shown - never runs. Empty while at least one schedule
-// has no pages of its own (it still falls back to the shared rotation, which then still shows
-// everything that is ticked).
+// A page that is available (ToDo & Calendar, or ticked under Information screens) but would never
+// actually be drawn: every schedule has its own (actually available) pages, and none of them
+// include it, so the shared rotation - the only other way a page gets shown - never runs. Empty
+// while at least one schedule has no available pages of its own (it falls back to the shared
+// rotation, which then still shows everything that is available).
 const orphanedActivePages = computed(() => {
   const ds = settingsStore.deviceSettings;
-  const pages = ds.agendaCronPages.slice(0, ds.agendaCron.length);
-  if (!pages.length || !pages.every((names) => names && names.length)) {
+  const count = ds.agendaCron.length;
+  if (!count) {
     return [];
   }
-  const assigned = new Set(pages.flat());
+  const perSchedule = ds.agendaCron.map((_, i) => schedulePagesOf(i));
+  if (!perSchedule.every((names) => names.length)) {
+    return [];
+  }
+  const assigned = new Set(perSchedule.flat());
   const active = [];
-  if ((ds.agendaTodoEnabled || ds.agendaCalEnabled) && !assigned.has("agenda")) {
+  if (agendaPageAvailable.value && !assigned.has("agenda")) {
     active.push("agenda");
   }
   for (const name of ds.infoScreens) {
@@ -3385,8 +3415,10 @@ async function performFactoryReset() {
                     the smaller number wins, and no display replaces another within the minimum time
                     below (a schedule's own hold time replaces it for that schedule). The photo rotation
                     gives way to them too. Without pages on any schedule nothing changes. A page greyed
-                    out here is not ticked under Information screens below - tick it there first; a
-                    schedule whose ticked pages are all greyed out draws the shared rotation instead.
+                    out here is not available right now - ToDo & Calendar while neither is switched on
+                    above, any other page while it is not ticked under Information screens below (tick it
+                    there to bring it back); a schedule whose available pages are all greyed out this way
+                    draws the shared rotation instead.
                   </div>
                   <v-text-field
                     v-model.number="settingsStore.deviceSettings.agendaGapMin"
@@ -3446,16 +3478,11 @@ async function performFactoryReset() {
                 <v-expansion-panel-text>
                   <div class="text-caption text-medium-emphasis mb-2">
                     Full-screen pages that take turns with the ToDo &amp; Calendar page: every time the
-                    schedule above fires, the next page of those ticked here is drawn. Tick only ToDo
-                    &amp; Calendar to keep things as they were.
+                    schedule above fires, the next page of those ticked here is drawn. ToDo &amp; Calendar
+                    itself is not ticked here - it already has its own on/off switch in its own section
+                    above (a second one here could only disagree with it) - tick none of these to keep
+                    things as they were.
                   </div>
-                  <v-checkbox
-                    v-model="settingsStore.deviceSettings.infoScreens"
-                    value="agenda"
-                    label="ToDo & Calendar"
-                    density="compact"
-                    hide-details
-                  />
 <!-- #if FEATURE_CHORE_WHEEL -->
                   <v-checkbox
                     v-model="settingsStore.deviceSettings.infoScreens"
