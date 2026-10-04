@@ -30,6 +30,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "jpeg_decoder.h"
+#if FORK_FIXES
+#include "jpeg_size_check.h"
+#endif
 #include "processing_settings.h"
 #if FORK_IMAGE_PIPELINE
 #include "weather.h"
@@ -1302,7 +1305,20 @@ static esp_err_t decode_jpg_buffer(const uint8_t *jpg_data, size_t jpg_size, uin
                                      .out_format = JPEG_IMAGE_FORMAT_RGB888,
                                      .out_scale = JPEG_IMAGE_SCALE_0};
     esp_jpeg_image_output_t outimg;
+#if FORK_FIXES
+    // The sides come out of the header of a file that came from outside, and esp_jpeg multiplies
+    // them in 32 bit (a header of 40000 x 35792 pixels comes out as 72 704 bytes instead of 4.3 GB,
+    // and its own test of the buffer uses the same wrapped number): a header that cannot be read,
+    // or whose size does not add up, is refused before anything is allocated.
+    if (esp_jpeg_get_image_info(&jpeg_cfg, &outimg) != ESP_OK ||
+        !jpeg_output_size_ok(outimg.width, outimg.height, 0, outimg.output_len)) {
+        ESP_LOGE(TAG, "JPG header is not usable");
+        set_last_error("JPG header is not usable");
+        return ESP_ERR_INVALID_SIZE;
+    }
+#else
     esp_jpeg_get_image_info(&jpeg_cfg, &outimg);
+#endif
     int original_width = outimg.width;
     int original_height = outimg.height;
 
@@ -1314,7 +1330,17 @@ static esp_err_t decode_jpg_buffer(const uint8_t *jpg_data, size_t jpg_size, uin
         jpeg_cfg.out_scale = JPEG_IMAGE_SCALE_1_2;
 
     if (jpeg_cfg.out_scale != JPEG_IMAGE_SCALE_0) {
+#if FORK_FIXES
+        if (esp_jpeg_get_image_info(&jpeg_cfg, &outimg) != ESP_OK ||
+            !jpeg_output_size_ok(original_width, original_height, (int) jpeg_cfg.out_scale,
+                                 outimg.output_len)) {
+            ESP_LOGE(TAG, "JPG size does not add up");
+            set_last_error("JPG header is not usable");
+            return ESP_ERR_INVALID_SIZE;
+        }
+#else
         esp_jpeg_get_image_info(&jpeg_cfg, &outimg);
+#endif
         ESP_LOGI(TAG, "JPG scaled from %dx%d to %dx%d (scale: 1/%d)", original_width,
                  original_height, outimg.width, outimg.height, 1 << jpeg_cfg.out_scale);
     } else {

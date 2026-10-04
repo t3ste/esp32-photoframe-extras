@@ -927,6 +927,23 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# The size check of esp_jpeg's answer (the fixes option)
+add_executable(
+  jpeg_size_check_test
+  test_jpeg_size_check.cpp
+)
+
+target_link_libraries(
+  jpeg_size_check_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  jpeg_size_check_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Stop-word (keyword) recognition: MFCC + DTW template matching, tested on
 # text-to-speech samples (host_tests/data/kws) (voice-stop feature)
 add_executable(
@@ -1140,6 +1157,7 @@ gtest_discover_tests(crash_record_test)
 gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)
 gtest_discover_tests(history_decimate_test)
+gtest_discover_tests(jpeg_size_check_test)
 gtest_discover_tests(kws_test)
 gtest_discover_tests(headlines_test)
 gtest_discover_tests(todo_test)

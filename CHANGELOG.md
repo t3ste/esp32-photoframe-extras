@@ -197,6 +197,13 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   filters was shown lately one is shown again instead of relaxing the filters; the cleaned search text is whole UTF-8 and cleaning it twice changes nothing.
   The same weakness of the decoder library is in the **base's photo pipeline** (`image_processor.c`, which does not look at the sides of a JPEG either); it is not changed
   there. 29 new host tests (the recipe suites have 182 now).
+- **A JPEG whose header lies about its size can no longer make the photo pipeline write past its buffer** (`--with fixes`). esp_jpeg works out the size of the decoded
+  picture in 32 bit from the sides in the file's header: 40000 x 35792 pixels is 4 295 040 000 bytes, which wraps to 72 704, and the decoder's own test that its buffer is
+  large enough uses the same wrapped number, so a buffer of 72 KB would be written with a picture of 4.3 GB (found in a code audit of the recipe page, whose pictures come from
+  the internet; the photo pipeline decodes uploads and downloaded images the same way). `decode_jpg_buffer` now works the size out again in 64 bit
+  (`main/jpeg_size_check.h`, 4 host tests) and refuses a header that cannot be read or does not add up, before anything is allocated; it also looks at the result of
+  `esp_jpeg_get_image_info()`, which it used to ignore (a progressive JPEG left the size uninitialised). Photos of any real size are unaffected (a 108-megapixel photo is
+  324 MB, no wrap).
 - **Every TLS connection of a build with `agenda` leaked 200-400 bytes of internal heap** (found with a heap trace while testing the recipe page of the extended edition, which fetches three times a drawing). The `agenda` option switches on the cross-signed
   verification of ESP-IDF's certificate bundle (`CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY`, needed for Google Calendar); its callback builds a certificate for the trusted root out of separate
   `calloc()`s, and `mbedtls_x509_crt_free()` frees only the structure and the list nodes, so the name buffers were lost after every verification. A heap trace of one request showed exactly those allocations
