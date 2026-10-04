@@ -19,7 +19,21 @@ priorities, not the minimum time - the frame behaves as without the option.
 page a schedule was given, then switched off under Information screens, stops being drawn by that schedule instead of continuing
 to show on its old assignment while looking "off" everywhere else - ticking it again there brings it straight back (the Web UI
 keeps the schedule's chip ticked, only greyed out, while this is the case). A schedule whose ticked pages have all become
-unavailable this way draws the shared rotation instead, exactly like a schedule with no pages ticked at all.
+unavailable this way draws the shared rotation instead, exactly like a schedule with no pages ticked at all; if every schedule is
+in that state (or every schedule was simply given no pages, or the option isn't in force to begin with), the frame does not even
+wake for it - see the next paragraph.
+
+**A page a schedule holds onto, with nothing left to make it effective, does not wake the frame either.** Being given pages at
+some point is not the same as those pages being usable right now: with ToDo, Calendar and every information screen off, a
+schedule whose only page is ToDo & Calendar - or whose pages have all since been unticked under Information screens - would find
+nothing to draw at its next fire. The frame checks for this before waking, not after, so a forgotten assignment of this kind
+costs nothing (no wake, no log entry, nothing - as opposed to waking, discovering there is nothing to draw, and going back to
+sleep, which it used to do).
+
+**A page that is on but assigned to no schedule is never drawn once every schedule has pages of its own**, because then nothing
+is left to fall back to the shared rotation (the previous paragraphs) for it to take a turn in. The Web UI warns about this under
+the Schedule section, naming the page; add it to a schedule, or clear one schedule's own pages so the shared rotation covers it
+again.
 
 ## Settings
 
