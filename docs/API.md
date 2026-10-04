@@ -6,6 +6,23 @@ Complete REST API reference for the ESP32 PhotoFrame firmware.
 
 All endpoints are relative to: `http://<device-ip>/`
 
+## Access control
+
+By default the API is open to everyone who can reach the frame. To close it, set a device password
+(Web UI: **General -> Advanced network settings -> Require a password for this device's web interface**, or
+`http_password` in `PATCH /api/config`; an empty string turns it off again). Every request then has to carry the
+password as HTTP Basic credentials (any user name). Five wrong passwords from one address lock that address out for
+30 seconds, doubling with each further failure up to 15 minutes (`429` with `Retry-After`).
+
+The frame sends no CORS headers, so a web page on another site cannot read its answers. It could still make a
+visitor's browser *send* a request (a plain `POST` needs no permission), e.g. `POST /api/factory-reset`. A build with
+the `fixes` option therefore refuses (`403`) every request that carries an `Origin` header naming another host than
+the one the request was sent to; requests without an `Origin` (curl, Home Assistant, scripts) and the frame's own Web
+UI are not affected. Behind a reverse proxy that rewrites the `Host` header, keep the original `Host` or the Web UI's
+own requests are refused too. A page that makes the visitor's browser believe the frame lives under the page's own
+name (DNS rebinding) is not stopped by this - that is what the device password is for, so set one if the frame is
+reachable from networks or devices you do not control.
+
 ---
 
 ## System

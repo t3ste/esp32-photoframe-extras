@@ -220,6 +220,23 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# The cross-site request check of the HTTP API (the fixes option)
+add_executable(
+  http_origin_test
+  test_http_origin.cpp
+)
+
+target_link_libraries(
+  http_origin_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  http_origin_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Stop-word (keyword) recognition: MFCC + DTW template matching, tested on
 # text-to-speech samples (host_tests/data/kws) (voice-stop feature)
 add_executable(
@@ -402,6 +419,7 @@ gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)
 gtest_discover_tests(history_decimate_test)
 gtest_discover_tests(jpeg_size_check_test)
+gtest_discover_tests(http_origin_test)
 gtest_discover_tests(kws_test)
 gtest_discover_tests(headlines_test)
 gtest_discover_tests(todo_test)

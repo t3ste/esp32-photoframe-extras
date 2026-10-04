@@ -73,6 +73,11 @@ export default defineConfig({
       "/api": {
         target: "http://192.168.0.140",
         changeOrigin: true,
+        // A firmware built with the `fixes` option refuses a request whose Origin is not its own
+        // host (docs/API.md, Access control), and the dev server's Origin is not: drop it.
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => proxyReq.removeHeader("origin"));
+        },
       },
     },
     fs: {
