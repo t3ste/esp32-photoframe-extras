@@ -19,9 +19,11 @@ const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   disabled: { type: Boolean, default: false },
   // #if FEATURE_SCHEDULE_PAGES
-  // Pages per schedule (the Agenda's schedules): the pages a schedule may draw, as [{ value, title }];
-  // `pages` (a list of name lists) and `holds` (minutes) are per compiled rule, in the order of
-  // modelValue. Without pageItems the editor is the plain one.
+  // Pages per schedule (the Agenda's schedules): the pages a schedule may draw, as
+  // [{ value, title, enabled }]; a page with enabled: false shows its chip greyed out and
+  // unclickable (so a stale pick of it is still visible, not silently dropped) rather than
+  // leaving it out of the list. `pages` (a list of name lists) and `holds` (minutes) are per
+  // compiled rule, in the order of modelValue. Without pageItems the editor is the plain one.
   pageItems: { type: Array, default: () => [] },
   pages: { type: Array, default: () => [] },
   holds: { type: Array, default: () => [] },
@@ -411,6 +413,7 @@ function rawValid(card) {
               :key="p.value"
               :color="(card.pages || []).includes(p.value) ? 'primary' : undefined"
               :variant="(card.pages || []).includes(p.value) ? 'flat' : 'outlined'"
+              :disabled="p.enabled === false"
               size="small"
               class="mr-1 mb-1"
               @click="togglePage(card, p.value)"

@@ -922,9 +922,11 @@ const agendaScheduleDisabled = computed(
       settingsStore.deviceSettings.infoScreens.some((name) => name !== "agenda")
     )
 );
-// The names of the pages, in the list of the Agenda tab and for the schedules.
+// The names of the pages, in the list of the Agenda tab and for the schedules. "agenda" is its own
+// internal name (also the settings tab and the schedule section are called "Agenda"), but the page
+// it names is specifically the ToDo + Calendar page - labelled accordingly to tell the two apart.
 const infoScreenLabels = {
-  agenda: "Agenda",
+  agenda: "ToDo & Calendar",
   "chore-wheel": "Chore wheel",
   weather: "Weather",
   fact: "Fact of the day",
@@ -941,10 +943,14 @@ const infoScreenSummary = computed(() => {
 });
 // #if FEATURE_SCHEDULE_PAGES
 // The pages a schedule can be given: the ones this firmware has, with the names of the page list.
+// `enabled` is false for a page not currently ticked under Information screens below - the chip
+// stays visible (so an existing, now-stale pick of it is still shown, not silently dropped) but
+// greyed out and unclickable; RotationSchedule.vue reads it as its own `disabled` per chip.
 const schedulePageItems = computed(() =>
   settingsStore.deviceSettings.infoScreensAvailable.map((name) => ({
     value: name,
     title: infoScreenLabels[name] || name,
+    enabled: settingsStore.deviceSettings.infoScreens.includes(name),
   }))
 );
 // #endif
@@ -3338,12 +3344,12 @@ async function performFactoryReset() {
                   <span class="text-caption text-medium-emphasis ml-3">{{ agendaScheduleSummary }}</span>
                 </v-expansion-panel-title>
                 <v-expansion-panel-text>
-                  <div class="text-caption text-medium-emphasis mb-2">
-                    Independent from the Auto-Rotate schedule above - only applies while ToDo and/or
-                    Calendar is enabled.
-                  </div>
 <!-- #if FEATURE_INFO_SCREENS -->
 <!-- #if FEATURE_SCHEDULE_PAGES -->
+                  <div class="text-caption text-medium-emphasis mb-2">
+                    Independent from the Auto-Rotate schedule above - applies while ToDo, Calendar, a
+                    ticked information screen, or a schedule below with pages of its own is active.
+                  </div>
                   <RotationSchedule
                     v-model="settingsStore.deviceSettings.agendaCron"
                     v-model:pages="settingsStore.deviceSettings.agendaCronPages"
@@ -3355,7 +3361,9 @@ async function performFactoryReset() {
                     Give a schedule pages and the schedules work together: when two overlap, the one with
                     the smaller number wins, and no display replaces another within the minimum time
                     below (a schedule's own hold time replaces it for that schedule). The photo rotation
-                    gives way to them too. Without pages on any schedule nothing changes.
+                    gives way to them too. Without pages on any schedule nothing changes. A page greyed
+                    out here is not ticked under Information screens below - tick it there first; a
+                    schedule whose ticked pages are all greyed out draws the shared rotation instead.
                   </div>
                   <v-text-field
                     v-model.number="settingsStore.deviceSettings.agendaGapMin"
@@ -3369,12 +3377,20 @@ async function performFactoryReset() {
                     style="max-width: 420px"
                   />
 <!-- #else -->
+                  <div class="text-caption text-medium-emphasis mb-2">
+                    Independent from the Auto-Rotate schedule above - applies while ToDo, Calendar, or a
+                    ticked information screen is active.
+                  </div>
                   <RotationSchedule
                     v-model="settingsStore.deviceSettings.agendaCron"
                     :disabled="agendaScheduleDisabled"
                   />
 <!-- #endif -->
 <!-- #else -->
+                  <div class="text-caption text-medium-emphasis mb-2">
+                    Independent from the Auto-Rotate schedule above - only applies while ToDo and/or
+                    Calendar is enabled.
+                  </div>
                   <RotationSchedule
                     v-model="settingsStore.deviceSettings.agendaCron"
                     :disabled="
@@ -3395,14 +3411,14 @@ async function performFactoryReset() {
                 </v-expansion-panel-title>
                 <v-expansion-panel-text>
                   <div class="text-caption text-medium-emphasis mb-2">
-                    Full-screen pages that take turns with the Agenda: every time the schedule above
-                    fires, the next page of those ticked here is drawn. Tick only the Agenda to keep
-                    things as they were.
+                    Full-screen pages that take turns with the ToDo &amp; Calendar page: every time the
+                    schedule above fires, the next page of those ticked here is drawn. Tick only ToDo
+                    &amp; Calendar to keep things as they were.
                   </div>
                   <v-checkbox
                     v-model="settingsStore.deviceSettings.infoScreens"
                     value="agenda"
-                    label="Agenda (ToDo and Calendar)"
+                    label="ToDo & Calendar"
                     density="compact"
                     hide-details
                   />
