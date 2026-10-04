@@ -218,7 +218,7 @@ which to run after which change.
 | Binary acceptance A | `python scripts/verify_baseline.py --board <b>` (IDF shell) | Kconfig symbols, ELF `nm`, `.bin` size equal to an upstream build; `--all-features` variants compare against the old fork | **feeds both builds the same prebuilt web assets - cannot see web differences** |
 | Web bundle byte compare | manual, below | the all-off web bundle is byte-identical to a build of upstream's own webapp | - |
 | Compile matrix | `python scripts/feature_matrix.py --board <b> off fixes single ...` (IDF shell) | every flag alone, none, all compile (`--full` also links) | runtime |
-| Host tests | section 7 | 1070 tests: upstream tests on the all-off code + module tests + "(fork)" image variants | hardware |
+| Host tests | section 7 | 1084 tests: upstream tests on the all-off code + module tests + "(fork)" image variants | hardware |
 
 After **any** edit to a shared file: `alloff_source.py`, `alloff_web.py`, `xref.py`, host tests (and `web_bindings.py` after a web change), plus a real build
 of the board you touched. After an **upstream merge** or a **web change**: also the manual bundle compare and
@@ -283,7 +283,7 @@ ctest --test-dir ~/pf-host-build            # SERIAL: tests of one binary share 
 ```
 
 Keep the build directory outside the repository. `-j` with ctest makes the DisplayFlow tests flake. Result at the
-time of writing: 1070/1070 (42 programs).
+time of writing: 1084/1084 (44 programs).
 
 The pure modules of the recipe page (`recipe_text`, `recipe_source`, `recipe_layout`, `recipe_engine`) were also run under
 AddressSanitizer and UBSan - they found an over-read in the entity decoder that the plain run did not show. Configure a second build

@@ -116,7 +116,7 @@ Run before every push (all green on 2026-09-30):
 | --- | --- | --- |
 | C/C++ format | `clang-format-18 --dry-run --Werror` on `main/`, `components/`, `host_tests/` | clean |
 | Web format, tests, lint | `cd webapp && npx prettier --check src && npx vitest run && npx eslint src` | 74 tests |
-| Python format, tooling tests | `python -m black --check scripts build.py`, `python -m isort --check-only scripts`, `python -m unittest discover scripts -p "test_*.py"` | 91 tests |
+| Python format, tooling tests | `python -m black --check scripts build.py`, `python -m isort --check-only scripts`, `python -m unittest discover scripts -p "test_*.py"` | 94 tests |
 | Host tests (WSL/Linux) | cmake `host_tests/`, build, `ctest` (serial - a few dedup tests collide in parallel) | 884 tests |
 | Proofs | `alloff_source.py` (175 files), `alloff_web.py` (33 files), `web_bindings.py` (every feature set), `xref.py`, `check_capabilities.py` | 0 differences |
 | Compile matrix | IDF shell: `python scripts/feature_matrix.py --board <b> extras all` for at least Waveshare, M5Paper and XIAO EE02 | OK |
@@ -156,6 +156,7 @@ Only the Waveshare PhotoPainter 7.3" was flashed. Not done, and how to check:
 | `fuel-prices` with a personal Tankerkoenig key (only the public demo key was used) | real key, a real place in Germany; keep the schedule >= 5 minutes (the service asks for it) |
 | `caldav` / `caldav-todo` against Nextcloud, Baikal, iCloud-like servers; long task lists; `source-auth` Digest/https on a real server | see the per-feature docs |
 | Web UI in Safari/Firefox/Android | batch upload uses `CompressionStream`/`DecompressionStream` |
+| The second audit's fixes (`fixes`): **seen on 2026-10-04 (Waveshare, plain HTTP and real Chrome)**: a foreign `Origin` refused with 403 on GET/POST/DELETE (also `null` and a look-alike host), `Origin` = `Host` (with and without the default port) passes, the frame's own Web UI and the colour editor's *Send to device* work, the settings POST caps and a round trip of the real settings, the OTA check with the `https://` rule, a crafted profile file runs nothing. **Not seen**: Firefox/Safari sending a cross-site POST (Chrome stopped it before the frame - its local-network protection), a reverse proxy that rewrites `Host`, the Home Assistant integration and the phone app against a `fixes` build (they send no `Origin`, so no change is expected), DNS rebinding (not covered, see section 12) | with a proxy: keep the original `Host`; with another browser: a page on another origin that `fetch`es a `POST` to the frame must get 403 |
 | Import of a config exported by an older build | export, import into a build without the new keys: unknown keys must be ignored |
 | CI on the extended repository | the first runs may show timing/resource problems (8 boards x plain/full, feature-compile matrix) |
 
@@ -239,7 +240,33 @@ On such a checkout use `extras` where this page says `feature/ideas` (`git push 
 MAINTAINING.md (ESP-IDF 6.0, Node 20, Python with black/isort, clang-format 18, WSL or Linux for the host tests, `gh` logged in with both accounts).
 The maintainer's test frame is not reachable from another machine; hardware items in section 7 need him.
 
-## 12. Keeping this page true
+## 12. Code audits and the standing security rules
+
+Two audits were run (2026-10-03: the recipe page and the TLS fix; 2026-10-04: everything this repository changed against upstream
+`f5e3ec9`). Their reports are in the maintainer's git-ignored `local-tools/audit/`; what they found is fixed and described in
+`CHANGELOG.md` and `docs/FIXES.md`. Rules that came out of them - keep them when adding code:
+
+- **Every route is registered with `register_uri()`** (it puts the optional password gate and the cross-site check in front);
+  never call `httpd_register_uri_handler()` directly. A receiver reads a **capped** body (`content_len` checked before any
+  allocation) and reads until it is complete.
+- **No `innerHTML` / `v-html` with data** in any page (the Vue app has none; `public/profile-editor.html` is a hand-written page
+  that is served by the frame, so script in it can call the whole API - texts go in with `textContent`, imported colours are
+  validated). A page the frame serves is trusted with every secret the API returns.
+- **Data from the internet is untrusted**: bounded sizes before allocating (a decoder's own size arithmetic is not - see
+  `jpeg_size_check.h`), `https://` only for anything that fetches code or pictures, file names from remote IDs through a
+  character whitelist, JSON nesting limited before cJSON parses it.
+- **The Origin check** (`main/http_origin.h`, `fixes`) stops a web page on another site from posting to the frame. It does **not**
+  stop DNS rebinding (a foreign name that points at the frame); only the device password does. A host allow-list was left out on
+  purpose: it would lock out everyone who reaches the frame by a name of their own router (`photoframe.fritz.box`). If it is
+  ever added it needs a setting for the extra names. Without a password `GET /api/config/urls` hands out the calendar addresses
+  and API keys - documented in `docs/API.md` (Access control).
+- Observations left as they are on purpose: the certificate date check of the recipe fetches, the global cJSON nesting limit
+  (1000, the recipe code limits itself to 32), unlocked statics read by one task, no overall deadline per request, a
+  non-atomic write of the last-recipe file, and the Jest test chain's npm advisories (not shipped).
+- The 15 speech samples of the keyword tests are Windows text-to-speech output; `host_tests/data/kws/README.md` says what was
+  checked about them (the licence terms were not) and why an eSpeak set does not drop in.
+
+## 13. Keeping this page true
 
 Update section 2 when a repository or branch moves, section 5 when counts change, section 7 when something has been verified on hardware,
 and section 3 after every upstream merge. The maintainer's private planning notes (`IDEAS.md`, git-ignored) may exist on his machine; nothing in

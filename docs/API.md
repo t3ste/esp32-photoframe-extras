@@ -23,6 +23,14 @@ own requests are refused too. A page that makes the visitor's browser believe th
 name (DNS rebinding) is not stopped by this - that is what the device password is for, so set one if the frame is
 reachable from networks or devices you do not control.
 
+In the extended edition (`--with extras`) these routes matter most for privacy, and without a device password every one of
+them is open to anyone on the network: `GET /api/config/urls` returns the calendar addresses (which can carry a login)
+and the API keys of the fuel, market and artwork sources in clear text - the Web UI needs them for the credentials part of
+a config export; `POST /api/mic/level`, `POST /api/kws/enroll` and `POST /api/kws/test` switch the microphone on (a level
+meter, a recording of the stop word, a listening test) - the answers are numbers and states, no audio is ever served, but
+a level tells whether someone is talking in the room; `POST /api/mic/tones` and `POST /api/chimes/test` make the speaker
+sound; `POST /api/wifi/hotspot/start` opens the set-up network.
+
 ---
 
 ## System
