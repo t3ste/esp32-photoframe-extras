@@ -195,8 +195,7 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   100 kg is not shown; the text cleaning is linear (it was quadratic for a text with many `<` and no `>`); a layout that could not be built is defined and draws a white page;
   the last recipe read from its file is made safe (every text terminated) and is not written again when it is the same one (flash wear); when every recipe that fits the
   filters was shown lately one is shown again instead of relaxing the filters; the cleaned search text is whole UTF-8 and cleaning it twice changes nothing.
-  The same weakness of the decoder library is in the **base's photo pipeline** (`image_processor.c`, which does not look at the sides of a JPEG either); it is not changed
-  there. 29 new host tests (the recipe suites have 182 now).
+  The same weakness of the decoder library was in the **base's photo pipeline** (`image_processor.c`); it is fixed there too (next entry). 29 new host tests (the recipe suites have 182 now).
 - **A JPEG whose header lies about its size can no longer make the photo pipeline write past its buffer** (`--with fixes`). esp_jpeg works out the size of the decoded
   picture in 32 bit from the sides in the file's header: 40000 x 35792 pixels is 4 295 040 000 bytes, which wraps to 72 704, and the decoder's own test that its buffer is
   large enough uses the same wrapped number, so a buffer of 72 KB would be written with a picture of 4.3 GB (found in a code audit of the recipe page, whose pictures come from
