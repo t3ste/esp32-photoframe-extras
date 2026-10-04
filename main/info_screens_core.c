@@ -320,8 +320,16 @@ uint32_t info_screens_effective_mask(uint32_t stored_mask, uint32_t compiled_mas
                                      uint32_t ticked_mask, bool agenda_has_content, int agenda_bit)
 {
     uint32_t mask = stored_mask & compiled_mask & ticked_mask;
-    if (!agenda_has_content && agenda_bit >= 0 && agenda_bit < 32) {
-        mask &= ~(1u << agenda_bit);
+    if (agenda_bit >= 0 && agenda_bit < 32) {
+        uint32_t agenda_flag = 1u << agenda_bit;
+        // Agenda has no tick of its own (see the header doc): whether a caller wants it at all is
+        // stored_mask alone, not also ticked_mask; whether it can actually draw is
+        // agenda_has_content, independent of compiled_mask (it is always compiled in).
+        if ((stored_mask & compiled_mask & agenda_flag) && agenda_has_content) {
+            mask |= agenda_flag;
+        } else {
+            mask &= ~agenda_flag;
+        }
     }
     return mask;
 }

@@ -114,7 +114,10 @@ bool info_screens_extra_enabled(void)
 
 int info_screens_next(bool agenda_has_content)
 {
-    uint32_t stored = config_manager_get_info_screens_mask();
+    // ToDo & Calendar has no tick of its own here (see info_screens_effective_mask()'s doc) - the
+    // shared rotation always "wants" it, same as it always could before that tick existed; whether
+    // it actually shows is agenda_has_content alone, not whatever a stray bit happens to say.
+    uint32_t stored = config_manager_get_info_screens_mask() | (1u << INFO_SCREEN_AGENDA);
     uint32_t mask = info_screens_effective_mask(stored, info_screens_compiled_mask(), stored,
                                                 agenda_has_content, INFO_SCREEN_AGENDA);
     uint32_t counter = config_manager_get_info_screens_rotation();

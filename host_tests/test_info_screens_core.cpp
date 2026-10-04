@@ -177,6 +177,23 @@ TEST(InfoCore, EffectiveMaskDropsAgendaWithoutContent)
     EXPECT_EQ(info_screens_effective_mask(0b1011, 0xFFFFFFFFu, 0xFFFFFFFFu, false, -1), 0b1011u);
 }
 
+TEST(InfoCore, AgendaHasNoTickOfItsOwnButStillNeedsToBeAskedFor)
+{
+    // Agenda was asked for (bit 0 of stored) and compiled in, but not in the ticked list (there is
+    // no tick for it anymore - see the function's own doc) - unlike every other page, the missing
+    // tick does not drop it: content decides instead, and there is content here.
+    EXPECT_EQ(info_screens_effective_mask(0b0011, 0xFFFFFFFFu, 0b1110, true, 0), 0b0011u);
+    // Same, but no content: dropped exactly as the no-tick-anymore design intends.
+    EXPECT_EQ(info_screens_effective_mask(0b0011, 0xFFFFFFFFu, 0b1110, false, 0), 0b0010u);
+    // Agenda was never asked for (bit 0 of stored is 0) - content alone does not add it: a
+    // schedule that was only ever given "fuel" does not also draw Agenda just because ToDo or
+    // Calendar happens to be on.
+    EXPECT_EQ(info_screens_effective_mask(0b0010, 0xFFFFFFFFu, 0xFFFFFFFFu, true, 0), 0b0010u);
+    // Asked for, but not compiled in (no board lacks Agenda in practice; checked all the same):
+    // stays out whatever agenda_has_content says.
+    EXPECT_EQ(info_screens_effective_mask(0b0001, 0xFFFFFFFEu, 0xFFFFFFFFu, true, 0), 0u);
+}
+
 namespace
 {
 

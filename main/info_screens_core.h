@@ -131,8 +131,13 @@ int info_rotation_size(uint32_t mask, int bit_count);
  * @brief Which of a set of pages actually draw right now: compiled into this firmware, and - for a
  * page a specific schedule was given (`stored_mask` comes from that schedule, not from the general
  * "Information screens" tick list) - also currently ticked there, so a schedule cannot keep drawing
- * a page the user has since switched off elsewhere. The Agenda bit is dropped on top of that when
- * `agenda_has_content` is false (an Agenda with neither ToDo nor Calendar on has nothing to show).
+ * a page the user has since switched off elsewhere. The Agenda bit is the one exception to the
+ * "also ticked" half of that: Agenda has no tick of its own (ToDo and Calendar each already have
+ * one, a third one for the combined page would only duplicate them and could disagree with both),
+ * so `ticked_mask` never governs it here. `stored_mask` still does - whether a schedule was given
+ * Agenda as one of its own pages (or, for the shared rotation, whether it is in the general list)
+ * still has to say so - but once it does, whether it can actually draw depends only on
+ * `agenda_has_content` (ToDo or Calendar is on), not on being separately ticked anywhere.
  */
 uint32_t info_screens_effective_mask(uint32_t stored_mask, uint32_t compiled_mask,
                                      uint32_t ticked_mask, bool agenda_has_content, int agenda_bit);
