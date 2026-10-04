@@ -1,6 +1,7 @@
 #include "agenda_manager.h"
 #if FEATURE_INFO_SCREENS
 #include "info_screens.h"
+#include "info_screens_core.h"
 #endif
 #if FEATURE_SCHEDULE_PAGES
 #include "sched_pick.h"
@@ -268,14 +269,39 @@ int agenda_manager_rotation_seconds_until_next(void)
 }
 #endif
 
+#if FEATURE_SCHEDULE_PAGES
+// Whether any schedule's own pages would actually draw something right now: compiled in,
+// currently ticked under Information screens, and - for a schedule only given the Agenda page -
+// only while there is something for it to show. config_manager_sched_pages_in_use() alone only
+// knows that a schedule was *given* pages at some point, which can be stale (a page since
+// unticked, or the only given page being a content-less Agenda); waking the frame for that finds
+// nothing to draw (info_screens_next_for() falls back to the shared rotation, and that, failing
+// too, is the "nothing to render this agenda cycle" case below) - a real cost on a battery frame.
+static bool sched_pages_effective(bool agenda_has_content)
+{
+    uint32_t compiled = info_screens_compiled_mask();
+    uint32_t ticked = config_manager_get_info_screens_mask();
+    int count = config_manager_get_agenda_cron_rule_count();
+    for (int i = 0; i < count && i < MAX_CRON_RULES; i++) {
+        uint32_t mask = info_screens_effective_mask(config_manager_get_sched_mask(i), compiled,
+                                                    ticked, agenda_has_content, INFO_SCREEN_AGENDA);
+        if (mask != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+#endif
+
 bool agenda_manager_is_enabled(void)
 {
 #if FEATURE_INFO_SCREENS
+    bool agenda_has_content =
+        config_manager_get_agenda_todo_enabled() || config_manager_get_agenda_cal_enabled();
     // an information screen in the rotation keeps the schedule going without ToDo or calendars
-    if (!config_manager_get_agenda_todo_enabled() && !config_manager_get_agenda_cal_enabled() &&
-        !info_screens_extra_enabled()
+    if (!agenda_has_content && !info_screens_extra_enabled()
 #if FEATURE_SCHEDULE_PAGES
-        && !config_manager_sched_pages_in_use()
+        && !sched_pages_effective(agenda_has_content)
 #endif
     ) {
         return false;
