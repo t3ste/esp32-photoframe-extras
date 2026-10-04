@@ -615,7 +615,7 @@ fix; the rest are standing notes, not work items.
 | `scripts/test_*.py` | Tooling unit tests (94) |
 | `webapp/` | Vue web UI; `feature-directives.js`, `vite.config.js`, `vite.config.demo.js`, `index-demo.html`, `src/` |
 | `process-cli/` | Host-side image processing tool (Node) |
-| `host_tests/` | GoogleTest host tests (1080) |
+| `host_tests/` | GoogleTest host tests (1084) |
 | `demo/` | Tracked stubs (`.nojekyll`, `_headers`, `favicon.svg`); the rest is generated site output (gitignored) |
 | `.github/workflows/ci.yml`, `build.yml` | CI, builds, release, Pages deploy |
 | `docs/FEATURES.md` | User-facing feature list and OTA notes |

@@ -1249,6 +1249,43 @@ target_link_libraries(
 
 gtest_discover_tests(display_flow_test)
 
+# How the real image_processor.c reads an .epdgz back (the fixes option: a stream of the wrong size is refused)
+add_executable(
+  epdgz_decode_test
+  test_epdgz_decode.cpp
+  ../main/image_processor.c
+  stubs/esp_stubs.c
+  stubs/fake_display_manager.c
+  stubs/fake_config_manager.c
+  stubs/fake_processing_settings.c
+  stubs/fork_stubs.c
+  ../components/epaper_src/Fonts/font24.c
+)
+
+target_compile_definitions(
+  epdgz_decode_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_include_directories(
+  epdgz_decode_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
+target_link_libraries(
+  epdgz_decode_test
+  GTest::gtest_main
+  PNG::PNG
+  m
+)
+
+gtest_discover_tests(epdgz_decode_test)
+
 # The same two characterization tests once more, on the optional image pipeline
 # (CONFIG_FORK_IMAGE_PIPELINE: caption/overlay drawing, streaming JPEG decode, ...).
 # The plain variants above prove the upstream behaviour is untouched.

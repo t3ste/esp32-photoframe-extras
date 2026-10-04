@@ -212,7 +212,7 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 - **Smaller hardening** (`--with fixes`): `POST /api/settings/processing` and `/palette` read at most 8 KiB, completely
   (they allocated whatever `Content-Length` said and read once); OTA follows only an `https://` download address and
   starts no update while a check is running; an `.epdgz` that unpacks to less than the panel needs is refused
-  (it showed leftover memory); the migration scripts no longer `eval` anything but a plain 0/1 expression;
+  (it showed leftover memory; 4 host tests); the migration scripts no longer `eval` anything but a plain 0/1 expression;
   `exifreader` of the process-cli (HEIC/AVIF memory exhaustion) and the other vulnerable npm packages of the two
   Node projects are updated (`npm audit`: web app 0, process-cli 28, all in the Jest test chain); the workflows run
   read-only by default, the two third-party actions are pinned to a commit, the version of a build must be a plain
