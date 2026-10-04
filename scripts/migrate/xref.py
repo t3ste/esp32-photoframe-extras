@@ -157,7 +157,7 @@ def split_lines(lines, flags):
         text = re.sub(r"defined\(\s*(\d)\s*\)", r"\1", text)
         text = text.replace("||", " or ").replace("&&", " and ")
         text = re.sub(r"!(?!=)", " not ", text)
-        return bool(eval(text, {"__builtins__": {}}, {}))
+        return gate.eval_truth(text)
 
     active, inactive, stack = [], [], []
     for line in lines:

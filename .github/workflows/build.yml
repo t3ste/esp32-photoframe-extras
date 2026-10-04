@@ -13,6 +13,10 @@ on:
   release:
     types: [ published ]
 
+# Read-only unless a job asks for more (the release and deploy-pages jobs below do).
+permissions:
+  contents: read
+
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
@@ -27,7 +31,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: ci
     permissions:
-      contents: write
+      contents: read
     strategy:
       matrix:
         board: [waveshare_photopainter_73, seeedstudio_xiao_ee02, seeedstudio_reterminal_e1002, seeedstudio_xiao_ee04, seeedstudio_reterminal_e1004, seeedstudio_reterminal_e1003, seeedstudio_xiao_ee03, m5stack_m5paper_v11]
@@ -86,10 +90,15 @@ jobs:
     - name: Extract version
       id: version
       run: |
-        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+        if [[ "$GITHUB_REF" == refs/tags/* ]]; then
           VERSION="${GITHUB_REF#refs/tags/}"
         else
           VERSION=$(python3 scripts/get_version.py --type dev)
+        fi
+        # The version goes into build commands below: a tag name can hold shell characters.
+        if [[ ! "$VERSION" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::The version '${VERSION}' is not a plain name (letters, digits, . _ -)"
+          exit 1
         fi
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
         echo "Building version: ${VERSION}"
@@ -126,7 +135,7 @@ jobs:
     # is none, this repository itself. A mirror that builds a release therefore still
     # points the frame at the canonical feed.
     - name: Setup ESP-IDF
-      uses: espressif/esp-idf-ci-action@v1
+      uses: espressif/esp-idf-ci-action@9d38657f3d789ca759b2b37aaf5ceffbc42c4f0d # branch v1 as of 2024-11-08
       with:
         esp_idf_version: release-v6.0
         target: ${{ matrix.target }}
@@ -220,7 +229,7 @@ jobs:
       run: python3 build.py --board ${{ matrix.board }} --step splash
 
     - name: Compile the feature set
-      uses: espressif/esp-idf-ci-action@v1
+      uses: espressif/esp-idf-ci-action@9d38657f3d789ca759b2b37aaf5ceffbc42c4f0d # branch v1 as of 2024-11-08
       with:
         esp_idf_version: release-v6.0
         target: esp32s3
@@ -252,7 +261,7 @@ jobs:
         merge-multiple: true
 
     - name: Create Release
-      uses: softprops/action-gh-release@v3
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
       with:
         draft: true
         # Pre-release tag convention (docs/MAINTAINING.md section 10): a
@@ -392,7 +401,7 @@ jobs:
         # than that stable release.
         PRERELEASE_TAG=""
         THIS_TAG=""
-        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+        if [[ "$GITHUB_REF" == refs/tags/* ]]; then
           TAG_NAME="${GITHUB_REF#refs/tags/}"
           # What decides is the release's own isPrerelease flag (the "Create
           # Release" step above derives it from the same suffix, but the
@@ -465,7 +474,7 @@ jobs:
             rm -rf "demo/$board/.pre"
           fi
 
-          if [[ "${{ github.ref }}" == refs/tags/* ]] && [[ -z "$PRERELEASE_TAG" ]]; then
+          if [[ "$GITHUB_REF" == refs/tags/* ]] && [[ -z "$PRERELEASE_TAG" ]]; then
             # A genuine stable-release tag: use this build as stable.
             cp "demo/$board/photoframe-firmware-$board-dev.bin" "demo/$board/photoframe-firmware-$board-merged.bin"
           elif [[ -n "$STABLE_TAG" ]]; then

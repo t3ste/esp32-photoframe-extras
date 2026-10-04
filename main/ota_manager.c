@@ -350,7 +350,16 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
             // Look for board-specific binary
             if (strcmp(asset_name, target_binary) == 0) {
                 cJSON *browser_download_url = cJSON_GetObjectItem(asset, "browser_download_url");
+#if FORK_FIXES
+                // Only an https:// address that fits the buffer is followed: a download over
+                // plain http would carry the firmware without TLS, and a cut-off address would
+                // download nothing sensible.
+                if (browser_download_url && cJSON_IsString(browser_download_url) &&
+                    strncmp(browser_download_url->valuestring, "https://", 8) == 0 &&
+                    strlen(browser_download_url->valuestring) < url_len) {
+#else
                 if (browser_download_url && cJSON_IsString(browser_download_url)) {
+#endif
                     snprintf(download_url, url_len, "%s", browser_download_url->valuestring);
                     found_binary = true;
                     ESP_LOGI(TAG, "Found firmware binary: %s", asset_name);
@@ -668,7 +677,14 @@ esp_err_t ota_start_update(void)
         return ESP_ERR_INVALID_STATE;
     }
 
+#if FORK_FIXES
+    // A check in progress is still writing update_available and firmware_url, which the update
+    // task reads without a lock: start no update until it is done.
+    if (ota_status.state == OTA_STATE_CHECKING || ota_status.state == OTA_STATE_DOWNLOADING ||
+        ota_status.state == OTA_STATE_INSTALLING) {
+#else
     if (ota_status.state == OTA_STATE_DOWNLOADING || ota_status.state == OTA_STATE_INSTALLING) {
+#endif
         ESP_LOGW(TAG, "Update already in progress");
         return ESP_ERR_INVALID_STATE;
     }

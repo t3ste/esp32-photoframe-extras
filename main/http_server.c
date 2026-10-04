@@ -73,6 +73,9 @@
 #include "history_manager.h"
 #endif
 #include "http_auth.h"
+#if FORK_FIXES
+#include "http_origin.h"
+#endif
 #if FEATURE_HTTPS
 #include "https_cert.h"
 #endif
@@ -236,9 +239,44 @@ static auth_result_t http_auth_check(httpd_req_t *req, int64_t *retry_after_ms)
     return ok ? AUTH_OK : AUTH_DENIED;
 }
 
+#if FORK_FIXES
+// A web page open in any browser on the network can make that browser POST to the frame. Such a
+// request carries the page's own site in its Origin header, so one that does not name this very
+// host is refused (see http_origin.h). Requests without an Origin are not cross-site browser
+// requests and pass.
+static bool request_origin_allowed(httpd_req_t *req)
+{
+    size_t origin_len = httpd_req_get_hdr_value_len(req, "Origin");
+    if (origin_len == 0) {
+        return true;
+    }
+    char origin[160];
+    char host[160];
+    if (origin_len >= sizeof(origin) ||
+        httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin)) != ESP_OK) {
+        return false;
+    }
+    size_t host_len = httpd_req_get_hdr_value_len(req, "Host");
+    if (host_len == 0 || host_len >= sizeof(host) ||
+        httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) != ESP_OK) {
+        return false;
+    }
+    return http_origin_matches_host(host, origin);
+}
+
+#endif
 // Dispatch trampoline: the real handler travels in user_ctx (no route used it).
 static esp_err_t auth_gate(httpd_req_t *req)
 {
+#if FORK_FIXES
+    if (!request_origin_allowed(req)) {
+        ESP_LOGW(TAG, "Refused a request that came from another site");
+        httpd_resp_set_status(req, "403 Forbidden");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"error\":\"cross-site request refused\"}");
+        return ESP_OK;
+    }
+#endif
     int64_t retry_after_ms = 0;
     auth_result_t result = http_auth_check(req, &retry_after_ms);
     if (result == AUTH_LOCKED_OUT) {
@@ -4594,6 +4632,40 @@ static esp_err_t agenda_color_profile_handler(httpd_req_t *req)
 }
 
 #endif
+#if FORK_FIXES
+// The body of a settings POST (processing settings, colour palette): a few hundred bytes of JSON.
+// Upstream allocates whatever Content-Length claims and reads it once, so one request can exhaust
+// the heap and a body that arrives in pieces is cut short. Capped, and read until complete.
+// Returns the NUL-terminated body (free() it), or NULL after the error reply was sent.
+#define SETTINGS_BODY_MAX 8192
+
+static char *recv_settings_body(httpd_req_t *req)
+{
+    size_t len = req->content_len;
+    if (len == 0 || len > SETTINGS_BODY_MAX) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Request body missing or too large");
+        return NULL;
+    }
+    char *buf = heap_caps_malloc(len + 1, MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        httpd_resp_send_500(req);
+        return NULL;
+    }
+    size_t received = 0;
+    while (received < len) {
+        int ret = httpd_req_recv(req, buf + received, len - received);
+        if (ret <= 0) {
+            free(buf);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
+            return NULL;
+        }
+        received += (size_t) ret;
+    }
+    buf[received] = '\0';
+    return buf;
+}
+
+#endif
 static esp_err_t processing_settings_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
@@ -4614,6 +4686,12 @@ static esp_err_t processing_settings_handler(httpd_req_t *req)
         return ESP_OK;
 
     } else if (req->method == HTTP_POST) {
+#if FORK_FIXES
+        char *buf = recv_settings_body(req);
+        if (!buf) {
+            return ESP_FAIL;
+        }
+#else
         char *buf = heap_caps_malloc(req->content_len + 1, MALLOC_CAP_SPIRAM);
         if (!buf) {
             httpd_resp_send_500(req);
@@ -4627,6 +4705,7 @@ static esp_err_t processing_settings_handler(httpd_req_t *req)
             return ESP_FAIL;
         }
         buf[ret] = '\0';
+#endif
 
         cJSON *json = cJSON_Parse(buf);
         heap_caps_free(buf);
@@ -4789,6 +4868,12 @@ static esp_err_t color_palette_handler(httpd_req_t *req)
         return ESP_OK;
 
     } else if (req->method == HTTP_POST) {
+#if FORK_FIXES
+        char *buf = recv_settings_body(req);
+        if (!buf) {
+            return ESP_FAIL;
+        }
+#else
         char *buf = malloc(req->content_len + 1);
         if (!buf) {
             httpd_resp_send_500(req);
@@ -4802,6 +4887,7 @@ static esp_err_t color_palette_handler(httpd_req_t *req)
             return ESP_FAIL;
         }
         buf[ret] = '\0';
+#endif
 
         cJSON *json = cJSON_Parse(buf);
         free(buf);

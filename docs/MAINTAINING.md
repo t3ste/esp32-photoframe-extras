@@ -612,10 +612,10 @@ fix; the rest are standing notes, not work items.
 | `scripts/features.py`, `boards.py`, `check_capabilities.py`, `feature_matrix.py` | Feature registry, board tables, checks, compile matrix |
 | `scripts/verify_baseline.py`, `scripts/migrate/` | Equality proofs (`alloff_source.py`, `alloff_web.py`, `xref.py`), the per-feature-set check of the web sources (`web_bindings.py`), the one-off `gate.py` and its `maps/` |
 | `scripts/generate_manifests.py`, `launch_demo.py` | Web flasher manifests, local demo server |
-| `scripts/test_*.py` | Tooling unit tests (91) |
+| `scripts/test_*.py` | Tooling unit tests (94) |
 | `webapp/` | Vue web UI; `feature-directives.js`, `vite.config.js`, `vite.config.demo.js`, `index-demo.html`, `src/` |
 | `process-cli/` | Host-side image processing tool (Node) |
-| `host_tests/` | GoogleTest host tests (1070) |
+| `host_tests/` | GoogleTest host tests (1080) |
 | `demo/` | Tracked stubs (`.nojekyll`, `_headers`, `favicon.svg`); the rest is generated site output (gitignored) |
 | `.github/workflows/ci.yml`, `build.yml` | CI, builds, release, Pages deploy |
 | `docs/FEATURES.md` | User-facing feature list and OTA notes |

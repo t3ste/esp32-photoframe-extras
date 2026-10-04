@@ -7,6 +7,10 @@ on:
     branches: [ main, dev ]
   workflow_call:
 
+# Nothing here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   format-check:
     name: Code Formatting Check

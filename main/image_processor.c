@@ -1194,11 +1194,20 @@ static esp_err_t decode_epdgz_buffer(const uint8_t *data, size_t size, uint8_t *
         return ESP_FAIL;
     }
     int ret = inflate(&strm, Z_FINISH);
+    size_t produced = strm.total_out;
     inflateEnd(&strm);
     if (ret != Z_STREAM_END && ret != Z_OK) {
         ESP_LOGE(TAG, "EPDGZ decompression failed: %d", ret);
         heap_caps_free(packed);
         return ESP_FAIL;
+    }
+    if (produced != packed_size) {
+        // A stream that ends early would leave the rest of `packed` as whatever the memory held
+        // before, and that would be drawn as pixels.
+        ESP_LOGE(TAG, "EPDGZ holds %u bytes, the panel needs %u", (unsigned) produced,
+                 (unsigned) packed_size);
+        heap_caps_free(packed);
+        return ESP_ERR_INVALID_SIZE;
     }
 
     uint8_t *rgb = (uint8_t *) heap_caps_malloc((size_t) w * h * 3, MALLOC_CAP_SPIRAM);

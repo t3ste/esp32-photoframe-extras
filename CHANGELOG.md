@@ -196,6 +196,27 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   the last recipe read from its file is made safe (every text terminated) and is not written again when it is the same one (flash wear); when every recipe that fits the
   filters was shown lately one is shown again instead of relaxing the filters; the cleaned search text is whole UTF-8 and cleaning it twice changes nothing.
   The same weakness of the decoder library was in the **base's photo pipeline** (`image_processor.c`); it is fixed there too (next entry). 29 new host tests (the recipe suites have 182 now).
+- **A web page in a browser on the same network can no longer press buttons on the frame** (`--with fixes`). The API has no
+  CORS headers, but a plain cross-site `POST` needs no permission, so any page you visited could send
+  `POST /api/factory-reset` (wipes the settings) or `POST /api/config` to the frame, with no password set (the default). A
+  request that carries an `Origin` header naming another host than the one it was sent to is now refused with `403`
+  (`main/http_origin.h`, 10 host tests); curl, Home Assistant and the Web UI itself send no foreign `Origin` and are not
+  affected (a Vite dev server proxy now drops it, `webapp/vite.config.js`). **Not covered: DNS rebinding** - set the device
+  password (General -> Advanced network settings) if the frame is reachable from networks you do not control
+  ([docs/API.md](docs/API.md#access-control)). Found in a second code audit of everything this repository changed.
+- **The colour profile editor (`profile-editor.html`) ran script from an imported profile file.** The name of an imported
+  profile and its colour values were written into the page as HTML, in the origin of the frame, so a shared profile file
+  could call the whole API. Notes are plain text now, a colour must be a palette name or `#rrggbb` (what the frame accepts
+  too), a profile name is cut, cleaned and cannot be `__proto__`, and what the browser kept from an earlier session is
+  checked on load. Checked in Chrome with crafted files (markup and entities in name, file name, colours, mode, stored state).
+- **Smaller hardening** (`--with fixes`): `POST /api/settings/processing` and `/palette` read at most 8 KiB, completely
+  (they allocated whatever `Content-Length` said and read once); OTA follows only an `https://` download address and
+  starts no update while a check is running; an `.epdgz` that unpacks to less than the panel needs is refused
+  (it showed leftover memory); the migration scripts no longer `eval` anything but a plain 0/1 expression;
+  `exifreader` of the process-cli (HEIC/AVIF memory exhaustion) and the other vulnerable npm packages of the two
+  Node projects are updated (`npm audit`: web app 0, process-cli 28, all in the Jest test chain); the workflows run
+  read-only by default, the two third-party actions are pinned to a commit, the version of a build must be a plain
+  name and the ref is read from the environment instead of being pasted into scripts.
 - **A JPEG whose header lies about its size can no longer make the photo pipeline write past its buffer** (`--with fixes`). esp_jpeg works out the size of the decoded
   picture in 32 bit from the sides in the file's header: 40000 x 35792 pixels is 4 295 040 000 bytes, which wraps to 72 704, and the decoder's own test that its buffer is
   large enough uses the same wrapped number, so a buffer of 72 KB would be written with a picture of 4.3 GB (found in a code audit of the recipe page, whose pictures come from

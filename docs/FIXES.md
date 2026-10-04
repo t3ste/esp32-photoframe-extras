@@ -27,6 +27,14 @@ corrections and hardening changes over upstream's own behavior, gated behind one
 - **JPEG decoding**: the photo pipeline works out the size of a decoded JPEG again in 64 bit (`main/jpeg_size_check.h`) and refuses a header whose size does not add
   up - esp_jpeg multiplies the sides of the header in 32 bit, so a header of 40000 x 35792 pixels came out as a 72 KB buffer that the decoder then wrote 4.3 GB into. It
   also looks at the result of the header read, which it used to ignore.
+- **Cross-site requests**: a request that carries an `Origin` header naming another host than the one it was sent to is
+  refused with `403` before anything else happens (`main/http_origin.h`, 10 host tests; see
+  [API.md](API.md#access-control)). Without it any web page open in a browser on the same network could send a `POST` to the
+  frame - `/api/factory-reset` wipes the settings with one. Requests without an `Origin` (curl, Home Assistant) and the
+  Web UI itself pass. The settings POSTs for the processing settings and the colour palette read at most 8 KiB, in as many
+  pieces as they arrive (upstream allocates whatever `Content-Length` claims and reads once). The OTA update follows only
+  an `https://` download address from the release feed, and no update starts while a check is still writing its result.
+  An `.epdgz` that unpacks to less than the panel needs is refused instead of showing the memory it did not fill.
 - **OTA update check**: reads GitHub's releases API response the same way the weather/headline overlays already
   do (accumulated via the HTTP client's event callback), instead of a fixed-length read that failed whenever
   GitHub answered with `Transfer-Encoding: chunked` rather than a fixed `Content-Length`.
