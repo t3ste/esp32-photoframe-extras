@@ -17,6 +17,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+## [v219.0.1] - 2026-10-05
+
+This release is `v219.0.0` with the fix below; **`v219.0.0` was withdrawn** (set back to a draft) the same day because of it.
+
 ### Fixed
 
 - **A build with the Agenda crashed on its HTTPS requests** (`agenda` option, so the full builds; seen with the update check; found on a frame installed with the web flasher: the Web UI's update check ended in "Failed to check
@@ -29,6 +33,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   (they do not have the wrapper).
 
 ## [v219.0.0] - 2026-10-05
+
+> **Withdrawn** (the release was set back to a draft a few hours after it was published): every full build crashed on its HTTPS requests, see [v219.0.1](#v21901---2026-10-05) above. Everything below is part of v219.0.1.
 
 ### Added
 
