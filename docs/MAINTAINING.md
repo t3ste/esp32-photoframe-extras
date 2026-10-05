@@ -564,8 +564,9 @@ fix; the rest are standing notes, not work items.
 - **New upstream pull request for the photo-read fix (as the very last step of a work round)**: upstream closed our first pull request on 2026-10-05 (five of six taken into v2.19.0 with changes of its
   own). What it does not have: a BMP that fails to read halfway is shown as a half-blank picture, with "Image displayed successfully" in the log (`read_bmp24_mapped()` returns success after a failed
   `fread`; `rotate_sequential()`/`rotate_random()` ignore `display_manager_show_image()`'s result). The unconditional version of the fix exists as one commit (`f9bc894`, branch
-  `ai-audit-upstream-fixes` of the canonical fork, built for the Waveshare board and host-tested, on top of an older upstream state): to do - rebase it onto the then newest upstream `main`, build, open a single-commit
-  pull request disclosed as findings of Claude with a link to the two repositories, and only with the maintainer's OK each step. Not started.
+  `ai-audit-upstream-fixes` of the canonical fork, built for the Waveshare board and host-tested, on top of an older upstream state). Rebased on 2026-10-05 onto upstream `main` = v2.19.0 (`186ebaf`) as the
+  local branch `fix-bmp-partial-read` (one commit, not pushed anywhere, no pull request open). To do: re-check that upstream `main` is still that state (rebase again if not), build, push the branch
+  to the canonical fork, open the single-commit pull request disclosed as findings of Claude with a link to the two repositories, and only with the maintainer's OK each step.
 - **A library issue behind upstream's JPEG fix goes to Espressif privately**: upstream's maintainer suggested reporting the library side of his fix. Espressif's `SECURITY.md` asks that
   vulnerabilities are **not** reported as public issues but through its security incident response process (coordinated disclosure; the private forms or the bug bounty address named there). Nothing is
   published by this repository about it; the report is the maintainer's to submit. Not sent.
