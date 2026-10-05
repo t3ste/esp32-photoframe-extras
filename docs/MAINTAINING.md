@@ -464,7 +464,7 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
   leak into a commit message, a doc or a test.
 - Never print secret values while verifying a live configuration; report only that a key is present or its length.
   `GET /api/config` returns some credentials in plain text (`access_token`, `http_header_value`,
-  `telegram_bot_token`, `openai_api_key`, `google_api_key`); `wifi_password`, the device password and the
+  `openai_api_key`, `google_api_key`); `wifi_password`, the device password, the Telegram bot token/chat ID and the
   agenda/ToDo URLs are write-only.
 - The web UI shows what the frame stores (calendar names, addresses and the like). A screenshot of a real frame's settings, or a
   printed `GET /api/config`, is personal data: replace the values in the request on its way (`page.route`) before capturing,

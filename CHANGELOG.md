@@ -55,6 +55,19 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   the sequential one goes on with the next photo, the random one tries one other photo of the same pool, and both give up cleanly for that rotation (the next scheduled one tries
   again) if that fails too. PNG is not affected (libpng fails the whole decode). The normal path was checked live: full decode, panel update and "displayed successfully" as before; the failure
   branch itself could not be provoked on demand (a one-off SD glitch) and was reviewed by code.
+- **The Telegram bot token and chat ID were returned in plaintext by `GET /api/config` and so sat in plain view in their own Web UI fields**, pre-existing since the Telegram option was added
+  (`3a55a45b`) - unlike the HTTP API password and the Agenda's calendar URLs, which this project already made write-only on purpose for exactly this reason; the chat ID was not even on the
+  known list of fields this endpoint deliberately returns in plaintext (`docs/MAINTAINING.md`), so it was a plain oversight rather than a considered choice. Found from the maintainer's report of
+  the fields suddenly being visible. Both are write-only now, the same pattern as the Calendar/ToDo addresses: `GET /api/config` reports only `telegram_bot_token_configured` and
+  `telegram_chat_id_configured` (plus the existing combined `telegram_configured`), the Web UI's two fields start blank and are sent only when something new was typed (an empty value
+  no longer clears a token by accident on an unrelated save), and each has its own **Remove** button (`telegram_bot_token_clear`/`telegram_chat_id_clear`). A full export with secrets still
+  includes both, from the existing `/api/config/urls` endpoint, unchanged.
+- **The Telegram card could show a stale, unrelated fetch error as if it were its own.** `last_fetch_error` is one slot shared by every image source (URL, Telegram, Home
+  Assistant, ...); nothing cleared it when `rotation_mode` changed away from the mode that had set it, so a frame once run in URL mode and since switched to Telegram kept
+  showing that old "Connection failed" under the Telegram card indefinitely - found live on a test frame together with the plaintext report above (the message named `ESP_ERR_HTTP_CONNECT`,
+  which only the URL-mode fetch path ever produces, while this frame has been in Telegram mode). `apply_config_from_json` now clears it whenever an incoming `rotation_mode`
+  actually differs from the one stored; checked live by switching the test frame's mode away and back, which cleared it immediately. Any error from the mode actually in use
+  still shows exactly as before.
 - **A web page in a browser on the same network can no longer press buttons on the frame** (`--with fixes`). The API has no
   CORS headers, but a plain cross-site `POST` needs no permission, so any page you visited could send
   `POST /api/factory-reset` (wipes the settings) or `POST /api/config` to the frame, with no password set (the default). A

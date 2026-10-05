@@ -77,6 +77,8 @@ export const useSettingsStore = defineStore("settings", () => {
     // Auto Rotate - Telegram
     telegramBotToken: "",
     telegramChatId: "",
+    telegramBotTokenConfigured: false,
+    telegramChatIdConfigured: false,
     telegramConfigured: false,
     telegramPairingEnabled: true,
     telegramWakeNotifyEnabled: false,
@@ -700,8 +702,12 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.rotationMode = data.rotation_mode || "storage";
       deviceSettings.value.sdRotationMode = data.sd_rotation_mode || "random";
 // #if FEATURE_TELEGRAM
-      deviceSettings.value.telegramBotToken = data.telegram_bot_token || "";
-      deviceSettings.value.telegramChatId = data.telegram_chat_id || "";
+      // Write-only: GET /api/config never returns the real values, only
+      // whether each is set - keep the inputs blank.
+      deviceSettings.value.telegramBotToken = "";
+      deviceSettings.value.telegramChatId = "";
+      deviceSettings.value.telegramBotTokenConfigured = data.telegram_bot_token_configured === true;
+      deviceSettings.value.telegramChatIdConfigured = data.telegram_chat_id_configured === true;
       deviceSettings.value.telegramConfigured = data.telegram_configured === true;
       deviceSettings.value.telegramWakeNotifyEnabled = data.telegram_wake_notify_enabled === true;
       deviceSettings.value.telegramPairingEnabled = data.telegram_pairing_enabled !== false;
@@ -762,8 +768,13 @@ export const useSettingsStore = defineStore("settings", () => {
       sd_rotation_mode: deviceSettings.value.sdRotationMode,
       image_url: deviceSettings.value.imageUrl,
 // #if FEATURE_TELEGRAM
-      telegram_bot_token: deviceSettings.value.telegramBotToken,
-      telegram_chat_id: deviceSettings.value.telegramChatId,
+      // write-only: sent only when something was typed (an empty value means "not touched")
+      ...(deviceSettings.value.telegramBotToken
+        ? { telegram_bot_token: deviceSettings.value.telegramBotToken }
+        : {}),
+      ...(deviceSettings.value.telegramChatId
+        ? { telegram_chat_id: deviceSettings.value.telegramChatId }
+        : {}),
       telegram_pairing_enabled: deviceSettings.value.telegramPairingEnabled,
       telegram_wake_notify_enabled: deviceSettings.value.telegramWakeNotifyEnabled,
 // #endif

@@ -636,6 +636,42 @@ const sdRotationModeOptions = [
   { title: "Sequential - In sequence", value: "sequential" },
 ];
 
+// #if FEATURE_TELEGRAM
+// Removes the Telegram bot token / chat ID from the frame (write-only, there is no way to read them back).
+async function removeTelegramBotToken() {
+  try {
+    const response = await fetch("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_bot_token_clear: true }),
+    });
+    if (response.ok) {
+      settingsStore.deviceSettings.telegramBotTokenConfigured = false;
+      settingsStore.deviceSettings.telegramConfigured = false;
+      settingsStore.deviceSettings.telegramBotToken = "";
+    }
+  } catch {
+    /* the frame is not reachable: the token stays */
+  }
+}
+async function removeTelegramChatId() {
+  try {
+    const response = await fetch("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_chat_id_clear: true }),
+    });
+    if (response.ok) {
+      settingsStore.deviceSettings.telegramChatIdConfigured = false;
+      settingsStore.deviceSettings.telegramConfigured = false;
+      settingsStore.deviceSettings.telegramChatId = "";
+    }
+  } catch {
+    /* the frame is not reachable: the chat ID stays */
+  }
+}
+// #endif
+
 const saving = ref(false);
 const saveSuccess = ref(false);
 
@@ -737,12 +773,17 @@ async function exportConfig() {
       delete config.agenda_cal_c_url;
       delete config.agenda_cal_d_url;
       delete config.agenda_cal_e_url;
-      // These 5 ARE returned by GET /api/config in plaintext - only strip
+// #endif
+// #if FEATURE_TELEGRAM
+      delete config.telegram_bot_token;
+      delete config.telegram_chat_id;
+// #endif
+// #if FEATURE_AGENDA
+      // These 4 ARE returned by GET /api/config in plaintext - only strip
       // them when the user hasn't opted in to a full-credentials export.
       if (!exportIncludeSecrets.value) {
         delete config.access_token;
         delete config.http_header_value;
-        delete config.telegram_bot_token;
         delete config.openai_api_key;
         delete config.google_api_key;
       }
@@ -1783,20 +1824,42 @@ async function performFactoryReset() {
                     <v-text-field
                       v-model="settingsStore.deviceSettings.telegramBotToken"
                       label="Telegram Bot Token"
+                      :placeholder="
+                        settingsStore.deviceSettings.telegramBotTokenConfigured
+                          ? 'A token is saved'
+                          : 'From @BotFather, e.g. 123456789:AAbecomes...'
+                      "
+                      type="password"
+                      autocomplete="off"
                       variant="outlined"
-                      hint="From @BotFather, e.g. 123456789:AAbecomes..."
+                      hint="The token is stored on the frame and never shown again; leave the box empty to keep the one that is there."
                       persistent-hint
                       class="mb-4"
-                    />
+                    >
+                      <template v-if="settingsStore.deviceSettings.telegramBotTokenConfigured" #append-inner>
+                        <v-btn size="x-small" variant="text" @click="removeTelegramBotToken"> Remove </v-btn>
+                      </template>
+                    </v-text-field>
 
                     <v-text-field
                       v-model="settingsStore.deviceSettings.telegramChatId"
                       label="Telegram Chat ID"
+                      :placeholder="
+                        settingsStore.deviceSettings.telegramChatIdConfigured
+                          ? 'A chat ID is saved'
+                          : 'Numeric chat/group ID'
+                      "
+                      type="password"
+                      autocomplete="off"
                       variant="outlined"
-                      hint="Only messages from this numeric chat/group ID are processed"
+                      hint="Only messages from this numeric chat/group ID are processed. Stored on the frame and never shown again; leave the box empty to keep the one that is there."
                       persistent-hint
                       class="mb-4"
-                    />
+                    >
+                      <template v-if="settingsStore.deviceSettings.telegramChatIdConfigured" #append-inner>
+                        <v-btn size="x-small" variant="text" @click="removeTelegramChatId"> Remove </v-btn>
+                      </template>
+                    </v-text-field>
 
                     <v-switch
                       v-model="settingsStore.deviceSettings.telegramPairingEnabled"
