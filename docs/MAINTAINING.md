@@ -352,6 +352,8 @@ History:
 | `v218.0.1` | 2026-09-28 | First **full** release; part-wise web flasher, climate-history fix, OTA fixes. Published in the mirror (then the operational repo). |
 | `v218.0.2` | 2026-09-28 | Transition release: update feed, web flasher and links move to the fork; OTA stale-state fix. Published in BOTH repositories (built once in the mirror with the fork's feed baked in via `OTA_REPO`, the 16 assets re-uploaded to the fork's release). From now on only the fork needs releases. |
 | `v218.0.3` | 2026-09-29 | Second upstream merge, the landing-page `FORK_SITE` fix, Calendar color-profile export, the Calendar-header-active-name fix. Confirmed live: a tag push alone starts the fork's CI (section 16's long-standing open item is closed for good). |
+| `v219.0.0` | 2026-10-05 | First release on upstream v2.19.0 (WiFi policy, crash reports, demo package, the two `wifi-resilience` settings removed). **Withdrawn the same day** (set back to a draft): the full builds crashed on their HTTPS requests - `tls_ca_cb_fix.c` freed pointers the CI's newer ESP-IDF no longer allocates (section 15). The tag stays. |
+| `v219.0.1` | 2026-10-05 | `v219.0.0` with that fix. Before it: the CI build of the fix commit was flashed to a test frame and the update check run. |
 
 Pre-releases (the `ota-channel` feature's channel) use the tag suffix `-rc1` (e.g. `v218.0.4-rc1`); the `release`
 job marks a `-rc` tag's release as a pre-release, and it must be **published** (not left as a draft) before a frame
