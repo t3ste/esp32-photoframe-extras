@@ -207,6 +207,15 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   the last recipe read from its file is made safe (every text terminated) and is not written again when it is the same one (flash wear); when every recipe that fits the
   filters was shown lately one is shown again instead of relaxing the filters; the cleaned search text is whole UTF-8 and cleaning it twice changes nothing.
   The same weakness of the decoder library was in the **base's photo pipeline** (`image_processor.c`); it is fixed there too (next entry). 29 new host tests (the recipe suites have 182 now).
+- **A JPEG with two frame headers could still make the photo pipeline write past its buffer** (`--with fixes`). Found by upstream's maintainer when reviewing the pull request that carried our
+  JPEG fix there (upstream took a different fix and not ours): `esp_jpeg_get_image_info()` reports the size of the **first** SOF0 of a file, while the decoder (tjpgd's `jd_prepare`) takes the **last** one
+  before SOS - so a file with a small first frame and a huge second one passed the size check of the entry below with a small buffer and was then decoded at the huge row stride, far past the allocation. The
+  file reaches the frame unauthenticated (`/api/upload`, `/api/display-image`, the image URL, the Home Assistant push). The frame size is now also read with a header walk that follows the decoder's own rule
+  (`main/jpeg_header.c`, the same file as upstream's, 7 host tests), and a file where the two disagree - or that has no usable header - is refused before anything is allocated. The 32-bit wrap of the entry
+  below cannot be reached by a single header on this firmware (16-bit sides, and anything over twice the panel is decoded scaled down); that entry's check stays as a second line of defence.
+- **A rejected WiFi change answered `200 success`** (`--with fixes`). Also found in that review: the config-PATCH change of the `fixes` option (every field applies on its own) let a WiFi network that could not be
+  joined fall through without any error - the old credentials were kept and the request still said success; the Web UI and a config import never told you. It sets the error and its message again, as before
+  the option. And the login-attempt limiter is reset only when a new device password was actually saved (it was also reset after a rejected one).
 - **A photo that failed to read halfway was shown as a finished picture with the top white** (`--with fixes`). A BMP is stored bottom row first and read straight into the
   display buffer; after a one-off SD card I/O error in the middle of the file (`sdmmc_read_sectors_dma`, seen live on a frame) the decoder (`GUI_BMPfile.c`) logged it and stopped like a
   normal end, so every row above the last one read stayed white, the panel showed only the lower part of the photo, and the log said "Image displayed successfully" - the album

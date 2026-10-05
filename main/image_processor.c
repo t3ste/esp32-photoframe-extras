@@ -31,6 +31,7 @@
 #include "freertos/task.h"
 #include "jpeg_decoder.h"
 #if FORK_FIXES
+#include "jpeg_header.h"
 #include "jpeg_size_check.h"
 #endif
 #include "processing_settings.h"
@@ -1319,8 +1320,17 @@ static esp_err_t decode_jpg_buffer(const uint8_t *jpg_data, size_t jpg_size, uin
     // them in 32 bit (a header of 40000 x 35792 pixels comes out as 72 704 bytes instead of 4.3 GB,
     // and its own test of the buffer uses the same wrapped number): a header that cannot be read,
     // or whose size does not add up, is refused before anything is allocated.
+    // esp_jpeg_get_image_info() reports the FIRST SOF0 of the file while the decoder (tjpgd's
+    // jd_prepare) sizes everything from the LAST one before SOS, so a file with a small first
+    // frame and a huge second one passed every check above with a small buffer and was then
+    // decoded at the huge row stride, far past its allocation: the frame the decoder will use is
+    // read with a header walk of the same rule, and a file where the two disagree is refused.
+    int frame_width = 0;
+    int frame_height = 0;
     if (esp_jpeg_get_image_info(&jpeg_cfg, &outimg) != ESP_OK ||
-        !jpeg_output_size_ok(outimg.width, outimg.height, 0, outimg.output_len)) {
+        !jpeg_output_size_ok(outimg.width, outimg.height, 0, outimg.output_len) ||
+        !jpeg_header_frame_size(jpg_data, jpg_size, &frame_width, &frame_height) ||
+        frame_width != outimg.width || frame_height != outimg.height) {
         ESP_LOGE(TAG, "JPG header is not usable");
         set_last_error("JPG header is not usable");
         return ESP_ERR_INVALID_SIZE;

@@ -526,7 +526,15 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
 #endif
                 ESP_LOGW(TAG, "Failed to connect to new WiFi, reverting to previous credentials");
                 wifi_manager_connect(current_ssid, config_manager_get_wifi_password());
-#if !(FORK_FIXES)
+#if FORK_FIXES
+                // The request still has to report the rejected change: the
+                // fall-through above used to make it answer 200 "success" with
+                // the old credentials silently kept (the handler's WiFi
+                // message only fires on a non-OK result).
+                utils_set_config_error(
+                    "Failed to connect to WiFi network. Please check SSID and password.");
+                had_error = true;
+#else
                 return ESP_FAIL;
 #endif
             }
@@ -815,7 +823,14 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
 #endif
         }
         // Lockouts earned against the old password shouldn't outlive it.
+#if FORK_FIXES
+        // (only a password that was really saved replaced the old one)
+        if (pw_err == ESP_OK) {
+            http_auth_limiter_reset();
+        }
+#else
         http_auth_limiter_reset();
+#endif
     }
 
     item = cJSON_GetObjectItem(root, "http_header_key");

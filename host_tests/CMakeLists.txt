@@ -944,6 +944,24 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# The frame size tjpgd will decode - last SOF0 before SOS (the fixes option)
+add_executable(
+  jpeg_header_test
+  test_jpeg_header.cpp
+  ../main/jpeg_header.c
+)
+
+target_link_libraries(
+  jpeg_header_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  jpeg_header_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # The cross-site request check of the HTTP API (the fixes option)
 add_executable(
   http_origin_test
@@ -1175,6 +1193,7 @@ gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)
 gtest_discover_tests(history_decimate_test)
 gtest_discover_tests(jpeg_size_check_test)
+gtest_discover_tests(jpeg_header_test)
 gtest_discover_tests(http_origin_test)
 gtest_discover_tests(kws_test)
 gtest_discover_tests(headlines_test)
@@ -1255,6 +1274,7 @@ add_executable(
   test_epdgz_decode.cpp
   ../main/image_processor.c
   ../main/glyph_extras.c
+  ../main/jpeg_header.c
   stubs/esp_stubs.c
   stubs/fake_display_manager.c
   stubs/fake_config_manager.c
@@ -1296,6 +1316,7 @@ foreach(test_name image_pipeline display_flow)
     test_${test_name}.cpp
     ../main/image_processor.c
     ../main/glyph_extras.c
+    ../main/jpeg_header.c
     stubs/esp_stubs.c
     stubs/fake_display_manager.c
     stubs/fake_config_manager.c
@@ -1343,6 +1364,7 @@ add_executable(
   test_art_caption_draw.cpp
   ../main/image_processor.c
   ../main/glyph_extras.c
+  ../main/jpeg_header.c
   stubs/esp_stubs.c
   stubs/fake_display_manager.c
   stubs/fake_config_manager.c
@@ -1383,6 +1405,7 @@ add_executable(
   test_glyph_text.cpp
   ../main/image_processor.c
   ../main/glyph_extras.c
+  ../main/jpeg_header.c
   ../main/screen_canvas.c
   stubs/esp_stubs.c
   stubs/fake_display_manager.c
