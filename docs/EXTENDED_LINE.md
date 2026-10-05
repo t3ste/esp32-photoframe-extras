@@ -68,8 +68,9 @@ Rules:
    `b95c483` and the comment text was then made identical (`21c8a7b`), so the merge has nothing to resolve in that hunk.
 2. **Merge, do not cherry-pick**, in one direction: `git merge refs/heads/main` into `feature/ideas`. Nothing is merged from here to
    `main` except by a deliberate decision (single generic fixes go through `main`-first).
-3. **Upstream goes into the base first** (MAINTAINING.md section 12), then into this line via the merge above. State on 2026-10-01:
-   the base contains upstream up to `f5e3ec9` (core dump partition on every layout, the last crash kept in NVS and shown in the
+3. **Upstream goes into the base first** (MAINTAINING.md section 12), then into this line via the merge above. State on 2026-10-05:
+   the base contains upstream v2.19.0 (`186ebaf`, merge `677165e`; the proofs' baseline moved to it) and this line contains the base - the merge of 2026-10-05 conflicted only in the changelog here. Before that, on 2026-10-01:
+   the base contained upstream up to `f5e3ec9` (core dump partition on every layout, the last crash kept in NVS and shown in the
    Maintenance tab, ELF attached to releases) and this line contains the base. The first such round is the model: the three textual
    conflicts were `CHANGELOG.md` (keep both), `docs/MAINTAINING.md` (the test count - take the measured one) and
    `SettingsPanel.vue` (both blocks kept); the all-off proofs then moved to the new baseline on their own.
@@ -225,8 +226,8 @@ M5Paper and XIAO EE02), the extended repository's CI and Build Firmware green, a
 the base first, with the fetch-error clean-up on a mode change); a photo whose read fails halfway is no longer shown as a half-blank picture (base `fixes`, found on a frame: one-off SD error); the
 schedule-pages precision work (a schedule only draws pages that are available, ToDo & Calendar has no tick of its own, a schedule whose pages are all unavailable does not wake the frame, a warning for a page that
 no schedule would ever draw, the Recipe page could not be assigned to a schedule because of a 7-bit mask); and two defects of the `fixes` option that upstream's maintainer found when reviewing our pull request (upstream closed it on 2026-10-05 after taking five of its six fixes into v2.19.0): a JPEG with two frame headers could still be decoded past its buffer (the header walk of upstream's `jpeg_header.c`, identical file) and a rejected WiFi change answered 200 success. Procedure as before: base `main` first (three commits `911454d`, `00640bb`, `0829c82`), merged here, the check set
-run (1094 host tests, the proofs, the web and Python checks, the compile matrix for Waveshare, M5Paper and XIAO EE02), the extended repository's CI and Build Firmware green, then the tag as `t3stier`, the draft
-and its notes by hand. Not part of this candidate: **upstream v2.19.0** (it contains upstream's own versions of five of our six pull-request fixes plus other work). It goes into the base first (section 3 rule 3) when the maintainer decides; after that merge the `fixes` copies of the fixes upstream now has are redundant and can be dropped (the new `jpeg_header.c` is already byte-identical).
+run (1101 host tests, the proofs, the web and Python checks, the compile matrix for Waveshare, M5Paper and XIAO EE02), the extended repository's CI and Build Firmware green, then the tag as `t3stier`, the draft
+and its notes by hand. **After this candidate was tagged (still a draft, not published)** the maintainer decided to merge **upstream v2.19.0** into the base: done on 2026-10-05 (base `677165e`, here `0443614`; see CHANGELOG and section 3), the redundant `fixes` copies were dropped. The draft of rc5 therefore holds the older 218 base. Decide: publish it as it is, or discard the draft and its tag and make the next pre-release on the new base - by MAINTAINING.md section 12 point 5 the base's next release is `v219.0.0`, and this repository's own sequence starts over for a new base version (`v219.0.0-rc1`).
 
 Quick check that everything is still in step: `git ls-remote t3stier`, `git ls-remote origin` and `git ls-remote extras` must show the same commit for
 `refs/heads/extras` (first two) and `refs/heads/main` (the third); the base `refs/heads/main` of the first two is the base.
