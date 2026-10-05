@@ -927,41 +927,6 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
-# The size check of esp_jpeg's answer (the fixes option)
-add_executable(
-  jpeg_size_check_test
-  test_jpeg_size_check.cpp
-)
-
-target_link_libraries(
-  jpeg_size_check_test
-  GTest::gtest_main
-)
-
-target_include_directories(
-  jpeg_size_check_test
-  PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/../main
-)
-
-# The frame size tjpgd will decode - last SOF0 before SOS (the fixes option)
-add_executable(
-  jpeg_header_test
-  test_jpeg_header.cpp
-  ../main/jpeg_header.c
-)
-
-target_link_libraries(
-  jpeg_header_test
-  GTest::gtest_main
-)
-
-target_include_directories(
-  jpeg_header_test
-  PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/../main
-)
-
 # The cross-site request check of the HTTP API (the fixes option)
 add_executable(
   http_origin_test
@@ -1160,6 +1125,44 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# Station reconnect policy: only an AP that keeps rejecting the credentials
+# fails a connect; an absent one never does
+add_executable(
+  wifi_retry_test
+  test_wifi_retry.cpp
+  ../main/wifi_retry_policy.c
+)
+
+target_link_libraries(
+  wifi_retry_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  wifi_retry_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+# JPEG frame size as tjpgd will decode it (last SOF0 before SOS)
+add_executable(
+  jpeg_header_test
+  test_jpeg_header.cpp
+  ../main/jpeg_header.c
+)
+
+target_link_libraries(
+  jpeg_header_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  jpeg_header_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Discover tests
 include(GoogleTest)
 gtest_discover_tests(cron_test)
@@ -1189,10 +1192,10 @@ gtest_discover_tests(info_screens_core_test)
 gtest_discover_tests(screens_test)
 gtest_discover_tests(network_backoff_test)
 gtest_discover_tests(crash_record_test)
+gtest_discover_tests(wifi_retry_test)
 gtest_discover_tests(mic_level_test)
 gtest_discover_tests(alarm_pattern_test)
 gtest_discover_tests(history_decimate_test)
-gtest_discover_tests(jpeg_size_check_test)
 gtest_discover_tests(jpeg_header_test)
 gtest_discover_tests(http_origin_test)
 gtest_discover_tests(kws_test)
@@ -1209,6 +1212,7 @@ add_executable(
   image_pipeline_test
   test_image_pipeline.cpp
   ../main/image_processor.c
+  ../main/jpeg_header.c
   stubs/esp_stubs.c
   stubs/fake_display_manager.c
   stubs/fake_config_manager.c
@@ -1239,6 +1243,7 @@ add_executable(
   test_display_flow.cpp
   ../main/display_flow.c
   ../main/image_processor.c
+  ../main/jpeg_header.c
   stubs/esp_stubs.c
   stubs/fake_display_manager.c
   stubs/fake_config_manager.c

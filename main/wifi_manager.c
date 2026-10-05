@@ -27,23 +27,23 @@
 #include "nvs_flash.h"
 #include "storage.h"
 #include "utils.h"
+#include "wifi_retry_policy.h"
 
 static const char *TAG = "wifi_manager";
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
-// Reconnect attempts after the first one before giving up.
-#define WIFI_MAX_RETRY 5
 // Hard cap on one wifi_manager_connect(). Association plus DHCP normally takes
 // a few seconds; this only matters when the AP is out of range or DHCP never
 // answers, where waiting longer just burns battery (#121).
 #define WIFI_CONNECT_TIMEOUT_MS 30000
 
 static EventGroupHandle_t s_wifi_event_group;
-static int s_retry_num = 0;
 #if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
-static int s_max_retries = 5;
+// Reconnect budget of a bounded connect, below WIFI_MAX_RETRY when a caller asks for it
+// (wifi_manager_set_max_retries(): Telegram power save gives up faster on a bad link).
+static int s_max_retries = WIFI_MAX_RETRY;
 #endif
 static bool s_is_connected = false;
 // Reconnect policy, shared between wifi_manager_connect()'s caller and the
@@ -51,42 +51,23 @@ static bool s_is_connected = false;
 // s_policy_lock. A mutex rather than a spinlock: the handler must decide to
 // stop retrying and publish WIFI_FAIL_BIT as one step, and event-group calls
 // are not allowed inside a critical section.
-//  - s_give_up: wifi_manager_stop_connecting() was called; never reconnect.
-//  - s_keep_trying: wifi_manager_keep_reconnecting() was called; reconnect
-//    without the WIFI_MAX_RETRY limit.
-//  - s_retries_exhausted: the handler stopped reconnecting and set
-//    WIFI_FAIL_BIT, so nothing is in progress any more.
 static SemaphoreHandle_t s_policy_lock = NULL;
-static bool s_give_up = false;
-static bool s_keep_trying = false;
-static bool s_retries_exhausted = false;
-// Consecutive attempts the AP rejected in a way that points at the password
-// (see is_auth_rejection()). Reset whenever the AP accepts us or an attempt
-// fails for some other reason, so only an unbroken run of rejections counts.
-static int s_auth_rejects = 0;  // guarded by s_policy_lock too
-
-// Disconnect reasons that mean the AP turned the credentials down, as opposed
-// to it being absent or out of range (NO_AP_FOUND, BEACON_TIMEOUT, ...). A
-#if FEATURE_WIFI_RESILIENCE
-// wrong WPA2 passphrase surfaces as a 4-way handshake timeout or a MIC
-// failure; MIC_FAILURE and 802_1X_AUTH_FAILED are kept alongside upstream's
-// original 3-reason set (see wifi_manager_last_failure_is_credential_reject()'s
-// own history) so this fork's cold-boot credential-wipe decision in main.c
-// doesn't narrow which disconnect reasons it treats as a genuine rejection.
-#else
-// wrong WPA2 passphrase surfaces as a 4-way handshake timeout.
-#endif
-static bool is_auth_rejection(uint8_t reason)
-{
-    return reason == WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT || reason == WIFI_REASON_AUTH_FAIL ||
-#if FEATURE_WIFI_RESILIENCE
-           reason == WIFI_REASON_HANDSHAKE_TIMEOUT || reason == WIFI_REASON_MIC_FAILURE ||
-           reason == WIFI_REASON_802_1X_AUTH_FAILED;
-#else
-           reason == WIFI_REASON_HANDSHAKE_TIMEOUT;
-#endif
-}
+static wifi_retry_state_t s_retry;
 static esp_netif_t *s_sta_netif = NULL;
+
+static const char *verdict_name(wifi_retry_verdict_t verdict)
+{
+    switch (verdict) {
+    case WIFI_RETRY_RECONNECT:
+        return "retrying";
+    case WIFI_RETRY_UNREACHABLE:
+        return "out of attempts";
+    case WIFI_RETRY_REJECTED:
+        return "credentials rejected";
+    default:
+        return "stopped";
+    }
+}
 
 static void apply_dns_override(void);
 
@@ -102,57 +83,50 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
         // before falling back to the A record.
         esp_netif_create_ip6_linklocal(s_sta_netif);
         xSemaphoreTake(s_policy_lock, portMAX_DELAY);
-        s_auth_rejects = 0;  // the AP accepted the credentials
+        wifi_retry_on_connected(&s_retry);
         xSemaphoreGive(s_policy_lock);
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         const wifi_event_sta_disconnected_t *disc =
             (const wifi_event_sta_disconnected_t *) event_data;
-        xSemaphoreTake(s_policy_lock, portMAX_DELAY);
-        if (disc && is_auth_rejection(disc->reason)) {
-            s_auth_rejects++;
-        } else {
-            s_auth_rejects = 0;
+        uint8_t reason = disc ? disc->reason : 0;
+        int8_t rssi = disc ? disc->rssi : 0;
+#if FEATURE_WIFI_RESILIENCE
+        // A MIC failure or a failed 802.1X authentication is also the AP turning the
+        // credentials down (a wrong passphrase can surface this way); the policy module
+        // knows only the AUTH_FAIL / handshake-timeout set, so count these as AUTH_FAIL.
+        if (reason == WIFI_REASON_MIC_FAILURE || reason == WIFI_REASON_802_1X_AUTH_FAILED) {
+            reason = WIFI_REASON_AUTH_FAIL;
         }
-        // Background reconnects (s_keep_trying) wait out an absent AP or a
-        // silent DHCP server indefinitely, but not an AP that keeps refusing
-        // the password: that gets the same number of attempts as a normal
-        // connect, then WIFI_FAIL_BIT so the owner of the retry can react.
-#if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
-        // The non-keep_trying budget is s_max_retries (default WIFI_MAX_RETRY,
-        // overridable via wifi_manager_set_max_retries() - e.g. Telegram power
-        // save uses a lower budget to give up faster on a bad link).
 #endif
-        bool retry = !s_give_up && (s_keep_trying ? s_auth_rejects <= WIFI_MAX_RETRY
+        xSemaphoreTake(s_policy_lock, portMAX_DELAY);
+        wifi_retry_verdict_t verdict = wifi_retry_on_disconnect(&s_retry, reason, rssi);
 #if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
-                                                  : s_retry_num < s_max_retries);
-#else
-                                                  : s_retry_num < WIFI_MAX_RETRY);
+        // A caller can ask for fewer reconnects than WIFI_MAX_RETRY (see s_max_retries): the
+        // attempt that would exceed that budget is out of attempts like the policy's own limit.
+        if (verdict == WIFI_RETRY_RECONNECT && !s_retry.unbounded &&
+            s_retry.attempts > s_max_retries) {
+            verdict = WIFI_RETRY_UNREACHABLE;
+            s_retry.verdict = verdict;
+        }
 #endif
-        if (retry) {
-            s_retry_num++;
+        if (verdict == WIFI_RETRY_RECONNECT) {
             esp_wifi_connect();
-        } else {
-            s_retries_exhausted = true;
+        } else if (verdict != WIFI_RETRY_STOPPED) {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
         }
         xSemaphoreGive(s_policy_lock);
-        ESP_LOGI(TAG, "%s", retry ? "retry to connect to the AP" : "giving up on the AP");
+        ESP_LOGI(TAG, "disconnected from the AP (reason %u, RSSI %d dBm): %s", reason, rssi,
+                 verdict_name(verdict));
         s_is_connected = false;
         // Waiters on WIFI_CONNECTED_BIT (e.g. main.c's late_wifi_task) must
         // see the link as down again, not a stale bit from an earlier IP.
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-#if FORK_FIXES
-        ESP_LOGI(TAG, "connect to the AP fail (reason %d)", disc ? disc->reason : -1);
-#else
-        ESP_LOGI(TAG, "connect to the AP fail");
-#endif
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         // Applied after the address is up so it overrides DHCP-provided DNS
         // servers too (#43).
         apply_dns_override();
-        s_retry_num = 0;
         s_is_connected = true;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_GOT_IP6) {
@@ -384,11 +358,7 @@ esp_err_t wifi_manager_connect(const char *ssid, const char *password)
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));  // Enable power save at boot/connect
 
     xSemaphoreTake(s_policy_lock, portMAX_DELAY);
-    s_retry_num = 0;
-    s_give_up = false;
-    s_keep_trying = false;
-    s_retries_exhausted = false;
-    s_auth_rejects = 0;
+    wifi_retry_reset(&s_retry);
     xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
     xSemaphoreGive(s_policy_lock);
     EventBits_t bits =
@@ -404,50 +374,42 @@ esp_err_t wifi_manager_connect(const char *ssid, const char *password)
             ESP_LOGI(TAG, "connected to ap SSID:%s", ssid);
         }
         return ESP_OK;
-    } else if (bits & WIFI_FAIL_BIT) {
-#if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
-        ESP_LOGW(TAG, "Failed to connect to SSID:%s after %d attempts", ssid, s_max_retries + 1);
-#else
-        ESP_LOGW(TAG, "Failed to connect to SSID:%s after %d attempts", ssid, WIFI_MAX_RETRY + 1);
-#endif
-        return ESP_FAIL;
     }
 
     xSemaphoreTake(s_policy_lock, portMAX_DELAY);
-    bool rejected = s_auth_rejects > 0;
+    wifi_retry_verdict_t verdict = s_retry.verdict;
+    int attempts = s_retry.attempts + 1;
     xSemaphoreGive(s_policy_lock);
-    if (rejected) {
-        // Out of time while the AP was still rejecting the password: that is
-        // a credential failure that merely ran slow (a wrong passphrase costs
-        // a multi-second handshake timeout per attempt), not a slow network.
-        // Report it as ESP_FAIL so an interactive boot still falls back to
-        // provisioning rather than retrying a wrong password forever.
-        ESP_LOGW(TAG, "SSID:%s rejected the credentials; giving up after %d ms", ssid,
-                 WIFI_CONNECT_TIMEOUT_MS);
-        wifi_manager_stop_connecting();
-        return ESP_FAIL;
+
+    if (bits & WIFI_FAIL_BIT) {
+        if (verdict == WIFI_RETRY_REJECTED) {
+            ESP_LOGW(TAG, "SSID:%s rejected the credentials %d times in a row", ssid,
+                     WIFI_MAX_RETRY + 1);
+            return ESP_FAIL;
+        }
+        // Out of attempts without the AP ever answering (absent, still
+        // booting, out of range). Nothing is in progress now; the caller
+        // either starts over in the background or stops.
+        ESP_LOGW(TAG, "SSID:%s unreachable after %d attempts", ssid, attempts);
+        return ESP_ERR_TIMEOUT;
     }
 
-    // Timed out otherwise: associated but no IP yet (DHCP not answering), or
-    // the AP not answering at all (still booting, out of range). Neither says
-    // the credentials are wrong, so this is not ESP_FAIL. The attempt is still
-    // running; the caller decides whether to stop it or keep it going.
-    ESP_LOGW(TAG, "Timed out connecting to SSID:%s after %d ms", ssid, WIFI_CONNECT_TIMEOUT_MS);
+    // Out of time: associated but no IP yet (DHCP not answering), or slow
+    // attempts still under way. Neither says the credentials are wrong. The
+    // attempt is still running; the caller decides whether to stop it.
+    ESP_LOGW(TAG, "Timed out connecting to SSID:%s after %d ms (%d attempts)", ssid,
+             WIFI_CONNECT_TIMEOUT_MS, attempts);
     return ESP_ERR_TIMEOUT;
 }
 
 #if FEATURE_WIFI_RESILIENCE
 bool wifi_manager_last_failure_is_credential_reject(void)
 {
-    // Mirrors the `rejected` check wifi_manager_connect() itself uses to
-    // decide its own ESP_FAIL-vs-ESP_ERR_TIMEOUT return - exposed separately
-    // for callers (this fork's cold-boot connect loop in main.c) that need to
-    // tell "credentials rejected" apart from "retries exhausted for some
-    // other reason" even though both currently return ESP_FAIL from
-    // wifi_manager_connect() itself. Meaningless if the last attempt
-    // succeeded (s_auth_rejects is reset to 0 on WIFI_EVENT_STA_CONNECTED).
+    // The policy's verdict for the last connect: REJECTED is the one outcome that says the AP
+    // turned the credentials down (every other way of running out is ESP_ERR_TIMEOUT now).
+    // Meaningless if the last attempt succeeded.
     xSemaphoreTake(s_policy_lock, portMAX_DELAY);
-    bool rejected = s_auth_rejects > 0;
+    bool rejected = s_retry.verdict == WIFI_RETRY_REJECTED;
     xSemaphoreGive(s_policy_lock);
     return rejected;
 }
@@ -462,8 +424,7 @@ void wifi_manager_stop_connecting(void)
     // disconnect issued first would not cancel; once WiFi is stopped that
     // call simply fails.
     xSemaphoreTake(s_policy_lock, portMAX_DELAY);
-    s_give_up = true;
-    s_keep_trying = false;
+    wifi_retry_stop(&s_retry);
     xSemaphoreGive(s_policy_lock);
     esp_wifi_stop();
     s_is_connected = false;
@@ -471,15 +432,10 @@ void wifi_manager_stop_connecting(void)
 
 void wifi_manager_keep_reconnecting(void)
 {
-    // Lift the retry limit. If the handler already ran out of retries in the
-    // meantime nothing is in progress, so start a fresh attempt ourselves.
-    // Under the lock, so the handler can't publish WIFI_FAIL_BIT for the old
+    // Under the lock, so the handler can't publish WIFI_FAIL_BIT for an old
     // attempt after we have cleared it and started a new one.
     xSemaphoreTake(s_policy_lock, portMAX_DELAY);
-    s_give_up = false;
-    s_keep_trying = true;
-    if (s_retries_exhausted) {
-        s_retries_exhausted = false;
+    if (wifi_retry_set_unbounded(&s_retry)) {
         xEventGroupClearBits(s_wifi_event_group, WIFI_FAIL_BIT);
         esp_wifi_connect();
     }

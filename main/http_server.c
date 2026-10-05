@@ -4642,17 +4642,18 @@ static esp_err_t agenda_color_profile_handler(httpd_req_t *req)
 }
 
 #endif
-#if FORK_FIXES
-// The body of a settings POST (processing settings, colour palette): a few hundred bytes of JSON.
-// Upstream allocates whatever Content-Length claims and reads it once, so one request can exhaust
-// the heap and a body that arrives in pieces is cut short. Capped, and read until complete.
-// Returns the NUL-terminated body (free() it), or NULL after the error reply was sent.
-#define SETTINGS_BODY_MAX 8192
+// The body of a settings POST (processing settings, colour palette): a few hundred bytes of
+// JSON. Both handlers below used to allocate whatever Content-Length claimed and read it once
+// - no cap, so a large Content-Length could exhaust the heap, and a body that arrived in more
+// than one TCP segment was silently cut short at whatever httpd_req_recv() returned the first
+// time. Capped, and read until complete. Returns the NUL-terminated body (the caller frees it
+// with heap_caps_free()), or NULL after the error response was already sent.
+#define SETTINGS_BODY_MAX_LEN 8192
 
 static char *recv_settings_body(httpd_req_t *req)
 {
     size_t len = req->content_len;
-    if (len == 0 || len > SETTINGS_BODY_MAX) {
+    if (len == 0 || len > SETTINGS_BODY_MAX_LEN) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Request body missing or too large");
         return NULL;
     }
@@ -4665,7 +4666,7 @@ static char *recv_settings_body(httpd_req_t *req)
     while (received < len) {
         int ret = httpd_req_recv(req, buf + received, len - received);
         if (ret <= 0) {
-            free(buf);
+            heap_caps_free(buf);
             httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
             return NULL;
         }
@@ -4675,7 +4676,6 @@ static char *recv_settings_body(httpd_req_t *req)
     return buf;
 }
 
-#endif
 static esp_err_t processing_settings_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
@@ -4696,26 +4696,10 @@ static esp_err_t processing_settings_handler(httpd_req_t *req)
         return ESP_OK;
 
     } else if (req->method == HTTP_POST) {
-#if FORK_FIXES
         char *buf = recv_settings_body(req);
         if (!buf) {
             return ESP_FAIL;
         }
-#else
-        char *buf = heap_caps_malloc(req->content_len + 1, MALLOC_CAP_SPIRAM);
-        if (!buf) {
-            httpd_resp_send_500(req);
-            return ESP_FAIL;
-        }
-
-        int ret = httpd_req_recv(req, buf, req->content_len);
-        if (ret <= 0) {
-            heap_caps_free(buf);
-            httpd_resp_send_500(req);
-            return ESP_FAIL;
-        }
-        buf[ret] = '\0';
-#endif
 
         cJSON *json = cJSON_Parse(buf);
         heap_caps_free(buf);
@@ -4878,29 +4862,13 @@ static esp_err_t color_palette_handler(httpd_req_t *req)
         return ESP_OK;
 
     } else if (req->method == HTTP_POST) {
-#if FORK_FIXES
         char *buf = recv_settings_body(req);
         if (!buf) {
             return ESP_FAIL;
         }
-#else
-        char *buf = malloc(req->content_len + 1);
-        if (!buf) {
-            httpd_resp_send_500(req);
-            return ESP_FAIL;
-        }
-
-        int ret = httpd_req_recv(req, buf, req->content_len);
-        if (ret <= 0) {
-            free(buf);
-            httpd_resp_send_500(req);
-            return ESP_FAIL;
-        }
-        buf[ret] = '\0';
-#endif
 
         cJSON *json = cJSON_Parse(buf);
-        free(buf);
+        heap_caps_free(buf);
 
         if (!json) {
             httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");

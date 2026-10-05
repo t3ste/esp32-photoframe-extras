@@ -11,37 +11,29 @@
 #endif
 #include "esp_log.h"
 #include "feature_config.h"
-#if FORK_FIXES
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#endif
 #include "nvs.h"
 #include "storage.h"
 
 static const char *TAG = "album_manager";
 static char enabled_albums_str[512] = "";
 
-#if FORK_FIXES
-// enabled_albums_str is read and mutated from multiple FreeRTOS tasks (the
-// HTTP server, the Telegram bot task, auto-rotate). Without a lock,
-// get_enabled_albums()'s count-then-populate two-pass strtok scan could see
-// a concurrent set_album_enabled() shrink the string between passes,
-// leaving the tail of its malloc'd array as uninitialized memory while
-// still reporting the first pass's (now-too-high) count.
+// enabled_albums_str is rewritten by the HTTP task and read by the rotation
+// path; the two-pass scan in get_enabled_albums() works on a snapshot taken
+// under this lock so the list can't change between its count and populate
+// passes.
 #define ALBUM_LOCK_TIMEOUT_MS (5 * 1000)
 static SemaphoreHandle_t album_mutex = NULL;
 
-#endif
 esp_err_t album_manager_init(void)
 {
-#if FORK_FIXES
     album_mutex = xSemaphoreCreateMutex();
     if (!album_mutex) {
         ESP_LOGE(TAG, "Failed to create album mutex");
         return ESP_ERR_NO_MEM;
     }
 
-#endif
     if (!storage_has_persistent_storage()) {
         ESP_LOGI(TAG, "Storage not mounted - skipping album manager initialization");
         return ESP_OK;
@@ -346,6 +338,7 @@ esp_err_t album_manager_organize_crop_variants(int *out_moved_count)
 }
 
 #endif
+
 esp_err_t album_manager_set_album_enabled(const char *album_name, bool enabled)
 {
     if (!album_name || strlen(album_name) == 0) {
@@ -358,13 +351,11 @@ esp_err_t album_manager_set_album_enabled(const char *album_name, bool enabled)
         return ESP_ERR_NOT_FOUND;
     }
 
-#if FORK_FIXES
     if (xSemaphoreTake(album_mutex, pdMS_TO_TICKS(ALBUM_LOCK_TIMEOUT_MS)) != pdTRUE) {
         ESP_LOGW(TAG, "Timed out acquiring album mutex (set_enabled)");
         return ESP_ERR_TIMEOUT;
     }
 
-#endif
     char new_list[512] = "";
     size_t pos = 0;
     bool found = false;
@@ -418,9 +409,7 @@ esp_err_t album_manager_set_album_enabled(const char *album_name, bool enabled)
 
     ESP_LOGI(TAG, "Set album %s to %s. Enabled albums: %s", album_name,
              enabled ? "enabled" : "disabled", enabled_albums_str);
-#if FORK_FIXES
     xSemaphoreGive(album_mutex);
-#endif
     return ESP_OK;
 }
 
@@ -430,19 +419,15 @@ bool album_manager_is_album_enabled(const char *album_name)
         return false;
     }
 
-#if FORK_FIXES
     if (xSemaphoreTake(album_mutex, pdMS_TO_TICKS(ALBUM_LOCK_TIMEOUT_MS)) != pdTRUE) {
         ESP_LOGW(TAG, "Timed out acquiring album mutex (is_enabled)");
         return false;
     }
 
-#endif
     char temp_str[512];
     strncpy(temp_str, enabled_albums_str, sizeof(temp_str) - 1);
     temp_str[sizeof(temp_str) - 1] = '\0';
-#if FORK_FIXES
     xSemaphoreGive(album_mutex);
-#endif
 
     char *token = strtok(temp_str, ",");
     while (token != NULL) {
@@ -468,7 +453,6 @@ esp_err_t album_manager_get_enabled_albums(char ***albums, int *count)
     }
 
     *count = 0;
-#if FORK_FIXES
 
     if (xSemaphoreTake(album_mutex, pdMS_TO_TICKS(ALBUM_LOCK_TIMEOUT_MS)) != pdTRUE) {
         ESP_LOGW(TAG, "Timed out acquiring album mutex (get_enabled)");
@@ -484,19 +468,12 @@ esp_err_t album_manager_get_enabled_albums(char ***albums, int *count)
     xSemaphoreGive(album_mutex);
 
     if (strlen(snapshot) == 0) {
-#else
-    if (strlen(enabled_albums_str) == 0) {
-#endif
         *albums = NULL;
         return ESP_OK;
     }
 
     char temp_str[512];
-#if FORK_FIXES
     strncpy(temp_str, snapshot, sizeof(temp_str) - 1);
-#else
-    strncpy(temp_str, enabled_albums_str, sizeof(temp_str) - 1);
-#endif
     temp_str[sizeof(temp_str) - 1] = '\0';
 
     char *token = strtok(temp_str, ",");
@@ -515,11 +492,7 @@ esp_err_t album_manager_get_enabled_albums(char ***albums, int *count)
         return ESP_ERR_NO_MEM;
     }
 
-#if FORK_FIXES
     strncpy(temp_str, snapshot, sizeof(temp_str) - 1);
-#else
-    strncpy(temp_str, enabled_albums_str, sizeof(temp_str) - 1);
-#endif
     temp_str[sizeof(temp_str) - 1] = '\0';
 
     int idx = 0;

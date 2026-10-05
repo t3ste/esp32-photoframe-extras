@@ -12,6 +12,7 @@ set(SOURCES
     "ha_integration.c"
     "http_server.c"
     "image_processor.c"
+    "jpeg_header.c"
     "main.c"
     "mdns_service.c"
     "network_backoff.c"
@@ -27,12 +28,10 @@ set(SOURCES
     "http_auth.c"
     "wifi_manager.c"
     "wifi_provisioning.c"
+    "wifi_retry_policy.c"
 )
 
 # Optional features (main/Kconfig): a feature that is off contributes no source.
-if(CONFIG_FORK_FIXES)
-    list(APPEND SOURCES "jpeg_header.c")
-endif()
 if(CONFIG_FORK_HTTP_FETCH)
     list(APPEND SOURCES "http_fetch.c")
 endif()

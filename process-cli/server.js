@@ -212,6 +212,9 @@ export async function createImageServer(
               scaleMode: currentProcessingParams.scaleMode || "cover",
               backgroundColor:
                 currentProcessingParams.backgroundColor || "white",
+              // A grayscale (GC16) panel's palette is a luminance
+              // calibration, not six colours; the pipeline has to know
+              grayscale: baseOptions.grayscale || false,
             },
           );
 
@@ -247,7 +250,9 @@ export async function createImageServer(
 
         if (serveFormat === "epdgz") {
           contentType = "application/octet-stream";
-          imageBuffer = await createEPDGZ(processedCanvas);
+          imageBuffer = await createEPDGZ(processedCanvas, {
+            grayscale: baseOptions.grayscale || false,
+          });
         } else if (serveFormat === "jpg") {
           contentType = "image/jpeg";
           imageBuffer = processedCanvas.toBuffer("image/jpeg", {
@@ -368,6 +373,7 @@ export async function createImageServer(
             orientation: thumbOrientation,
             scaleMode: thumbScaleMode,
             backgroundColor: thumbBackground,
+            grayscale: baseOptions.grayscale || false,
           },
         );
 
