@@ -27,6 +27,12 @@ corrections and hardening changes over upstream's own behavior, gated behind one
 - **JPEG decoding**: the photo pipeline works out the size of a decoded JPEG again in 64 bit (`main/jpeg_size_check.h`) and refuses a header whose size does not add
   up - esp_jpeg multiplies the sides of the header in 32 bit, so a header of 40000 x 35792 pixels came out as a 72 KB buffer that the decoder then wrote 4.3 GB into. It
   also looks at the result of the header read, which it used to ignore.
+- **A photo read that fails halfway is no longer shown as a finished picture**: a BMP is stored bottom row first and read straight into the display buffer; when the
+  read failed partway through (seen live: a one-off SD card I/O error, `sdmmc_read_sectors_dma`), the decoder logged it and stopped like a normal end, so everything
+  above the last row read stayed white - the panel showed only the lower part of the photo and the log said "Image displayed successfully". The decoder
+  (`components/epaper_src/GUI_BMPfile.c`) now reports the failure, and both album rotations (`main/display_manager.c`, sequential and random) record a photo as shown
+  only once it really was: after a failure the sequential one goes on with the next photo, the random one tries one other photo of the same pool, and both give
+  up cleanly (the next scheduled rotation tries again) if that fails too. PNG was never affected (libpng's own error handling fails the whole decode).
 - **Cross-site requests**: a request that carries an `Origin` header naming another host than the one it was sent to is
   refused with `403` before anything else happens (`main/http_origin.h`, 10 host tests; see
   [API.md](API.md#access-control)). Without it any web page open in a browser on the same network could send a `POST` to the
