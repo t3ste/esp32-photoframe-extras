@@ -2424,10 +2424,16 @@ static esp_err_t config_handler(httpd_req_t *req)
 #endif
 #if FEATURE_TELEGRAM
         // Telegram Bot
+        // The bot token and chat ID are write-only, like the HTTP API
+        // password above: report only whether each is set, never the value
+        // itself (a full backup with secrets still gets them, from the
+        // dedicated /api/config/urls fetch - see config_urls_handler).
         const char *tg_token = config_manager_get_telegram_bot_token();
-        cJSON_AddStringToObject(root, "telegram_bot_token", tg_token ? tg_token : "");
+        cJSON_AddBoolToObject(root, "telegram_bot_token_configured",
+                              tg_token && tg_token[0] != '\0');
         const char *tg_chat_id = config_manager_get_telegram_chat_id();
-        cJSON_AddStringToObject(root, "telegram_chat_id", tg_chat_id ? tg_chat_id : "");
+        cJSON_AddBoolToObject(root, "telegram_chat_id_configured",
+                              tg_chat_id && tg_chat_id[0] != '\0');
         cJSON_AddBoolToObject(root, "telegram_configured", config_manager_telegram_is_configured());
         cJSON_AddBoolToObject(root, "telegram_pairing_enabled",
                               config_manager_get_telegram_pairing_enabled());
@@ -3088,6 +3094,10 @@ static esp_err_t config_urls_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "agenda_cal_c_url", config_manager_get_agenda_cal_c_url());
     cJSON_AddStringToObject(root, "agenda_cal_d_url", config_manager_get_agenda_cal_d_url());
     cJSON_AddStringToObject(root, "agenda_cal_e_url", config_manager_get_agenda_cal_e_url());
+#if FEATURE_TELEGRAM
+    cJSON_AddStringToObject(root, "telegram_bot_token", config_manager_get_telegram_bot_token());
+    cJSON_AddStringToObject(root, "telegram_chat_id", config_manager_get_telegram_chat_id());
+#endif
 #if FEATURE_FUEL_PRICES
     cJSON_AddStringToObject(root, "fuel_api_key", config_manager_get_fuel_api_key());
 #endif

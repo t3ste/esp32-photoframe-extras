@@ -221,7 +221,8 @@ Get current device configuration.
 - `sd_rotation_mode`: `"random"` or `"sequential"`
 - `image_url`: URL to fetch images from (max 256 chars)
 - `ca_cert_set`: Whether a custom CA certificate is pinned for HTTPS
-- `last_fetch_error`: Last image fetch error message (empty if no error)
+- `last_fetch_error`: Last image fetch error message (empty if no error). Shared across every source (URL, Telegram, Home Assistant, ...) -
+  cleared automatically when `rotation_mode` actually changes, so an old error does not linger and look current under a mode it was never about
 - `access_token`: Bearer token for image URL authentication
 - `http_header_key`/`http_header_value`: Custom HTTP header for image fetches
 - `save_downloaded_images`: Save fetched images to Downloads album

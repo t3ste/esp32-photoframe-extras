@@ -713,6 +713,16 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         // Backwards compatibility: accept "sdcard" as alias for "storage"
         if (strcmp(mode_str, "sdcard") == 0)
             mode = ROTATION_MODE_STORAGE;
+#if FORK_FIXES
+        // A fetch error from the mode being left behind is not about the one
+        // taking over - e.g. a stale "Connection failed" from URL mode has
+        // nothing to do with Telegram once the frame is switched to it, and
+        // would otherwise sit there looking current until that other mode's
+        // own code happens to run again and overwrite or clear it.
+        if (mode != config_manager_get_rotation_mode()) {
+            utils_set_last_fetch_error(NULL);
+        }
+#endif
         config_manager_set_rotation_mode(mode);
     }
 
@@ -837,32 +847,48 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
 
 #endif
 #if FEATURE_TELEGRAM
-    // Telegram Bot
+    // Telegram Bot - write-only, like fuel_api_key below: GET /api/config
+    // never echoes these back, so the Web UI's inputs start blank and an
+    // empty value here means "not touched", not "clear it". A dedicated
+    // *_clear flag removes one deliberately.
     item = cJSON_GetObjectItem(root, "telegram_bot_token");
     if (item && cJSON_IsString(item)) {
-        config_manager_set_telegram_bot_token(cJSON_GetStringValue(item));
+        const char *token = cJSON_GetStringValue(item);
+        if (token[0] != '\0') {
+            config_manager_set_telegram_bot_token(token);
+        }
+    }
+    item = cJSON_GetObjectItem(root, "telegram_bot_token_clear");
+    if (item && cJSON_IsTrue(item)) {
+        config_manager_set_telegram_bot_token("");
     }
 
     item = cJSON_GetObjectItem(root, "telegram_chat_id");
     if (item && cJSON_IsString(item)) {
         const char *chat_id = cJSON_GetStringValue(item);
-        // Must be empty (clearing) or a plain integer (optionally negative -
-        // Telegram uses negative IDs for groups/supergroups).
-        bool valid = true;
-        for (size_t i = 0; chat_id[i] != '\0' && valid; i++) {
-            if (chat_id[i] == '-' && i == 0) {
-                continue;
+        if (chat_id[0] != '\0') {
+            // Must be a plain integer (optionally negative - Telegram uses
+            // negative IDs for groups/supergroups).
+            bool valid = true;
+            for (size_t i = 0; chat_id[i] != '\0' && valid; i++) {
+                if (chat_id[i] == '-' && i == 0) {
+                    continue;
+                }
+                if (chat_id[i] < '0' || chat_id[i] > '9') {
+                    valid = false;
+                }
             }
-            if (chat_id[i] < '0' || chat_id[i] > '9') {
-                valid = false;
+            if (!valid) {
+                utils_set_config_error("Telegram chat ID must be a numeric ID");
+                had_error = true;
+            } else {
+                config_manager_set_telegram_chat_id(chat_id);
             }
         }
-        if (!valid) {
-            utils_set_config_error("Telegram chat ID must be a numeric ID");
-            had_error = true;
-        } else {
-            config_manager_set_telegram_chat_id(chat_id);
-        }
+    }
+    item = cJSON_GetObjectItem(root, "telegram_chat_id_clear");
+    if (item && cJSON_IsTrue(item)) {
+        config_manager_set_telegram_chat_id("");
     }
 
     item = cJSON_GetObjectItem(root, "telegram_pairing_enabled");

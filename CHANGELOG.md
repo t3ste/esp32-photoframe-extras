@@ -270,6 +270,19 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   endpoint now takes optional `offset`/`limit` paging, and the Web UI's gallery fetches bounded pages (60 images)
   instead of the whole album - "Load more" now fetches the next page instead of only revealing more of an
   already-fully-loaded list.
+- **The Telegram bot token and chat ID were returned in plaintext by `GET /api/config` and so sat in plain view in their own Web UI fields**, pre-existing since the Telegram option was added
+  (`3a55a45b`) - unlike the HTTP API password and the Agenda's calendar URLs, which this project already made write-only on purpose for exactly this reason; the chat ID was not even on the
+  known list of fields this endpoint deliberately returns in plaintext (`docs/MAINTAINING.md`), so it was a plain oversight rather than a considered choice. Found from the maintainer's report of
+  the fields suddenly being visible. Both are write-only now, the same pattern as `fuel_api_key`/`market_key_*`: `GET /api/config` reports only `telegram_bot_token_configured` and
+  `telegram_chat_id_configured` (plus the existing combined `telegram_configured`), the Web UI's two fields start blank and are sent only when something new was typed (an empty value
+  no longer clears a token by accident on an unrelated save), and each has its own **Remove** button (`telegram_bot_token_clear`/`telegram_chat_id_clear`). A full export with secrets still
+  includes both, from the existing `/api/config/urls` endpoint, unchanged.
+- **The Telegram card could show a stale, unrelated fetch error as if it were its own.** `last_fetch_error` is one slot shared by every image source (URL, Telegram, Home
+  Assistant, ...); nothing cleared it when `rotation_mode` changed away from the mode that had set it, so a frame once run in URL mode and since switched to Telegram kept
+  showing that old "Connection failed" under the Telegram card indefinitely - found live on COM7 together with the plaintext report above (the message named `ESP_ERR_HTTP_CONNECT`,
+  which only the URL-mode fetch path ever produces, while this frame has been in Telegram mode). `apply_config_from_json` now clears it whenever an incoming `rotation_mode`
+  actually differs from the one stored; checked live by switching the test frame's mode away and back, which cleared it immediately. Any error from the mode actually in use
+  still shows exactly as before.
 
 ## [v218.0.3] - 2026-09-29
 
