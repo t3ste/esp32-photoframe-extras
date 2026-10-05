@@ -122,7 +122,7 @@ FEATURES = (
         "FEATURE_WIFI_RESILIENCE",
         (),
         (),
-        "WiFi options: credential-wipe safety, extended retry, battery TX cap",
+        "WiFi options: battery TX cap, performance mode, rejected-password detection",
     ),
     Feature(
         "facecrop",

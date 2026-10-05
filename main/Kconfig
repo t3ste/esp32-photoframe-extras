@@ -168,9 +168,10 @@ menu "Photoframe optional features"
         bool "WiFi resilience options"
         default n
         help
-            Keep the saved WiFi credentials over transient connection failures
-            (extended retry, reprovisioning switch), cap the TX power while a
-            battery is connected, and choose the WiFi performance mode.
+            Cap the TX power while a battery is connected, choose the WiFi
+            performance mode, use a lower reconnect budget for Telegram power
+            save, and count a MIC failure or failed 802.1X authentication as a
+            rejected password.
 
     config FEATURE_FACECROP
         bool "Face-aware crop variants"
