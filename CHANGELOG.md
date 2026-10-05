@@ -17,6 +17,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+## [v219.0.0] - 2026-10-05
+
 ### Added
 
 - **Recipe page** (`--with recipes`, [docs/RECIPES.md](docs/RECIPES.md); part of `extras`, needs `info-screens`): an information page with **one cooking recipe and its picture** - the title in red,
