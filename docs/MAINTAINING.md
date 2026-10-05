@@ -534,9 +534,10 @@ fix; the rest are standing notes, not work items.
   convention decided); publishing it as a pre-release triggered a run with the same result; the update feed showed
   the release candidate as the newest release and `releases/latest` still the stable one; a real frame on the
   pre-release channel installed it over OTA; a later push to `main` kept `manifest-prerelease.json` for every
-  board (the restore path). **Still to confirm:** that the landing page shows the Pre-release radio (visual), and
-  that a frame running the release candidate is offered the final `v218.0.4` (the `-rc<n>` comparison, needs that
-  release to exist).
+  board (the restore path). Checked 2026-10-05 with headless Chrome: the landing pages of both sites show the Stable /
+  Dev / Pre-release radios with their versions and no script error. **Still to confirm:** that a frame running a
+  release candidate is offered the final release (the `-rc<n>` comparison is covered by host tests; the live part needs
+  a frame on an `-rc` build and a later final of the same line).
 - ~~**Docker-pull retry**~~ **Done 2026-09-29.** `build.yml`'s `build` job pre-pulls `espressif/idf:release-v6.0`
   with a 3-attempt retry loop right before `Setup ESP-IDF`, so a Docker Hub 502 there is now usually absorbed
   before the action's own pull runs. `feature-compile` (the per-flag compile-only job) was left as is - its
@@ -549,14 +550,20 @@ fix; the rest are standing notes, not work items.
      `python -m unittest discover -s scripts -p "test_*.py"` (no separate wiring needed); the calendars/ToDo through
      the firmware's own parsers by the host tests.
   2. ~~Publish~~ Implemented 2026-09-29: `deploy-pages` copies `examples/` into the site and its last step checks
-     that every URL the two configs use answers `200`. Confirm on the first deploy (a fresh device that imported
-     the config before this deploy saw HTTP 404 for calendars A-E and the ToDo list, because nothing served them).
+     that every URL the two configs use answers `200`. Confirmed 2026-10-05: all six answer `200` and both served
+     configs are byte-identical to the files in the repository (a device that imported the config before the first
+     deploy saw HTTP 404 for calendars A-E and the ToDo list, because nothing served them).
   3. ~~Landing page and docs~~ Done: a `#if FORK_SITE` "demo configuration" step in the landing page's "How it goes"
      list, README and FEATURES.md links.
-  4. Live device test: import `demo-config-storage.json` (and `-url.json`) on a fresh device **after** a deploy,
-     press "Refresh now" for calendars C-E if the import came first, import the three color profiles - needs the
-     maintainer's device.
-  5. A release that ships it: `v218.0.4-rc1` first, `v218.0.4` once the checks above pass.
+  4. ~~Live device test~~ Done 2026-10-05 on the extended-line test frame (Waveshare, all-features build of the same
+     base): the served `demo-config-storage.json` imported through the real Web UI (Settings -> Maintenance -> Import
+     Config; every setting the frame reports matches the file, the six URLs are write-only), calendars C, D and E were
+     fetched from the site at import (C had been pointed at a placeholder address first, D and E were unset), the next
+     Agenda render drew them (A 16 events, B 7, the three extra sources expanded, no "no saved URL" warning left), then
+     `demo-config-url.json` imported the same way, and the three color profiles were imported and read back
+     byte-identical. Not covered: a frame with a completely empty settings memory - a factory reset also erases the
+     WiFi credentials and the frame cannot be reached again without re-entering them, so the frame kept its WiFi.
+  5. A release that ships it: `v219.0.0` (the base) and `v219.0.0-rc1` (the extended edition).
   Known gap: importing a config whose Calendar C/D/E URL equals the stored one never re-fetches (only a changed URL
   or "Refresh now" does), so an import made while the files were unreachable leaves C-E without a cached file. A
   fetch-if-the-cache-file-is-missing rule in `apply_extra_ics_url()` would close it (not done).
@@ -566,10 +573,10 @@ fix; the rest are standing notes, not work items.
   `fread`; `rotate_sequential()`/`rotate_random()` ignore `display_manager_show_image()`'s result). The unconditional version of the fix exists as one commit (`f9bc894`, branch
   `ai-audit-upstream-fixes` of the canonical fork, built for the Waveshare board and host-tested, on top of an older upstream state). Rebased on 2026-10-05 onto upstream `main` = v2.19.0 (`186ebaf`) as the
   local branch `fix-bmp-partial-read` (one commit, not pushed anywhere, no pull request open). To do: re-check that upstream `main` is still that state (rebase again if not), build, push the branch
-  to the canonical fork, open the single-commit pull request disclosed as findings of Claude with a link to the two repositories, and only with the maintainer's OK each step.
+  to the canonical fork, open the single-commit pull request disclosed as findings of Claude with a link to the two repositories, and only with the maintainer's OK each step. A draft of the title, the description and the diff exists as a local file for the maintainer to read first (the branch builds clean for the Waveshare board on v2.19.0, `clang-format-18` is clean); whether it is opened is the maintainer's decision.
 - **A library issue behind upstream's JPEG fix goes to Espressif privately**: upstream's maintainer suggested reporting the library side of his fix. Espressif's `SECURITY.md` asks that
   vulnerabilities are **not** reported as public issues but through its security incident response process (coordinated disclosure; the private forms or the bug bounty address named there). Nothing is
-  published by this repository about it; the report is the maintainer's to submit. Not sent.
+  published by this repository about it; the report is the maintainer's to submit. **Decided 2026-10-05: not submitted.**
 - ~~**Retire the settings of `wifi-resilience` that upstream v2.19.0 made inert**~~ **Done 2026-10-05.** *Extended retry* and *reprovision when attempts run out* (Web UI switches, the two API fields,
   the config getters/setters, `cold_boot_wifi_retry()` and `wifi_manager_last_failure_is_credential_reject()`) are gone; a short note in `main/config.h` names the three retired NVS entries
   (`wifi_ext_retry`, `wifi_cb_fail`, `wifi_reprov_en`), which an older device may still hold and nothing reads. A config export of an older build that carries the two fields is still accepted (unknown
