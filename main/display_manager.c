@@ -822,6 +822,43 @@ static inline bool resolve_display_variant(const char *anchor_path, char *resolv
     return false;
 }
 #endif
+#if FORK_ANY
+// Resolves a Cover/Fit variant and an overlay for `canonical_path`, displays it, and
+// - with the `fixes` option, only once the panel update actually succeeded - records it
+// as shown/last-displayed. `canonical_path` stays the stable identity for that
+// bookkeeping even when a resolved variant or an overlay scratch copy is what is
+// actually pushed to the panel. Shared by the rotation pickers below so a display
+// failure (e.g. a transient SD-card read glitch decoding just this one file) is not
+// silently treated as a successful show.
+static esp_err_t show_and_record(const char *canonical_path)
+{
+    char variant_path[700];
+    const char *display_source =
+        resolve_display_variant(canonical_path, variant_path, sizeof(variant_path))
+            ? variant_path
+            : canonical_path;
+    const char *shown = overlay_manager_apply(display_source);
+    esp_err_t err = display_manager_show_image(shown);
+#if !FORK_FIXES
+    // Without the fixes option the result is ignored, as in the original: the
+    // image is recorded as shown whatever happened.
+    err = ESP_OK;
+#endif
+    if (err != ESP_OK) {
+        return err;
+    }
+    if (strcmp(shown, canonical_path) != 0) {
+        // The displayed file is a resolved Cover/Fit variant and/or an overlay
+        // scratch copy - display_manager_show_image()'s own
+        // history_manager_mark_shown(filename) call already (harmlessly, per
+        // its own comment) recorded whatever path was actually shown, so
+        // re-mark the real source (this rotation's stable anchor identity) too.
+        history_manager_mark_shown(canonical_path);
+    }
+    save_last_displayed_image(canonical_path);
+    return ESP_OK;
+}
+#endif
 static void rotate_sequential(char **enabled_albums, int album_count)
 {
     ESP_LOGI(TAG, "Sequential rotation mode");
@@ -869,28 +906,24 @@ static void rotate_sequential(char **enabled_albums, int album_count)
                     if (current_idx == target_idx) {
                         ESP_LOGI(TAG, "Found target index %ld: %s", (long) target_idx, fullpath);
 #if FORK_ANY
-                        char variant_path[700];
-                        const char *display_source =
-                            resolve_display_variant(fullpath, variant_path, sizeof(variant_path))
-                                ? variant_path
-                                : fullpath;
-                        const char *shown = overlay_manager_apply(display_source);
-                        display_manager_show_image(shown);
-                        if (strcmp(shown, fullpath) != 0) {
-                            // The displayed file is a resolved Cover/Fit
-                            // variant and/or an overlay scratch copy - see
-                            // display_manager_show_image()'s own
-                            // history_manager_mark_shown(filename) call above:
-                            // it just (harmlessly, per its own comment)
-                            // recorded whatever path was actually shown, so
-                            // re-mark the real source (this rotation's
-                            // stable anchor identity) too.
-                            history_manager_mark_shown(fullpath);
+                        if (show_and_record(fullpath) != ESP_OK) {
+                            // Display failed (with the fixes option; e.g. a
+                            // transient SD-card read glitch decoding this one
+                            // file) - move the target forward one and let the
+                            // walk continue; the very next image found becomes
+                            // the new target instead of leaving a
+                            // half-rendered panel up until the next scheduled
+                            // rotation.
+                            ESP_LOGW(TAG, "Failed to display %s, trying the next image instead",
+                                     fullpath);
+                            target_idx++;
+                            current_idx++;
+                            continue;
                         }
 #else
                         display_manager_show_image(fullpath);
-#endif
                         save_last_displayed_image(fullpath);
+#endif
                         config_manager_set_last_index(target_idx);
                         found_target = true;
                         closedir(dir);
@@ -914,21 +947,19 @@ static void rotate_sequential(char **enabled_albums, int album_count)
         if (first_image[0] != '\0') {
             ESP_LOGI(TAG, "Wrapping around to start. Displaying: %s", first_image);
 #if FORK_ANY
-            char variant_path[700];
-            const char *display_source =
-                resolve_display_variant(first_image, variant_path, sizeof(variant_path))
-                    ? variant_path
-                    : first_image;
-            const char *shown = overlay_manager_apply(display_source);
-            display_manager_show_image(shown);
-            if (strcmp(shown, first_image) != 0) {
-                history_manager_mark_shown(first_image);
+            if (show_and_record(first_image) == ESP_OK) {
+                config_manager_set_last_index(0);  // Reset index to 0
+            } else {
+                // Nothing left to fall back to - this was already the last
+                // resort. The next scheduled rotation tries fresh.
+                ESP_LOGE(TAG, "Failed to display %s on wrap-around; giving up for this rotation",
+                         first_image);
             }
 #else
             display_manager_show_image(first_image);
-#endif
             save_last_displayed_image(first_image);
             config_manager_set_last_index(0);  // Reset index to 0
+#endif
         } else {
             ESP_LOGW(TAG, "No images found in any enabled albums.");
         }
@@ -1293,18 +1324,27 @@ static void rotate_random(char **enabled_albums, int album_count)
     ESP_LOGI(TAG, "Auto-rotate: Displaying random image %d/%d: %s", random_index + 1,
              total_image_count, final_path);
 #endif
-    char variant_path[700];
-    const char *display_source =
-        resolve_display_variant(final_path, variant_path, sizeof(variant_path)) ? variant_path
-                                                                                : final_path;
-    const char *shown = overlay_manager_apply(display_source);
-    display_manager_show_image(shown);
-    if (strcmp(shown, final_path) != 0) {
-        history_manager_mark_shown(final_path);
+    if (show_and_record(final_path) != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to display %s, trying a different image instead", final_path);
+        // Recovery from a transient read glitch (with the fixes option; e.g. a
+        // flaky SD-card access on just this one file), not a retry loop:
+        // exactly one different image from the same candidate pool (plain,
+        // not orientation-paired - this is a fallback, not a repeat of the
+        // pairing search above), and give up for this rotation if that fails
+        // too; the next scheduled rotation tries fresh either way.
+        int retry_index = (total_image_count > 1) ? random_index : -1;
+        while (retry_index == random_index && total_image_count > 1) {
+            retry_index = (int) (esp_random() % total_image_count);
+        }
+        if (retry_index < 0 || show_and_record(image_list[retry_index]) != ESP_OK) {
+            ESP_LOGE(TAG,
+                     "Auto-rotate: replacement image also failed to display; giving up "
+                     "for this rotation");
+        } else {
+            ESP_LOGI(TAG, "Auto-rotate: recovered by displaying %s instead",
+                     image_list[retry_index]);
+        }
     }
-
-    // Store the displayed image filename in NVS
-    save_last_displayed_image(final_path);
 #else
     ESP_LOGI(TAG, "Auto-rotate: Displaying random image %d/%d: %s", random_index + 1,
              total_image_count, image_list[random_index]);

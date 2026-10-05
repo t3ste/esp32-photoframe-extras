@@ -207,6 +207,13 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   the last recipe read from its file is made safe (every text terminated) and is not written again when it is the same one (flash wear); when every recipe that fits the
   filters was shown lately one is shown again instead of relaxing the filters; the cleaned search text is whole UTF-8 and cleaning it twice changes nothing.
   The same weakness of the decoder library was in the **base's photo pipeline** (`image_processor.c`); it is fixed there too (next entry). 29 new host tests (the recipe suites have 182 now).
+- **A photo that failed to read halfway was shown as a finished picture with the top white** (`--with fixes`). A BMP is stored bottom row first and read straight into the
+  display buffer; after a one-off SD card I/O error in the middle of the file (`sdmmc_read_sectors_dma`, seen live on a frame) the decoder (`GUI_BMPfile.c`) logged it and stopped like a
+  normal end, so every row above the last one read stayed white, the panel showed only the lower part of the photo, and the log said "Image displayed successfully" - the album
+  rotations also recorded the photo as shown whatever the outcome. The decoder now reports the failure; both rotations (`display_manager.c`) record a photo as shown only when it was:
+  the sequential one goes on with the next photo, the random one tries one other photo of the same pool, and both give up cleanly for that rotation (the next scheduled one tries
+  again) if that fails too. PNG is not affected (libpng fails the whole decode). The normal path was checked live: full decode, panel update and "displayed successfully" as before; the failure
+  branch itself could not be provoked on demand (a one-off SD glitch) and was reviewed by code.
 - **A web page in a browser on the same network can no longer press buttons on the frame** (`--with fixes`). The API has no
   CORS headers, but a plain cross-site `POST` needs no permission, so any page you visited could send
   `POST /api/factory-reset` (wipes the settings) or `POST /api/config` to the frame, with no password set (the default). A
