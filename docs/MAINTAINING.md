@@ -236,6 +236,10 @@ The maintainer works on Windows 11; PowerShell is the primary shell, Git Bash is
 for the host tests and clang-format. Equivalent Linux/macOS commands work the same.
 
 **ESP-IDF v6.0** (mbedTLS 4.x / PSA - classic mbedTLS tutorials often do not fit, check the installed headers).
+**The local install and the CI are not the same IDF**: the local one is a checkout of `release-v6.0` from 2026-01 (6.0.0), the CI's `espressif/idf:release-v6.0` image follows the branch (the firmware of
+v219.0.0 reports `v6.0.3-489-g71722673c52`). Code that depends on IDF internals can pass every local test and break only in the released binary - see the pitfall about `tls_ca_cb_fix.c` below. The IDF
+version a binary was built with is in its first 4 KiB (`esp_app_desc`) and in `GET /api/system-info` (`idf_version`); before a release, flash the **CI build** of the commit to a test frame and run what the
+change touches (for anything TLS: the update check, `POST /api/ota/check`).
 On Windows the environment does not persist between shell invocations; activate it in each call:
 
 ```powershell
@@ -482,6 +486,7 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
+| HTTPS requests crash the frame (`assert failed: heap_caps_free ... free() target pointer is outside heap areas`, task of the request, frame `adopt` in `tls_ca_cb_fix.c`); the Web UI shows "Failed to fetch" / `ERR_CONNECTION_RESET` after a long wait | `tls_ca_cb_fix.c` (agenda builds) freed the buffers of the certificate the bundle callback returns. ESP-IDF 6.0.0 allocates them (that was the leak); the CI's newer IDF (`v6.0.3-489`) points `subject_raw` into the flash bundle and the name entries into the peer certificate, so they are not ours to free. It passed all local tests (local IDF 6.0.0) and crashed in every CI build from v218.7.1-rc3 to v219.0.0-rc1 | The wrapper only packs a certificate whose `subject_raw` is in RAM and whose name entries are not the child's own (`owns_its_buffers()`); decode a crash record with `xtensa-esp32s3-elf-addr2line -e <board>-<version>.elf <backtrace>` (the ELF is a release asset). Always test the CI build of a commit on a frame before releasing |
 | Web flasher install lost WiFi and all settings | Merged image covers NVS with 0xFF | Manifests list parts (`generate_manifests.py`); test with the multi-part esptool command |
 | "No flags" web bundle differs from upstream although `verify_baseline.py` passes | `LandingPage.vue` is in the device bundle; fork changes were ungated; `verify_baseline.py` gives both builds the same prebuilt web assets | Fence with `#if FORK_SITE`; `alloff_web.py` (in CI) and the manual byte compare |
 | `verify_baseline.py` fails with `exit status 2` | Its output was piped; the nested build's output fills the pipe | Run unpiped/in background, read the output file |

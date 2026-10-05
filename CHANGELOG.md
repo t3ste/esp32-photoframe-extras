@@ -17,6 +17,17 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A build with the Agenda crashed on its HTTPS requests** (`agenda` option, so the full builds; seen with the update check; found on a frame installed with the web flasher: the Web UI's update check ended in "Failed to check
+  for updates: Failed to fetch" after a long wait and the browser saw `ERR_CONNECTION_RESET`; the crash record said `assert failed: heap_caps_free ... free() target pointer is outside heap areas`, task
+  `ota_check_task`, in `tls_ca_cb_fix.c`). The file (added in v218.7.1-rc3 to stop every TLS connection from leaking 200-400 bytes) freed the buffers of the certificate that ESP-IDF's certificate bundle hands
+  to mbedTLS. ESP-IDF 6.0.0, which the local builds use, allocates them - that was the leak. The CI's image follows the `release-v6.0` branch (`v6.0.3-489`), where the leak is fixed in ESP-IDF itself: the
+  certificate now points into the bundle in flash and into the peer certificate, nothing of it is allocated, and freeing it asserts. So the tests passed on the local builds and every CI build crashed at its
+  first verified connection: **v219.0.0, v219.0.0-rc1 and the release candidates v218.7.1-rc3 and -rc4**. The wrapper now only repacks a certificate whose buffers are allocations of the callback
+  (`owns_its_buffers()`: `subject_raw` in RAM and name entries that are not the peer's own) and leaves the others alone, so it works with both ESP-IDF behaviours. Frames on v218.0.3 or older are not affected
+  (they do not have the wrapper).
+
 ## [v219.0.0] - 2026-10-05
 
 ### Added

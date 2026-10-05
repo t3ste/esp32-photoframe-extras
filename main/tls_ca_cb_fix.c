@@ -8,6 +8,7 @@
 // features/sdkconfig.defaults.agenda). Without that option there is nothing to fix.
 #if defined(CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY)
 
+#include "esp_memory_utils.h"
 #include "mbedtls/ssl.h"
 #include "mbedtls/x509_crt.h"
 
@@ -27,9 +28,13 @@
  * so mbedtls_x509_crt_free() frees all of it. It is installed by wrapping
  * mbedtls_ssl_conf_ca_cb (the link option --wrap=mbedtls_ssl_conf_ca_cb, main/CMakeLists.txt):
  * the callback of the bundle is replaced by one that calls it and then packs what it returned.
- * A certificate that has a raw buffer (one that was parsed) is left alone, so a later ESP-IDF
- * that frees its own buffers is not affected; if the block cannot be allocated the certificate
- * stays as it was.
+ * A certificate that has a raw buffer (one that was parsed) is left alone, and so is one that
+ * does not own what it points to. ESP-IDF 6.0.3 and later (the CI image follows the
+ * release-v6.0 branch) fixed the leak itself: the callback now points subject_raw into the
+ * bundle in flash and the name entries into the *child's* issuer buffers, so there is nothing
+ * of the certificate's own to free - freeing it anyway crashes (free() of a flash address, seen
+ * as an assert in the OTA check of v219.0.0). The two tests in owns_its_buffers() tell the two
+ * behaviours apart; if the block cannot be allocated the certificate stays as it was.
  */
 
 static mbedtls_x509_crt_ca_cb_t s_bundle_cb;  // the callback of esp_crt_bundle.c
@@ -51,6 +56,22 @@ static void adopt(unsigned char **field, size_t len, unsigned char *block, size_
     free(old);
 }
 
+// True for a certificate whose subject_raw and name buffers are separate heap allocations of the
+// callback (older ESP-IDF); false when it only references data owned by somebody else (flash
+// bundle, the child certificate) - those must not be freed or moved.
+static bool owns_its_buffers(const mbedtls_x509_crt *cert, const mbedtls_x509_crt *child)
+{
+    const unsigned char *raw = cert->subject_raw.p;
+    if (raw == NULL || !(esp_ptr_in_dram(raw) || esp_ptr_external_ram(raw))) {
+        return false;  // flash (the bundle) or nothing: not an allocation
+    }
+    if (child != NULL && cert->subject.oid.p != NULL &&
+        cert->subject.oid.p == child->issuer.oid.p) {
+        return false;  // the name entries are the child's own buffers
+    }
+    return true;
+}
+
 // What the buffers of a certificate made by the bundle's callback add up to.
 static size_t separate_bytes(const mbedtls_x509_crt *cert)
 {
@@ -62,11 +83,14 @@ static size_t separate_bytes(const mbedtls_x509_crt *cert)
     return total;
 }
 
-static void pack_candidates(mbedtls_x509_crt *list)
+static void pack_candidates(mbedtls_x509_crt *list, const mbedtls_x509_crt *child)
 {
     for (mbedtls_x509_crt *cert = list; cert != NULL; cert = cert->next) {
         if (cert->raw.p != NULL) {
             continue;  // parsed from a buffer: nothing separate to free
+        }
+        if (!owns_its_buffers(cert, child)) {
+            continue;  // newer ESP-IDF: references only, nothing leaks
         }
         size_t total = separate_bytes(cert);
         unsigned char *block = malloc(total > 0 ? total : 1);
@@ -89,7 +113,7 @@ static int packing_ca_cb(void *ctx, mbedtls_x509_crt const *child, mbedtls_x509_
 {
     int ret = s_bundle_cb(ctx, child, candidate_cas);
     if (ret == 0 && candidate_cas != NULL && *candidate_cas != NULL) {
-        pack_candidates(*candidate_cas);
+        pack_candidates(*candidate_cas, child);
     }
     return ret;
 }
