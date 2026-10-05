@@ -439,47 +439,12 @@ typedef enum {
 // on regardless of that policy, trading web UI responsiveness for lower draw.
 #define NVS_WIFI_PERF_MODE_ENABLED_KEY "wifi_perf_mode"
 
-// Extended cold-boot WiFi retry: when enabled, a cold-boot connect failure
-// that is NOT a confirmed credential rejection (see
-// wifi_manager_last_failure_is_credential_reject()) no longer wipes the
-// saved SSID/password after just WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS (3,
-// main.c) - it instead persists a running attempt count here and reboots to
-// try again after a backoff, up to WIFI_COLD_BOOT_EXTENDED_MAX_TOTAL_ATTEMPTS
-// (main.c) total attempts across those reboots, so a brief AP-side outage or
-// a momentary weak-signal blip doesn't force a full reprovisioning. A
-// genuine credential rejection is never affected by this toggle - that still
-// wipes after a single attempt either way. Off by default: live-verified
-// worst case is up to ~6x the energy use of the default behavior (the frame
-// stays fully awake through every retry/reboot instead of reprovisioning
-// quickly), so this is opt-in for mains/USB-powered frames rather than a
-// new default for every device. Real incident (2026-09-13) that prompted
-// this: a cold boot got stuck retrying WIFI_REASON_AUTH_EXPIRE/
-// WIFI_REASON_CONNECTION_FAIL (never a real reject reason) right after the
-// AP's signal had degraded to -70dBm, and the then-unconditional wipe forced
-// an unnecessary reprovisioning even though the password was fine.
-#define NVS_WIFI_EXT_RETRY_ENABLED_KEY "wifi_ext_retry"
-// Internal only - the running cross-reboot attempt count above. Never
-// surfaced via the HTTP API (nothing for a user to usefully do with it).
-#define NVS_WIFI_COLDBOOT_FAIL_COUNT_KEY "wifi_cb_fail"
-
-// Whether a cold-boot connect exhaustion (WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS,
-// or the extended-retry cap above if that's also on) is allowed to wipe the
-// saved SSID/password and reboot into provisioning at all. On (default):
-// unchanged existing behavior. Off: a genuine credential rejection still
-// wipes immediately either way (a wrong password can't fix itself), but a
-// non-rejection exhaustion instead keeps the credentials and, if deep sleep
-// is enabled, goes to sleep until the next scheduled wake (which retries the
-// whole connection sequence fresh) - or, if deep sleep is disabled (USB/
-// always-on/Home-Assistant-polled use), just continues the rest of the
-// normal boot flow without WiFi this cycle rather than blocking here, since
-// every network-touching step past this point either already checks
-// wifi_manager_is_connected() first or has its own bounded timeout. Real
-// incident (2026-09-19): a device a few meters from a repeater kept hitting
-// this exact exhaustion path on WIFI_REASON_AUTH_EXPIRE/CONNECTION_FAIL
-// (never a real reject reason) and cycled through repeated wipe ->
-// reprovision -> exhaust -> wipe again, needing a fresh manual reprovision
-// every time despite the saved credentials being correct the whole time.
-#define NVS_WIFI_REPROV_ON_FAIL_KEY "wifi_reprov_en"
+// Retired with upstream v2.19.0's WiFi policy (wifi_retry_policy.c): the NVS entries
+// "wifi_ext_retry" (extended cold-boot retry), "wifi_cb_fail" (its cross-reboot attempt
+// counter) and "wifi_reprov_en" (reprovision when the attempts run out). The policy only
+// drops the credentials for a rejected password and retries every other failure without a
+// limit, so these had nothing left to act on. An older device may still hold the entries;
+// nothing reads them any more.
 
 // Set during first-time setup (github.com/aitjcize/esp32-photoframe#90) when
 // the user picks "use offline, no WiFi network" instead of entering real

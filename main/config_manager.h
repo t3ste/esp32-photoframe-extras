@@ -233,26 +233,6 @@ bool config_manager_get_wifi_performance_mode_enabled(void);
 void config_manager_set_wifi_tx_power_cap_enabled(bool enabled);
 bool config_manager_get_wifi_tx_power_cap_enabled(void);
 
-// Extended cold-boot retry for non-credential-reject WiFi failures - see
-// NVS_WIFI_EXT_RETRY_ENABLED_KEY in config.h. Defaults to false (opt-in -
-// worst case is up to ~6x the energy use of the default behavior).
-void config_manager_set_wifi_extended_retry_enabled(bool enabled);
-bool config_manager_get_wifi_extended_retry_enabled(void);
-
-// Internal cross-reboot attempt counter backing the above - see
-// NVS_WIFI_COLDBOOT_FAIL_COUNT_KEY in config.h. Never exposed via the HTTP
-// API. Reset to 0 on any successful cold-boot connect or once the device
-// gives up and reprovisions.
-void config_manager_set_wifi_coldboot_fail_count(int count);
-int config_manager_get_wifi_coldboot_fail_count(void);
-
-// Whether a cold-boot connect exhaustion may wipe the saved SSID/password
-// and reprovision at all - see NVS_WIFI_REPROV_ON_FAIL_KEY in config.h.
-// Defaults to true (unchanged existing behavior); a genuine credential
-// rejection always wipes regardless of this setting.
-void config_manager_set_wifi_reprovision_on_fail_enabled(bool enabled);
-bool config_manager_get_wifi_reprovision_on_fail_enabled(void);
-
 // Set during first-time setup when the user picks offline/no-WiFi use - see
 // NVS_OFFLINE_MODE_KEY in config.h. Defaults to false.
 void config_manager_set_offline_mode_enabled(bool enabled);

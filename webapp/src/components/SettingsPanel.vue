@@ -1930,47 +1930,6 @@ async function performFactoryReset() {
               </v-col>
             </v-row>
 
-<!-- #if FEATURE_WIFI_RESILIENCE -->
-            <v-switch
-              v-model="settingsStore.deviceSettings.wifiExtendedRetryEnabled"
-              label="Extended WiFi retry before reprovisioning"
-              color="primary"
-              class="mb-2"
-              hide-details
-            />
-            <div class="text-caption text-medium-emphasis mb-4">
-              Off (default) - gives up and reprovisions after 3 attempts in a single boot, same as
-              always. Turn on if brief router outages or a weak/flaky signal keep forcing your frame
-              to reprovision even though the password is fine: the frame will then keep retrying
-              across several reboots - up to 10 attempts total - before finally clearing the saved
-              credentials. A confirmed-wrong password is never affected either way and always
-              reprovisions immediately. Worst case with this on (WiFi stays hard to reach the whole
-              time): up to ~6x the energy use of the default behavior, since the frame stays fully
-              awake through every retry and reboot instead of reprovisioning quickly - recommended
-              only for mains/USB-powered frames, not battery-only ones.
-            </div>
-
-            <v-switch
-              v-model="settingsStore.deviceSettings.wifiReprovisionOnFailEnabled"
-              label="Reprovision (clear saved WiFi credentials) when connection attempts run out"
-              color="primary"
-              class="mb-2"
-              hide-details
-            />
-            <div class="text-caption text-medium-emphasis mb-4">
-              On (default) - unchanged existing behavior: once every retry above is exhausted, the
-              frame clears its saved WiFi password and reboots into setup mode. Turn off if that
-              reprovisioning cycle keeps repeating even though your password is correct (e.g. a
-              nearby repeater the frame still can't reliably reach) - the frame then keeps the saved
-              credentials instead of wiping them: if Deep Sleep is enabled it goes to sleep until
-              its next scheduled wake and tries again fresh from there, otherwise it just continues
-              starting up without WiFi this cycle (nothing here blocks - every later network step
-              already tolerates being offline) and retries on the next cold boot. A confirmed-wrong
-              password is never affected by this switch and always reprovisions immediately either
-              way.
-            </div>
-
-<!-- #endif -->
 <!-- #if FEATURE_OFFLINE_HOTSPOT -->
             <v-alert
               v-if="settingsStore.deviceSettings.offlineModeEnabled"

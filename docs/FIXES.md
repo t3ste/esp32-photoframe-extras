@@ -34,15 +34,37 @@ included), the 8 KiB cap of the settings POSTs, the lock around the enabled-albu
   (`components/epaper_src/GUI_BMPfile.c`) now reports the failure, and both album rotations (`main/display_manager.c`, sequential and random) record a photo as shown
   only once it really was: after a failure the sequential one goes on with the next photo, the random one tries one other photo of the same pool, and both give
   up cleanly (the next scheduled rotation tries again) if that fails too. PNG was never affected (libpng's own error handling fails the whole decode).
+- **Network**: the frame always seeds the second and third DNS server slot with public resolvers (`1.1.1.1`,
+  `8.8.8.8`; lwIP only tries them after the first one timed out), because a single flaky resolver - typically the
+  router's own, handed out by DHCP - made every hostname fail (Telegram and the weather API alike) for a whole wake
+  cycle; the optional DNS override fills the first slot. On the provisioning page, the scan for networks first
+  cancels the association attempt that switching to access-point-plus-station mode starts on its own, which made
+  the scan fail with "STA is connecting" and show "0 networks found" at random.
+- **Albums**: deleting an album removes its subdirectories as well (e.g. the face-crop `crop` folder) instead of failing
+  on the first directory that is not empty.
+- **Switching Auto Rotate mode** clears the "Last fetch error" of the mode it leaves; a stale "Connection failed" from
+  URL mode no longer sits on the page after the frame is switched to Telegram.
+- **Settings and gallery pages**: the settings export leaves the credentials out unless "Include credentials and URLs
+  in export" is ticked (the WiFi password never leaves the device at all), and it carries which albums are enabled;
+  the gallery lists photos in pages ("Load more") and shows thumbnails only when asked (a switch remembered in the
+  browser, off by default - many thumbnails at once slow the frame's web server down); uploads can be encoded as
+  `.epdgz` (default, already palette-indexed and compressed) or PNG; the Home Assistant integration has its own
+  enabled switch.
 - **Cross-site requests**: a request that carries an `Origin` header naming another host than the one it was sent to is
   refused with `403` before anything else happens (`main/http_origin.h`, 10 host tests; see
   [API.md](API.md#access-control)). Without it any web page open in a browser on the same network could send a `POST` to the
   frame - `/api/factory-reset` wipes the settings with one. Requests without an `Origin` (curl, Home Assistant) and the
   Web UI itself pass. An `.epdgz` that unpacks to less than the panel needs is refused instead of showing the memory
   it did not fill.
-- **OTA update check with the update channel** (`--with ota-channel`): reads GitHub's releases API response the same
-  way the weather/headline overlays already do (accumulated via the HTTP client's event callback), which also picks
-  the newest release for the pre-release channel; upstream's own chunked read is what runs without the channel.
+- **OTA update check**: the releases API response is read through the shared `http_fetch_get()` (the way the
+  weather/headline overlays read theirs: accumulated via the HTTP client's event callback, 64 KB cap), which also
+  serves the update channel's "newest release" lookup (`--with ota-channel`); upstream's own reader (chunked-aware
+  since v2.19.0) is what runs without this option. Three more corrections sit next to it: versions compare on
+  `major.minor.patch` and then the pre-release suffix (`-rc2` is older than `-rc10`, and any `-rcN` is older than the
+  same version without one, so a frame that installed a release candidate is still offered the final release); a
+  saved "update available" is dropped at boot once the running version is that very release (it was offered again
+  right after installing it); and the check enters its "checking" state before the task starts, so the Web UI's
+  request that waits for the result no longer sees the old state and answers "no update" at once.
 - **Home Assistant integration**: `ha_is_configured()` also checks the enabled toggle, not just whether a URL is
   saved, so a disabled integration doesn't send (or log an intent to send) notifications.
 - **Diagnostics**: free/used NVS entry counts are logged on every boot, so a slow drift toward exhaustion is

@@ -170,8 +170,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   Where upstream now has the same code, the `fixes` copy is gone (`main/jpeg_size_check.h` and its test, the guarded variants in `utils.c`, `ota_manager.c`, `album_manager.c`, `http_server.c`, the RTC drivers): with
   every option off the code is upstream's, as before (184 files, 0 differences). What stays under the options: everything that goes beyond upstream (the OTA channel and `http_fetch`-based release read, the
   recursive album delete, the DNS fallback, the Telegram, Agenda and the other features). The `wifi-resilience` option keeps its own parts (TX power cap on battery, a lower reconnect budget for Telegram power
-  save, MIC-failure and 802.1X rejections counted as rejections) on top of upstream's policy; its *extended retry* and *reprovision when attempts run out* settings no longer have a case to act on - a failure that is
-  not a rejection never reaches them any more - and stay as they are for now (see the open items in [docs/MAINTAINING.md](docs/MAINTAINING.md)). Conflicts: 17 files, all inside the guards of the options or in
+  save, MIC-failure and 802.1X rejections counted as rejections) on top of upstream's policy; its *extended retry* and *reprovision when attempts run out* settings no longer had a case to act on - a failure that is
+  not a rejection never reached them any more - and are removed (see *Removed* below). Conflicts: 17 files, all inside the guards of the options or in
   files this repository had edited by hand (`process-cli/cli.js` - `--device-config` next to `--board`/`--resolution`, `package.json`).
 - **The Agenda tab of the Web UI is a list of sections** instead of one long page: *ToDo*, *Calendar*, *Extra ICS Calendars*, *Schedule*, *Information screens* and *Appearance and colors*. They start closed; the header of each says
   what is on (`Calendar on`, `Schedule 3 schedules`, `Information screens Fuel prices, Markets`), and the ones you opened stay open the next time (kept in the browser only). Settings that depend on another are
@@ -197,6 +197,14 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   taken on that wake is kept), and the boot-time coredump log now also prints the panic reason and keeps a dump it
   cannot summarise in flash instead of erasing it (debug builds only; the `fixes` option's extra `exc_cause`/
   `exc_vaddr` line is kept on top of it).
+- `docs/FIXES.md` lists the fix areas it was missing (DNS fallback servers, the provisioning scan, the recursive album delete, the update check's pre-release comparison and state handling, the credential-free export, gallery paging and the upload format) and says which part of the update check is the fork's own.
+
+### Removed
+
+- **The `wifi-resilience` settings *Extended WiFi retry before reprovisioning* and *Reprovision when connection attempts run out*** are gone: Web UI switches, the API fields
+  `wifi_extended_retry_enabled` / `wifi_reprovision_on_fail_enabled` (a config import that still carries them ignores them), the cold-boot retry loop in `main.c` and the cross-reboot attempt counter. Since upstream's
+  v2.19.0 WiFi policy a failure that is not a rejection of the password keeps the credentials and is retried without limit, so only a real rejection can still end in provisioning - the settings had nothing
+  left to act on. The option keeps the TX-power cap, the performance mode, the lower reconnect budget for Telegram power save and the MIC-failure / 802.1X rejection handling.
 
 ### Fixed
 

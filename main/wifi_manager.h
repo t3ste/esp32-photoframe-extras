@@ -42,14 +42,6 @@ void wifi_manager_stop_connecting(void);
 void wifi_manager_keep_reconnecting(void);
 esp_err_t wifi_manager_disconnect(void);
 #if FEATURE_TELEGRAM || FEATURE_WIFI_RESILIENCE
-// True if the most recent wifi_manager_connect() failure's disconnect reason
-// (WIFI_EVENT_STA_DISCONNECTED) is one the AP itself uses specifically to
-// reject a wrong password/security mismatch (a failed 4-way handshake, MIC
-// failure, or an explicit auth-fail code) - as opposed to a merely transient
-// failure (AP not currently found/visible, beacon timeout, general
-// connection failure) that a retry might well recover from on its own.
-// Meaningless if the last connect attempt actually succeeded.
-bool wifi_manager_last_failure_is_credential_reject(void);
 // Overrides the default reconnect-attempt budget (5) used by the
 // WIFI_EVENT_STA_DISCONNECTED handler before it gives up and reports
 // WIFI_FAIL_BIT. Takes effect on the next wifi_manager_connect() call.

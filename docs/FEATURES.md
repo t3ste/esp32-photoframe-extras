@@ -33,7 +33,7 @@ python build.py --board waveshare_photopainter_73 --with extras
 | `offline-hotspot` | Offline mode and on-demand hotspot (hold BOOT for 3 s) | - | |
 | `error-banner` | On-display error banner for WiFi and internet failures | - | |
 | `ota-channel` | OTA release channel (stable/pre-release) | - | |
-| `wifi-resilience` | WiFi options: battery TX cap, performance mode, a lower reconnect budget for Telegram power save, MIC-failure / 802.1X counted as a rejected password; the cold-boot retries and the "keep the credentials" switch are superseded by upstream's own policy since v2.19.0 (credentials are never dropped for an absent AP) | - | |
+| `wifi-resilience` | WiFi options: battery TX cap, performance mode, a lower reconnect budget for Telegram power save, MIC-failure / 802.1X counted as a rejected password; the former "extended retry" and "reprovision when attempts run out" settings, the cold-boot retries and the "keep the credentials" switch **no longer exist (removed in v219.0.0)**: upstream's own policy since v2.19.0 never drops the credentials for an absent AP and retries without limit, only a rejected password ends in provisioning | - | |
 | `facecrop` | Face-aware crop sidecars and Cover/Fit image variants | - | [FACE_CROP.md](FACE_CROP.md), [SCALE_MODE.md](SCALE_MODE.md) |
 | `webcal` | `webcal://` subscription links for the Agenda calendars (fetched over https) | `agenda` | |
 | `source-auth` | A login (`https://user:password@host/...`) in the Agenda calendar and ToDo addresses, answered with HTTP Basic or Digest | `agenda` | [SOURCE_AUTH.md](SOURCE_AUTH.md) |

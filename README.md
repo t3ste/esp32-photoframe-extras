@@ -64,7 +64,7 @@ needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
 | 📡 `offline-hotspot` | Offline mode plus an on-demand WiFi hotspot (hold BOOT for 3 s) | - | |
 | ⚠️ `error-banner` | On-display error banner after repeated WiFi/internet failures, not just in the logs | - | |
 | 🚀 `ota-channel` | Choose the stable or a pre-release OTA update channel | - | |
-| 📶 `wifi-resilience` | Battery TX-power cap, a performance mode, a lower reconnect budget for Telegram power save (the cold-boot retry policy and the "keep credentials" option are upstream's own behaviour since v2.19.0) | - | |
+| 📶 `wifi-resilience` | Battery TX-power cap, a performance mode, a lower reconnect budget for Telegram power save, a MIC failure / 802.1X failure counted as a rejected password. **Removed since v219.0.0:** the "extended retry" and "reprovision when attempts run out" settings - upstream's own WiFi policy (v2.19.0) keeps the credentials and retries without limit, only a rejected password ends in provisioning | - | |
 | 🙂 `facecrop` | Face-aware crop sidecars (via `process-cli`) and pre-rendered Cover/Fit image variants | - | [docs](docs/FACE_CROP.md), [docs](docs/SCALE_MODE.md) |
 | 📆 `webcal` | `webcal://` subscription links for the Agenda calendars, fetched over https | - | |
 | 🔑 `source-auth` | A login (`https://user:password@host/...`) in the calendar and ToDo addresses - for calendars on a home server (Radicale, Baikal, Nextcloud) | - | [docs](docs/SOURCE_AUTH.md) |

@@ -190,7 +190,7 @@ them: no fetch, pull, checkout, commit, gc or new files there.
   scripts/migrate/maps/<f>.map`). It is a one-off migration tool now. **Files with manual edits (never re-`apply`):**
   `main/http_server.c` (init tail, config/urls handler, includes), `main/display_manager.c/.h` (face-crop stubs,
   random-pick block), `main/ota_manager.c` (`api_url`), `main/main.c` (button task, alarm/agenda wake, WiFi
-  bring-up, rotate-button wake, `cold_boot_wifi_retry()`, offline/`wifi_skipped`), `main/config.h` (OTA repo URL),
+  bring-up, rotate-button wake, offline/`wifi_skipped`), `main/config.h` (OTA repo URL),
   all stubified headers (`chime`, `agenda_manager`, `alarm_manager`, `alarm_setting_ui`, `history_manager`,
   `battery_history`, `climate_history`, `overlay_manager`), `webapp/src/components/SettingsPanel.vue`.
 - **Adding a feature or fix**: create `feature/<name>`; guard every change to a shared file with a flag and put the
@@ -595,10 +595,10 @@ fix; the rest are standing notes, not work items.
 - **A library issue behind upstream's JPEG fix goes to Espressif privately**: upstream's maintainer suggested reporting the library side of his fix. Espressif's `SECURITY.md` asks that
   vulnerabilities are **not** reported as public issues but through its security incident response process (coordinated disclosure; the private forms or the bug bounty address named there). Nothing is
   published by this repository about it; the report is the maintainer's to submit. Not sent.
-- **Retire the settings of `wifi-resilience` that upstream v2.19.0 made inert**: *extended retry* (`wifi_extended_retry_enabled`, the persisted attempt counter) and *reprovision when attempts run out*
-  (`wifi_reprovision_on_fail_enabled`) acted on failures that are not a rejection of the password; since upstream's policy such a failure never reaches them (the credentials are kept and the connect is
-  retried without a limit), only a real rejection still ends in provisioning. They are kept for now (a settings export of an older build may carry them); removing the two Web UI switches, the API fields and
-  `cold_boot_wifi_retry()` is a small clean-up that needs a decision.
+- ~~**Retire the settings of `wifi-resilience` that upstream v2.19.0 made inert**~~ **Done 2026-10-05.** *Extended retry* and *reprovision when attempts run out* (Web UI switches, the two API fields,
+  the config getters/setters, `cold_boot_wifi_retry()` and `wifi_manager_last_failure_is_credential_reject()`) are gone; a short note in `main/config.h` names the three retired NVS entries
+  (`wifi_ext_retry`, `wifi_cb_fail`, `wifi_reprov_en`), which an older device may still hold and nothing reads. A config export of an older build that carries the two fields is still accepted (unknown
+  fields are ignored). The option itself stays: TX cap, performance mode, the Telegram power-save budget and MIC/802.1X-as-rejection are not upstream's.
 
 ### Standing notes (not action items)
 

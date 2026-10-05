@@ -2462,10 +2462,6 @@ static esp_err_t config_handler(httpd_req_t *req)
                               config_manager_get_wifi_performance_mode_enabled());
         cJSON_AddBoolToObject(root, "wifi_tx_power_cap_enabled",
                               config_manager_get_wifi_tx_power_cap_enabled());
-        cJSON_AddBoolToObject(root, "wifi_extended_retry_enabled",
-                              config_manager_get_wifi_extended_retry_enabled());
-        cJSON_AddBoolToObject(root, "wifi_reprovision_on_fail_enabled",
-                              config_manager_get_wifi_reprovision_on_fail_enabled());
 #endif
 #if FEATURE_OFFLINE_HOTSPOT
         // Read-only here - only ever set during initial setup (offline

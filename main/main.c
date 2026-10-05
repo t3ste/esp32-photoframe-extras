@@ -184,105 +184,6 @@ static void forget_wifi_and_reprovision(void)
     esp_restart();
 }
 
-#if FEATURE_WIFI_RESILIENCE
-// A single failed attempt isn't enough to conclude that the saved credentials are
-// wrong: a router that is mid-reboot, brief congestion or a slow DHCP server fail
-// exactly like a wrong password but clear up within seconds. So a cold boot whose
-// connect failed retries up to WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS times - unless
-// the AP itself rejected the credentials (wifi_manager_last_failure_is_credential_reject()),
-// which no retry with the same password can fix.
-//
-// When every attempt failed without a rejection (e.g. WIFI_REASON_AUTH_EXPIRE /
-// CONNECTION_FAIL on a weak signal) the credentials are not wiped right away either:
-//  - with the extended retry (default on) the running attempt count survives reboots
-//    in NVS and the boot is retried after a longer pause, up to
-//    WIFI_COLD_BOOT_EXTENDED_MAX_TOTAL_ATTEMPTS attempts in total;
-//  - with "reprovision on failure" switched off the credentials are kept for good:
-//    the device sleeps until its next scheduled wake, or - without deep sleep - goes on
-//    trying in the background, like a connect that merely timed out.
-// A genuine rejection is unaffected and still leads to reprovisioning.
-#define WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS 3
-#define WIFI_COLD_BOOT_CONNECT_RETRY_DELAY_MS 3000
-#define WIFI_COLD_BOOT_EXTENDED_MAX_TOTAL_ATTEMPTS 10
-#define WIFI_COLD_BOOT_REBOOT_BACKOFF_MS 60000
-
-// Called after the first connect attempt of a cold boot returned ESP_FAIL. Returns what
-// the boot continues with: ESP_OK (a retry connected), ESP_ERR_TIMEOUT (a retry was
-// merely slow, or the credentials are kept: keep trying in the background) or ESP_FAIL
-// (reprovision). Restarts or sleeps instead of returning where the policy says so.
-static esp_err_t cold_boot_wifi_retry(void)
-{
-    bool extended_retry = config_manager_get_wifi_extended_retry_enabled();
-    int total_attempts = extended_retry ? config_manager_get_wifi_coldboot_fail_count() : 0;
-    bool credential_reject = false;
-    esp_err_t err = ESP_FAIL;
-
-    for (int attempt = 1;; attempt++) {
-        credential_reject = wifi_manager_last_failure_is_credential_reject();
-        if (credential_reject) {
-            ESP_LOGW(TAG, "WiFi credentials rejected by AP (attempt %d/%d) - not retrying", attempt,
-                     WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS);
-            break;
-        }
-        total_attempts++;
-        if (attempt >= WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS) {
-            break;
-        }
-        ESP_LOGW(TAG,
-                 "WiFi connect attempt %d/%d failed (not a credential rejection) - "
-                 "retrying in %d ms",
-                 attempt, WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS,
-                 WIFI_COLD_BOOT_CONNECT_RETRY_DELAY_MS);
-        vTaskDelay(pdMS_TO_TICKS(WIFI_COLD_BOOT_CONNECT_RETRY_DELAY_MS));
-        err = connect_to_wifi();
-        if (err != ESP_FAIL) {
-            break;
-        }
-    }
-
-    if (err == ESP_OK) {
-        if (extended_retry) {
-            config_manager_set_wifi_coldboot_fail_count(0);  // clean slate after a real success
-        }
-        return ESP_OK;
-    }
-    if (err == ESP_ERR_TIMEOUT) {
-        return ESP_ERR_TIMEOUT;
-    }
-
-    if (!credential_reject && extended_retry &&
-        total_attempts < WIFI_COLD_BOOT_EXTENDED_MAX_TOTAL_ATTEMPTS) {
-        config_manager_set_wifi_coldboot_fail_count(total_attempts);
-        ESP_LOGW(TAG,
-                 "WiFi still unreachable after %d/%d total attempts (not a credential "
-                 "rejection) - retrying after a longer pause instead of reprovisioning",
-                 total_attempts, WIFI_COLD_BOOT_EXTENDED_MAX_TOTAL_ATTEMPTS);
-        vTaskDelay(pdMS_TO_TICKS(WIFI_COLD_BOOT_REBOOT_BACKOFF_MS));
-        esp_restart();
-    }
-
-    if (extended_retry) {
-        config_manager_set_wifi_coldboot_fail_count(0);  // giving up on this cycle anyway
-    }
-    if (!credential_reject && !config_manager_get_wifi_reprovision_on_fail_enabled()) {
-        ESP_LOGW(TAG,
-                 "WiFi still unreachable after %d attempt(s) (not a credential rejection) - "
-                 "reprovisioning is disabled, keeping saved credentials",
-                 total_attempts);
-        if (config_manager_get_deep_sleep_enabled()) {
-            ESP_LOGI(TAG,
-                     "Deep sleep is enabled - sleeping until the next scheduled wake "
-                     "instead of reprovisioning");
-            power_manager_enter_sleep();  // schedules the next timer wake itself; never returns
-        }
-        ESP_LOGI(TAG, "Deep sleep is disabled - carrying on without WiFi, still trying");
-        wifi_manager_keep_reconnecting();
-        return ESP_ERR_TIMEOUT;
-    }
-    return ESP_FAIL;
-}
-#endif
-
 // Network-dependent part of an interactive boot, run once WiFi has an IP:
 // inline from app_main when the connect succeeded on time, or from
 // late_wifi_task when it only came up after the connect timed out. Never runs
@@ -1009,8 +910,8 @@ void app_main(void)
         // investigated against this exact mechanism (2026-09) and ruled out
         // for those specific incidents (nvs_get_stats() below showed 465/756
         // entries free at the time, and the real cause was found instead in
-        // main.c's cold-boot WiFi-connect-failure handling - see
-        // WIFI_COLD_BOOT_CONNECT_MAX_ATTEMPTS below). Kept as cheap,
+        // main.c's cold-boot WiFi-connect-failure handling, since replaced
+        // by upstream's retry policy in wifi_retry_policy.c). Kept as cheap,
         // permanent health telemetry regardless, since a genuinely exhausted
         // NVS partition would still hit this path eventually over a long
         // enough real-world device lifetime. `ret` here is the specific
@@ -1346,11 +1247,6 @@ void app_main(void)
     wifi_err = connect_to_wifi();
 #else
     esp_err_t wifi_err = connect_to_wifi();
-#endif
-#if FEATURE_WIFI_RESILIENCE
-    if (wifi_err == ESP_FAIL) {
-        wifi_err = cold_boot_wifi_retry();
-    }
 #endif
     if (wifi_err != ESP_OK && wifi_err != ESP_ERR_TIMEOUT) {
         // Only an AP that kept rejecting the credentials gets here.

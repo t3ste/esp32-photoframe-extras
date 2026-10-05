@@ -108,8 +108,6 @@ export const useSettingsStore = defineStore("settings", () => {
 // #if FEATURE_WIFI_RESILIENCE
     wifiPerformanceModeEnabled: true,
     wifiTxPowerCapEnabled: true,
-    wifiExtendedRetryEnabled: false,
-    wifiReprovisionOnFailEnabled: true,
 // #endif
 // #if FEATURE_OFFLINE_HOTSPOT
     // Read-only status (set during first-time setup / by the hotspot itself,
@@ -631,9 +629,6 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.wifiPerformanceModeEnabled =
         data.wifi_performance_mode_enabled !== false;
       deviceSettings.value.wifiTxPowerCapEnabled = data.wifi_tx_power_cap_enabled !== false;
-      deviceSettings.value.wifiExtendedRetryEnabled = data.wifi_extended_retry_enabled === true;
-      deviceSettings.value.wifiReprovisionOnFailEnabled =
-        data.wifi_reprovision_on_fail_enabled !== false;
 // #endif
 // #if FEATURE_OFFLINE_HOTSPOT
       deviceSettings.value.offlineModeEnabled = data.offline_mode_enabled === true;
@@ -995,8 +990,6 @@ export const useSettingsStore = defineStore("settings", () => {
 // #if FEATURE_WIFI_RESILIENCE
       wifi_performance_mode_enabled: deviceSettings.value.wifiPerformanceModeEnabled,
       wifi_tx_power_cap_enabled: deviceSettings.value.wifiTxPowerCapEnabled,
-      wifi_extended_retry_enabled: deviceSettings.value.wifiExtendedRetryEnabled,
-      wifi_reprovision_on_fail_enabled: deviceSettings.value.wifiReprovisionOnFailEnabled,
 // #endif
 // #if FEATURE_HTTPS
       https_enabled: deviceSettings.value.httpsEnabled,

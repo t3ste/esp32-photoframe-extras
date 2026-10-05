@@ -402,19 +402,6 @@ esp_err_t wifi_manager_connect(const char *ssid, const char *password)
     return ESP_ERR_TIMEOUT;
 }
 
-#if FEATURE_WIFI_RESILIENCE
-bool wifi_manager_last_failure_is_credential_reject(void)
-{
-    // The policy's verdict for the last connect: REJECTED is the one outcome that says the AP
-    // turned the credentials down (every other way of running out is ESP_ERR_TIMEOUT now).
-    // Meaningless if the last attempt succeeded.
-    xSemaphoreTake(s_policy_lock, portMAX_DELAY);
-    bool rejected = s_retry.verdict == WIFI_RETRY_REJECTED;
-    xSemaphoreGive(s_policy_lock);
-    return rejected;
-}
-
-#endif
 void wifi_manager_stop_connecting(void)
 {
     // Stop the event handler from reconnecting on its own and power the radio
