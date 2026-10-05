@@ -11,7 +11,7 @@ corrections and hardening changes over upstream's own behavior, gated behind one
 
 - **Web UI robustness**: importing/PATCHing a config no longer discards every other field in the request just
   because one unrelated field failed validation (`main/utils.c`) - each field is validated independently and the
-  response still reports the specific error. The gallery's thumbnail listing reads a directory once (`readdir()`)
+  response still reports the specific error (a WiFi network that cannot be joined included; the login limiter is reset only after a password was really saved). The gallery's thumbnail listing reads a directory once (`readdir()`)
   instead of one `stat()` syscall per image, and image-serving chunks are larger (4 KB vs 1 KB) - both avoid tying
   up the single HTTP server task (and therefore the whole Web UI) for longer than necessary on a large album.
   `GET /api/images` also takes an optional `offset`/`limit` page instead of always listing an entire album in one
@@ -26,7 +26,7 @@ corrections and hardening changes over upstream's own behavior, gated behind one
   one hour ahead of the real time.
 - **JPEG decoding**: the photo pipeline works out the size of a decoded JPEG again in 64 bit (`main/jpeg_size_check.h`) and refuses a header whose size does not add
   up - esp_jpeg multiplies the sides of the header in 32 bit, so a header of 40000 x 35792 pixels came out as a 72 KB buffer that the decoder then wrote 4.3 GB into. It
-  also looks at the result of the header read, which it used to ignore.
+  also looks at the result of the header read, which it used to ignore. The frame size is also read with a header walk that follows the decoder's own rule (the **last** SOF0 before SOS - `esp_jpeg_get_image_info()` reports the first, so a file with a small first and a huge second frame passed the check above and was decoded far past its buffer); a file where the two disagree is refused (`main/jpeg_header.c`, `host_tests/test_jpeg_header.cpp`; found by upstream's review of our pull request).
 - **A photo read that fails halfway is no longer shown as a finished picture**: a BMP is stored bottom row first and read straight into the display buffer; when the
   read failed partway through (seen live: a one-off SD card I/O error, `sdmmc_read_sectors_dma`), the decoder logged it and stopped like a normal end, so everything
   above the last row read stayed white - the panel showed only the lower part of the photo and the log said "Image displayed successfully". The decoder

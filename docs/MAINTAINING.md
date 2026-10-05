@@ -279,7 +279,7 @@ ctest --test-dir ~/pf-host-build            # SERIAL: tests of one binary share 
 ```
 
 Keep the build directory outside the repository. `-j` with ctest makes the DisplayFlow tests flake. Result at the
-time of writing: 314/314.
+time of writing: 339/339.
 
 **Tooling traps on Windows**: `json.dumps` reformats files (edit JSON as text); backslash escapes and odd numbers
 of quotes/backticks in shell-tool heredocs are unreliable (write patch scripts to a file and run them); `which`
@@ -590,7 +590,7 @@ fix; the rest are standing notes, not work items.
 | `scripts/test_*.py` | Tooling unit tests (41) |
 | `webapp/` | Vue web UI; `feature-directives.js`, `vite.config.js`, `vite.config.demo.js`, `index-demo.html`, `src/` |
 | `process-cli/` | Host-side image processing tool (Node) |
-| `host_tests/` | GoogleTest host tests (332) |
+| `host_tests/` | GoogleTest host tests (339) |
 | `demo/` | Tracked stubs (`.nojekyll`, `_headers`, `favicon.svg`); the rest is generated site output (gitignored) |
 | `.github/workflows/ci.yml`, `build.yml` | CI, builds, release, Pages deploy |
 | `docs/FEATURES.md` | User-facing feature list and OTA notes |
