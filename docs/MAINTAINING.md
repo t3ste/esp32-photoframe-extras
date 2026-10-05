@@ -134,7 +134,7 @@ them: no fetch, pull, checkout, commit, gc or new files there.
   action (section 14).
 - Because history now reaches upstream's true root, `git rev-list --max-parents=0 HEAD` is **not** the baseline.
   The scripts use fixed SHAs: the **graft point** `1347744...` (never moves; `gate.py` uses it) and the
-  **equality baseline**, the newest merged upstream commit (`f5e3ec974403b31174a3c8da1cf09385453f4abb` at the
+  **equality baseline**, the newest merged upstream commit (`186ebaf3b470305824d238c2d2dabf2c5bc59a7a` at the
   time of writing), stored in `scripts/verify_baseline.py` (`upstream_sha`) and `scripts/migrate/alloff_source.py`
   (`BASELINE`, imported by `alloff_web.py`). Move the baseline with each upstream merge (section 12).
 - Branches: `main` (release line), `feature/<name>` for work (merged locally into `main` after the checks,
@@ -405,7 +405,7 @@ The Pages site keeps offering the newest published pre-release until a newer sta
 ## 12. Merging upstream changes
 
 Do it when the maintainer asks, never on your own initiative. Experience from the three merges so far
-(`151e716`, `7ccabe0`, `495e0b6`, `f5e3ec9`):
+(`151e716`, `7ccabe0`, `495e0b6`, `f5e3ec9`, and now `186ebaf` = v2.19.0):
 
 1. `git fetch upstream`; `git log refs/heads/main..upstream/main --oneline`; branch `feature/upstream-<date>`;
    `git merge upstream/main` (message file, `[skip ci]` optional for the merge commit).
@@ -560,6 +560,19 @@ fix; the rest are standing notes, not work items.
   Known gap: importing a config whose Calendar C/D/E URL equals the stored one never re-fetches (only a changed URL
   or "Refresh now" does), so an import made while the files were unreachable leaves C-E without a cached file. A
   fetch-if-the-cache-file-is-missing rule in `apply_extra_ics_url()` would close it (not done).
+
+- **New upstream pull request for the photo-read fix (as the very last step of a work round)**: upstream closed our first pull request on 2026-10-05 (five of six taken into v2.19.0 with changes of its
+  own). What it does not have: a BMP that fails to read halfway is shown as a half-blank picture, with "Image displayed successfully" in the log (`read_bmp24_mapped()` returns success after a failed
+  `fread`; `rotate_sequential()`/`rotate_random()` ignore `display_manager_show_image()`'s result). The unconditional version of the fix exists as one commit (`f9bc894`, branch
+  `ai-audit-upstream-fixes` of the canonical fork, built for the Waveshare board and host-tested, on top of an older upstream state): to do - rebase it onto the then newest upstream `main`, build, open a single-commit
+  pull request disclosed as findings of Claude with a link to the two repositories, and only with the maintainer's OK each step. Not started.
+- **A library issue behind upstream's JPEG fix goes to Espressif privately**: upstream's maintainer suggested reporting the library side of his fix. Espressif's `SECURITY.md` asks that
+  vulnerabilities are **not** reported as public issues but through its security incident response process (coordinated disclosure; the private forms or the bug bounty address named there). Nothing is
+  published by this repository about it; the report is the maintainer's to submit. Not sent.
+- **Retire the settings of `wifi-resilience` that upstream v2.19.0 made inert**: *extended retry* (`wifi_extended_retry_enabled`, the persisted attempt counter) and *reprovision when attempts run out*
+  (`wifi_reprovision_on_fail_enabled`) acted on failures that are not a rejection of the password; since upstream's policy such a failure never reaches them (the credentials are kept and the connect is
+  retried without a limit), only a real rejection still ends in provisioning. They are kept for now (a settings export of an older build may carry them); removing the two Web UI switches, the API fields and
+  `cold_boot_wifi_retry()` is a small clean-up that needs a decision.
 
 ### Standing notes (not action items)
 

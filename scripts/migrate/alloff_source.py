@@ -53,10 +53,10 @@ def normalise(text):
     return [line for line in lines if line]
 
 
-# The newest upstream commit merged into this repository (f5e3ec9, after v2.18.0-27
+# The newest upstream commit merged into this repository (186ebaf = upstream v2.19.0, after v2.18.0-27
 # which the history is grafted onto): move it with every upstream merge, see
 # docs/MAINTAINING.md section 12. alloff_web.py uses it too.
-BASELINE = "f5e3ec974403b31174a3c8da1cf09385453f4abb"
+BASELINE = "186ebaf3b470305824d238c2d2dabf2c5bc59a7a"
 
 
 def main():

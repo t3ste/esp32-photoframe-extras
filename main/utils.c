@@ -211,26 +211,91 @@ static void apply_extra_ics_url(cJSON *root, const char *url_field, const char *
 }
 
 #endif
+// Validates, persists and activates a POSIX TZ rule; on failure `msg` says why.
+// Only the shape of the rule is checked. newlib's tzset() reports nothing
+// when it can't parse one (it quietly falls back to UTC), and a POSIX parser
+// here would only disagree with it in the corners. What is rejected is wrong
+// under any grammar: an empty rule, control or non-ASCII bytes, and a rule
+// the device would have to truncate.
+static esp_err_t apply_timezone(const char *tz, char *msg, size_t msg_len)
+{
+    if (tz[0] == '\0') {
+        snprintf(msg, msg_len, "Time zone must not be empty");
+        return ESP_FAIL;
+    }
+    for (const unsigned char *p = (const unsigned char *) tz; *p != '\0'; p++) {
+        if (*p < 0x20 || *p > 0x7e) {
+            snprintf(msg, msg_len, "Time zone must be printable ASCII");
+            return ESP_FAIL;
+        }
+    }
+    esp_err_t err = config_manager_set_timezone(tz);
+    if (err == ESP_ERR_INVALID_SIZE) {
+        snprintf(msg, msg_len, "Time zone is too long (max %d characters)", TIMEZONE_MAX_LEN - 1);
+        return ESP_FAIL;
+    } else if (err != ESP_OK) {
+        snprintf(msg, msg_len, "Failed to save the time zone");
+        return ESP_FAIL;
+    }
+    setenv("TZ", tz, 1);
+    tzset();
+    return ESP_OK;
+}
+
+// Rotation schedule: an array of cron expressions. Every rule is validated
+// before any is applied; a bad one leaves the existing schedule alone.
+static bool apply_rotate_cron(cJSON *item)
+{
+    int count = cJSON_GetArraySize(item);
+    if (count > MAX_CRON_RULES) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Too many schedule rules (max %d)", MAX_CRON_RULES);
+        utils_set_config_error(msg);
+        return false;
+    }
+    // An empty schedule is ambiguous (it would silently fall back to
+    // hourly rotation, and the empty set can't be restored after a
+    // reboot). Turning auto_rotate off is the way to stop rotating.
+    if (count == 0) {
+        utils_set_config_error("Schedule must contain at least one rule");
+        return false;
+    }
+    const char *rules[MAX_CRON_RULES];
+    int n = 0;
+    cJSON *el;
+    cJSON_ArrayForEach(el, item)
+    {
+        if (!cJSON_IsString(el)) {
+            utils_set_config_error("Schedule rule must be a string");
+            return false;
+        }
+        const char *expr = cJSON_GetStringValue(el);
+        if (strlen(expr) >= CRON_RULE_MAX_LEN) {
+            utils_set_config_error("Cron expression too long");
+            return false;
+        }
+        cron_rule_t tmp;
+        if (!cron_parse(expr, &tmp)) {
+            char msg[96];
+            snprintf(msg, sizeof(msg), "Invalid cron expression: %s", expr);
+            utils_set_config_error(msg);
+            return false;
+        }
+        if (n < MAX_CRON_RULES) {
+            rules[n++] = expr;
+        }
+    }
+    config_manager_set_cron_rules(rules, n);
+    power_manager_reset_rotate_timer();
+    return true;
+}
+
 esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
 {
     cJSON *item;
-#if FORK_ANY
-    // Every field below is independent - one field failing validation must
-    // never discard every field after it in the same request. Confirmed
-    // live (2026-09-20): a single non-numeric telegram_chat_id (or, in the
-    // separate incident that surfaced this, a WiFi SSID unreachable from
-    // this network) made this function `return ESP_FAIL` partway through,
-    // silently dropping every remaining field in a large Settings-page
-    // config import - Agenda, Chimes, Climate, Overlays, all of it - even
-    // though the request otherwise had nothing wrong with those fields.
-    // `had_error` now just records that *something* failed so the HTTP
-    // handler can still report it, without stopping unrelated fields from
-    // applying. utils_consume_config_error() only ever holds the most
-    // recent message if more than one field fails in the same request -
-    // still a strict improvement over previously reporting exactly one
-    // failure and hiding how much else silently never happened.
+    // The fields are independent: a rejected one is reported through
+    // utils_set_config_error (the last message wins) and the rest still apply.
     bool had_error = false;
-#endif
 
     // General
     item = cJSON_GetObjectItem(root, "device_name");
@@ -244,77 +309,13 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         }
     }
 
-    // Only the shape of the rule is checked. newlib's tzset() reports nothing
-    // when it can't parse one (it quietly falls back to UTC), and a POSIX
-    // parser here would only disagree with it in the corners. What is
-    // rejected is wrong under any grammar: an empty rule, control or
-    // non-ASCII bytes, and a rule the device would have to truncate.
     item = cJSON_GetObjectItem(root, "timezone");
     if (item && cJSON_IsString(item)) {
-        const char *tz = cJSON_GetStringValue(item);
-#if FORK_FIXES
-        bool tz_ok = true;
-#endif
-        if (tz[0] == '\0') {
-            utils_set_config_error("Time zone must not be empty");
-#if FORK_FIXES
-            tz_ok = false;
-#else
-            return ESP_FAIL;
-#endif
-        }
-#if FORK_FIXES
-        if (tz_ok) {
-            for (const unsigned char *p = (const unsigned char *) tz; *p != '\0'; p++) {
-                if (*p < 0x20 || *p > 0x7e) {
-                    utils_set_config_error("Time zone must be printable ASCII");
-                    tz_ok = false;
-                    break;
-                }
-#else
-        for (const unsigned char *p = (const unsigned char *) tz; *p != '\0'; p++) {
-            if (*p < 0x20 || *p > 0x7e) {
-                utils_set_config_error("Time zone must be printable ASCII");
-                return ESP_FAIL;
-#endif
-            }
-        }
-#if FORK_FIXES
-        if (tz_ok) {
-            esp_err_t tz_err = config_manager_set_timezone(tz);
-            if (tz_err == ESP_ERR_INVALID_SIZE) {
-                char msg[64];
-                snprintf(msg, sizeof(msg), "Time zone is too long (max %d characters)",
-                         TIMEZONE_MAX_LEN - 1);
-                utils_set_config_error(msg);
-                tz_ok = false;
-            } else if (tz_err != ESP_OK) {
-                utils_set_config_error("Failed to save the time zone");
-                tz_ok = false;
-            } else {
-                setenv("TZ", tz, 1);
-                tzset();
-            }
-        }
-        if (!tz_ok) {
-            had_error = true;
-#else
-        esp_err_t tz_err = config_manager_set_timezone(tz);
-        if (tz_err == ESP_ERR_INVALID_SIZE) {
-            char msg[64];
-            snprintf(msg, sizeof(msg), "Time zone is too long (max %d characters)",
-                     TIMEZONE_MAX_LEN - 1);
+        char msg[64];
+        if (apply_timezone(cJSON_GetStringValue(item), msg, sizeof(msg)) != ESP_OK) {
             utils_set_config_error(msg);
-            return ESP_FAIL;
-        } else if (tz_err != ESP_OK) {
-            utils_set_config_error("Failed to save the time zone");
-            return ESP_FAIL;
-#endif
+            had_error = true;
         }
-#if !(FORK_FIXES)
-        setenv("TZ", tz, 1);
-        tzset();
-#endif
     }
 
     // Advanced network settings (#43): custom NTP server, static IP and DNS
@@ -341,17 +342,10 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         const char *addr = cJSON_GetStringValue(item);
         if (addr[0] != '\0' && esp_netif_str_to_ip4(addr, &parsed) != ESP_OK) {
             utils_set_config_error("Invalid static IP address");
-#if FORK_FIXES
             had_error = true;
         } else {
             config_manager_set_static_ip(addr);
-#else
-            return ESP_FAIL;
-#endif
         }
-#if !(FORK_FIXES)
-        config_manager_set_static_ip(addr);
-#endif
     }
 
     item = cJSON_GetObjectItem(root, "static_netmask");
@@ -359,17 +353,10 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         const char *addr = cJSON_GetStringValue(item);
         if (addr[0] != '\0' && esp_netif_str_to_ip4(addr, &parsed) != ESP_OK) {
             utils_set_config_error("Invalid static netmask");
-#if FORK_FIXES
             had_error = true;
         } else {
             config_manager_set_static_netmask(addr);
-#else
-            return ESP_FAIL;
-#endif
         }
-#if !(FORK_FIXES)
-        config_manager_set_static_netmask(addr);
-#endif
     }
 
     item = cJSON_GetObjectItem(root, "static_gateway");
@@ -377,63 +364,36 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         const char *addr = cJSON_GetStringValue(item);
         if (addr[0] != '\0' && esp_netif_str_to_ip4(addr, &parsed) != ESP_OK) {
             utils_set_config_error("Invalid static gateway");
-#if FORK_FIXES
             had_error = true;
         } else {
             config_manager_set_static_gateway(addr);
-#else
-            return ESP_FAIL;
-#endif
         }
-#if !(FORK_FIXES)
-        config_manager_set_static_gateway(addr);
-#endif
     }
 
     item = cJSON_GetObjectItem(root, "ip_mode");
     if (item && cJSON_IsString(item)) {
         bool want_static = (strcmp(cJSON_GetStringValue(item), "static") == 0);
         if (want_static) {
-#if FORK_FIXES
             bool static_ok = true;
-#endif
             if (esp_netif_str_to_ip4(config_manager_get_static_ip(), &parsed) != ESP_OK) {
                 utils_set_config_error("Invalid static IP address");
-#if FORK_FIXES
                 had_error = true;
                 static_ok = false;
-#else
-                return ESP_FAIL;
-#endif
             }
             if (esp_netif_str_to_ip4(config_manager_get_static_netmask(), &parsed) != ESP_OK) {
                 utils_set_config_error("Invalid static netmask");
-#if FORK_FIXES
                 had_error = true;
                 static_ok = false;
-#else
-                return ESP_FAIL;
-#endif
             }
             if (esp_netif_str_to_ip4(config_manager_get_static_gateway(), &parsed) != ESP_OK) {
                 utils_set_config_error("Invalid static gateway");
-#if FORK_FIXES
                 had_error = true;
                 static_ok = false;
             }
-            // Only actually switch to static mode if all three fields it
-            // depends on are valid - leaving ip_mode alone (not forcing back
-            // to DHCP) otherwise, same "don't touch what wasn't asked for"
-            // spirit as every other skipped field in this function.
+            // Leave ip_mode alone unless all three addresses are usable
             if (static_ok) {
                 config_manager_set_ip_mode(IP_MODE_STATIC);
-#else
-                return ESP_FAIL;
-#endif
             }
-#if !(FORK_FIXES)
-            config_manager_set_ip_mode(IP_MODE_STATIC);
-#endif
         } else {
             config_manager_set_ip_mode(IP_MODE_DHCP);
         }
@@ -444,17 +404,10 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         const char *dns = cJSON_GetStringValue(item);
         if (dns[0] != '\0' && esp_netif_str_to_ip4(dns, &parsed) != ESP_OK) {
             utils_set_config_error("Invalid DNS server address");
-#if FORK_FIXES
             had_error = true;
         } else {
             config_manager_set_dns_server(dns);
-#else
-            return ESP_FAIL;
-#endif
         }
-#if !(FORK_FIXES)
-        config_manager_set_dns_server(dns);
-#endif
     }
 
     // WiFi
@@ -485,32 +438,11 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
                 }
                 ESP_LOGI(TAG, "Successfully connected and saved WiFi credentials");
             } else {
-#if FORK_FIXES
-                // Deliberately falls through instead of returning - every
-                // other field in this function is independent and applies
-                // on its own merits; a bad SSID (e.g. importing another
-                // device's config export onto one that isn't on the same
-                // network) shouldn't silently discard every field still to
-                // come below just because it happened to be processed
-                // first. Confirmed live (2026-09-20) this WAS the one
-                // early-return in an otherwise skip-and-continue function -
-                // not what actually caused that incident (a request-body
-                // size limit rejected the whole PATCH before this code
-                // ever ran), but a real latent bug in its own right.
-#endif
                 ESP_LOGW(TAG, "Failed to connect to new WiFi, reverting to previous credentials");
                 wifi_manager_connect(current_ssid, config_manager_get_wifi_password());
-#if FORK_FIXES
-                // The request still has to report the rejected change: the
-                // fall-through above used to make it answer 200 "success" with
-                // the old credentials silently kept (the handler's WiFi
-                // message only fires on a non-OK result).
                 utils_set_config_error(
                     "Failed to connect to WiFi network. Please check SSID and password.");
                 had_error = true;
-#else
-                return ESP_FAIL;
-#endif
             }
         }
     }
@@ -537,11 +469,7 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
             display_manager_initialize_paint();
         } else {
             utils_set_config_error("Display rotation must be 0 or 180 degrees");
-#if FORK_FIXES
             had_error = true;
-#else
-            return ESP_FAIL;
-#endif
         }
     }
 
@@ -552,124 +480,12 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         power_manager_reset_rotate_timer();
     }
 
-    // Rotation schedule: an array of cron expressions. Validate every rule
-#if FORK_FIXES
-    // before applying any; reject just THIS field (not the rest of the
-    // request - see this function's own top-of-function comment) on the
-    // first bad one. The do/while(0)+break wrapper exists purely so a
-    // validation failure partway through the array can skip straight to
-    // "leave the existing schedule alone" without an early function return.
-#else
-    // before applying any; reject the whole request on the first bad one.
-#endif
     item = cJSON_GetObjectItem(root, "rotate_cron");
-#if FORK_FIXES
-    if (item && cJSON_IsArray(item))
-        do {
-            int count = cJSON_GetArraySize(item);
-            if (count > MAX_CRON_RULES) {
-                char msg[64];
-                snprintf(msg, sizeof(msg), "Too many schedule rules (max %d)", MAX_CRON_RULES);
-#else
     if (item && cJSON_IsArray(item)) {
-        int count = cJSON_GetArraySize(item);
-        if (count > MAX_CRON_RULES) {
-            char msg[64];
-            snprintf(msg, sizeof(msg), "Too many schedule rules (max %d)", MAX_CRON_RULES);
-            utils_set_config_error(msg);
-            return ESP_FAIL;
+        if (!apply_rotate_cron(item)) {
+            had_error = true;
         }
-        // An empty schedule is ambiguous (it would silently fall back to
-        // hourly rotation, and the empty set can't be restored after a
-        // reboot). Turning auto_rotate off is the way to stop rotating.
-        if (count == 0) {
-            utils_set_config_error("Schedule must contain at least one rule");
-            return ESP_FAIL;
-        }
-        const char *rules[MAX_CRON_RULES];
-        int n = 0;
-        cJSON *el;
-        cJSON_ArrayForEach(el, item)
-        {
-            if (!cJSON_IsString(el)) {
-                utils_set_config_error("Schedule rule must be a string");
-                return ESP_FAIL;
-            }
-            const char *expr = cJSON_GetStringValue(el);
-            if (strlen(expr) >= CRON_RULE_MAX_LEN) {
-                utils_set_config_error("Cron expression too long");
-                return ESP_FAIL;
-            }
-            cron_rule_t tmp;
-            if (!cron_parse(expr, &tmp)) {
-                char msg[96];
-                snprintf(msg, sizeof(msg), "Invalid cron expression: %s", expr);
-#endif
-                utils_set_config_error(msg);
-#if FORK_FIXES
-                had_error = true;
-                break;
-#else
-                return ESP_FAIL;
-#endif
-            }
-#if FORK_FIXES
-            // An empty schedule is ambiguous (it would silently fall back to
-            // hourly rotation, and the empty set can't be restored after a
-            // reboot). Turning auto_rotate off is the way to stop rotating.
-            if (count == 0) {
-                utils_set_config_error("Schedule must contain at least one rule");
-                had_error = true;
-                break;
-#else
-            if (n < MAX_CRON_RULES) {
-                rules[n++] = expr;
-#endif
-            }
-#if FORK_FIXES
-            const char *rules[MAX_CRON_RULES];
-            int n = 0;
-            cJSON *el;
-            bool rule_error = false;
-            cJSON_ArrayForEach(el, item)
-            {
-                if (!cJSON_IsString(el)) {
-                    utils_set_config_error("Schedule rule must be a string");
-                    rule_error = true;
-                    break;
-                }
-                const char *expr = cJSON_GetStringValue(el);
-                if (strlen(expr) >= CRON_RULE_MAX_LEN) {
-                    utils_set_config_error("Cron expression too long");
-                    rule_error = true;
-                    break;
-                }
-                cron_rule_t tmp;
-                if (!cron_parse(expr, &tmp)) {
-                    char msg[96];
-                    snprintf(msg, sizeof(msg), "Invalid cron expression: %s", expr);
-                    utils_set_config_error(msg);
-                    rule_error = true;
-                    break;
-                }
-                if (n < MAX_CRON_RULES) {
-                    rules[n++] = expr;
-                }
-            }
-            if (rule_error) {
-                had_error = true;
-                break;
-            }
-            config_manager_set_cron_rules(rules, n);
-            power_manager_reset_rotate_timer();
-        } while (0);
-    else {
-#else
-        }
-        config_manager_set_cron_rules(rules, n);
-        power_manager_reset_rotate_timer();
     } else {
-#endif
         // Backward compatibility: convert a legacy interval to a cron rule.
         item = cJSON_GetObjectItem(root, "rotate_interval");
         if (item && cJSON_IsNumber(item)) {
@@ -732,30 +548,17 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
                 if (pin_ret != ESP_OK) {
                     ESP_LOGE(TAG, "Cert pin failed, rejecting config: %s", err_buf);
                     utils_set_cert_pin_error(err_buf);
-#if FORK_FIXES
                     had_error = true;
                 } else {
                     config_manager_set_image_url(new_url);
-#else
-                    return ESP_FAIL;
-#endif
                 }
-#if FORK_FIXES
             } else {
                 if (cur_is_https) {
                     // Downgrading to HTTP/empty: clear the pinned cert
                     cert_pin_clear();
                 }
                 config_manager_set_image_url(new_url);
-#else
-            } else if (cur_is_https) {
-                // Downgrading to HTTP/empty: clear the pinned cert
-                cert_pin_clear();
-#endif
             }
-#if !(FORK_FIXES)
-            config_manager_set_image_url(new_url);
-#endif
         }
     }
 
@@ -779,28 +582,14 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         esp_err_t pw_err = config_manager_set_http_password(cJSON_GetStringValue(item));
         if (pw_err == ESP_ERR_INVALID_SIZE) {
             utils_set_config_error("Device password is too long (max 63 bytes)");
-#if FORK_FIXES
             had_error = true;
-#else
-            return ESP_FAIL;
-#endif
         } else if (pw_err != ESP_OK) {
             utils_set_config_error("Failed to save the device password");
-#if FORK_FIXES
             had_error = true;
-#else
-            return ESP_FAIL;
-#endif
-        }
-        // Lockouts earned against the old password shouldn't outlive it.
-#if FORK_FIXES
-        // (only a password that was really saved replaced the old one)
-        if (pw_err == ESP_OK) {
+        } else {
+            // Lockouts earned against the old password shouldn't outlive it.
             http_auth_limiter_reset();
         }
-#else
-        http_auth_limiter_reset();
-#endif
     }
 
     item = cJSON_GetObjectItem(root, "http_header_key");
@@ -1572,11 +1361,7 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     config_manager_end_agenda_batch();
 
 #endif
-#if FORK_ANY
     return had_error ? ESP_FAIL : ESP_OK;
-#else
-    return ESP_OK;
-#endif
 }
 
 // Context for HTTP event handler

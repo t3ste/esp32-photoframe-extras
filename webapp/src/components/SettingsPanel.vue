@@ -741,13 +741,14 @@ const exportIncludeSecrets = ref(false);
 async function exportConfig() {
   try {
 // #if FORK_FIXES
-    const [configRes, processingRes, paletteRes, albumsRes] = await Promise.all([
+    const [configRes, processingRes, paletteRes, systemInfoRes, albumsRes] = await Promise.all([
 // #else
-    const [configRes, processingRes, paletteRes] = await Promise.all([
+    const [configRes, processingRes, paletteRes, systemInfoRes] = await Promise.all([
 // #endif
       fetch("/api/config"),
       fetch("/api/settings/processing"),
       fetch("/api/settings/palette"),
+      fetch("/api/system-info"),
 // #if FORK_FIXES
       fetch("/api/albums"),
 // #endif
@@ -809,6 +810,20 @@ async function exportConfig() {
 // #endif
     if (processingRes.ok) exported.processing = await processingRes.json();
     if (paletteRes.ok) exported.palette = await paletteRes.json();
+    if (systemInfoRes.ok) {
+      // What the panel is, so photoframe-process / epaper-image-convert can
+      // size and dither for it from this file alone (--device-config). Only
+      // the identity fields: the rest of /api/system-info is runtime state.
+      // Import ignores this block.
+      const info = await systemInfoRes.json();
+      exported.system_info = {
+        board_name: info.board_name,
+        display_type: info.display_type,
+        width: info.width,
+        height: info.height,
+        version: info.version,
+      };
+    }
 // #if FORK_FIXES
     if (albumsRes.ok && albumsRes.headers.get("content-type")?.includes("application/json")) {
       const albums = await albumsRes.json();

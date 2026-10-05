@@ -32,6 +32,20 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Changed
 
+- **Upstream v2.19.0 (`186ebaf`) is merged** (sixteen commits of 2026-10-05; the equality baseline of the proofs moved to it, the next release of this repository is `v219.0.0`). It brings:
+  a **WiFi policy that never drops the credentials over an access point that is merely absent** (`wifi_retry_policy.c`, host-tested: only an AP that keeps *rejecting* the credentials ends in provisioning; a router that
+  is still booting after a power cut, out of range or silent leaves the credentials alone and an interactive boot keeps reconnecting on its own - exactly the incident the `wifi-resilience` option was built
+  for); the SD card rail is discharged on every boot and an unanswered SD init is retried (`board_hal`, `sdcard`); a **device password** documented (Authentication in [docs/API.md](docs/API.md)); the Web UI's
+  config export carries `system_info` and `photoframe-process` can take the device settings and the panel size from an exported config file (`--device-config`); a retry of the web app's `npm install`; and
+  five of the six fixes of our `fixes` option that we had sent upstream as a pull request (upstream took them, with changes of its own, and closed the request): the RTC no longer forces standard time
+  during daylight saving, a config PATCH applies every valid field and reports the rejected ones, the settings POSTs are capped at 8 KiB and read completely, the enabled-album list has a lock, the OTA update
+  check reads a chunked answer, follows only `https://` downloads and never races a running check; and upstream's own JPEG fix (a header walk that follows the decoder's rule, 64-bit size) replaced ours.
+  Where upstream now has the same code, the `fixes` copy is gone (`main/jpeg_size_check.h` and its test, the guarded variants in `utils.c`, `ota_manager.c`, `album_manager.c`, `http_server.c`, the RTC drivers): with
+  every option off the code is upstream's, as before (184 files, 0 differences). What stays under the options: everything that goes beyond upstream (the OTA channel and `http_fetch`-based release read, the
+  recursive album delete, the DNS fallback, the Telegram, Agenda and the other features). The `wifi-resilience` option keeps its own parts (TX power cap on battery, a lower reconnect budget for Telegram power
+  save, MIC-failure and 802.1X rejections counted as rejections) on top of upstream's policy; its *extended retry* and *reprovision when attempts run out* settings no longer have a case to act on - a failure that is
+  not a rejection never reaches them any more - and stay as they are for now (see the open items in [docs/MAINTAINING.md](docs/MAINTAINING.md)). Conflicts: 17 files, all inside the guards of the options or in
+  files this repository had edited by hand (`process-cli/cli.js` - `--device-config` next to `--board`/`--resolution`, `package.json`).
 - Upstream `f5e3ec9` is merged (six commits of 2026-09-29, all about crash reports): **core dumps are captured in every build**, in the 56 KiB that were free below `ota_0` (the partition table
   generator puts the `coredump` partition there on every board layout); the last crash is kept as one record in the settings memory (reason, task, program counter, backtrace, firmware version, the ELF's
   SHA-256), reported by `GET /api/system-info` as `last_crash`, shown in the Maintenance tab (**Last crash**, with a copy button) and cleared by `POST /api/crash/clear`; the CI attaches each board's
@@ -102,7 +116,7 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   picture in 32 bit from the sides in the file's header: 40000 x 35792 pixels is 4 295 040 000 bytes, which wraps to 72 704, and the decoder's own test that its buffer is
   large enough uses the same wrapped number, so a buffer of 72 KB would be written with a picture of 4.3 GB (found in a code audit of the recipe page, whose pictures come from
   the internet; the photo pipeline decodes uploads and downloaded images the same way). `decode_jpg_buffer` now works the size out again in 64 bit
-  (`main/jpeg_size_check.h`, 4 host tests) and refuses a header that cannot be read or does not add up, before anything is allocated; it also looks at the result of
+  (`main/jpeg_size_check.h`, 4 host tests - replaced by upstream's own, more complete fix in the v2.19.0 merge, see above) and refuses a header that cannot be read or does not add up, before anything is allocated; it also looks at the result of
   `esp_jpeg_get_image_info()`, which it used to ignore (a progressive JPEG left the size uninitialised). Photos of any real size are unaffected (a 108-megapixel photo is
   324 MB, no wrap).
 - **Every TLS connection of a build with `agenda` leaked 200-400 bytes of internal heap** (found with a heap trace while testing the recipe page of the extended edition, which fetches three times a drawing). The `agenda` option switches on the cross-signed
