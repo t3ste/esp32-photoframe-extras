@@ -518,6 +518,7 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
 | NVS write fails silently | Key longer than 15 characters | Shorten (CI rejects it) |
 | Time off by an hour after DST | `mktime()` with `tm_isdst` unset | Set `tm_isdst = -1` |
 | Wrong weather location after config import | An old geocoded latitude/longitude counts as a manual one and wins over the name | Set `weather_lat`, `weather_lon` and the name together (DEMO_PACKAGE.md) |
+| A series in the Agenda is an hour off for half the year (or a host test cannot show a time-zone bug at all) | Every host test runs with `TZ=UTC0`, where "n x 86400 s" and "the same wall-clock time on the n-th day" are the same thing; the expander used 86400 s steps over `mktime()` local time | Test time arithmetic in a zone with daylight saving time: `CalendarIcsLocalTime` in `test_calendar_ics.cpp` sets the POSIX rule `CET-1CEST,M3.5.0,M10.5.0/3` (no tzdata needed). Step by calendar day (`local_time_on_day()`), not by seconds, and build test windows from calendar days too (`mktime()` normalizes the day of the month) |
 | Test device gone silent | Deep sleep, WiFi, SD card | One check, then ask the maintainer (section 13) |
 
 ## 16. Open items
@@ -588,6 +589,18 @@ fix; the rest are standing notes, not work items.
   the config getters/setters, `cold_boot_wifi_retry()` and `wifi_manager_last_failure_is_credential_reject()`) are gone; a short note in `main/config.h` names the three retired NVS entries
   (`wifi_ext_retry`, `wifi_cb_fail`, `wifi_reprov_en`), which an older device may still hold and nothing reads. A config export of an older build that carries the two fields is still accepted (unknown
   fields are ignored). The option itself stays: TX cap, performance mode, the Telegram power-save budget and MIC/802.1X-as-rejection are not upstream's.
+- **Calendar recurrence engine (decided 2026-10-06, steps 0-1 done 2026-10-09).** The Agenda's own reader (`main/calendar_ics.c`) takes DAILY/WEEKLY rules only ([CALENDAR_RRULE_SUPPORT.md](CALENDAR_RRULE_SUPPORT.md)). A read-only review of three candidates (uICAL, GoogleCalendarClient, libical;
+  host-measured against a `python-dateutil` reference, 25 rule cases, 10 broken-rule cases, a 2.4 MB feed) chose **libical** (v4.0.6; LGPL-2.1 *or* MPL-2.0 - **MPL-2.0 is the accepted choice**): 24 of 25 valid cases
+  right, daylight saving time and `TZID` right with the feed's own `VTIMEZONE`, about 93 KB of flash (cross-compile estimate, not a device measurement). uICAL was out (fixed UTC offset per zone - a Berlin event is an hour
+  off in winter -, its loader drops `EXDATE`/`RDATE`/`RECURRENCE-ID`, it throws C++ exceptions, walks from `DTSTART` linearly and hangs on `INTERVAL=0`); GoogleCalendarClient is no recurrence engine at all (ESP8266/Arduino,
+  no `singleEvents`, certificate checks off, Google's device flow does not allow the Calendar scope). Done: steps 0-1 (the library-independent fixes: DST on the wall clock, `EXDATE`/`RDATE`/`RECURRENCE-ID`/`STATUS`/`DURATION`,
+  earliest-48 list; tests, fuzzing and a differential run against libical on 97 public fixtures). **Still open** (maintainer decided: go ahead with the option, name `agenda-rrule`, a sub-option of `agenda`; target limits were proposed - flash growth at most 150 KB, a
+  2 MB / 30-day window in about 2 s on the ESP32-S3 (today's reader needs 4.5 s, so this needs checking), the internal heap left for a following TLS connection, the M5Paper must run - and the maintainer answered yes; the numbers are fixed after the proof of concept): (2) a proof of concept on a device - libical must be used **one VEVENT at a time** (parsing the whole feed takes about ten times its size in RAM: 25 MB for 2.4 MB),
+  measured against today's 4.5 s for a 2 MB / 4000-event feed on the ESP32-S3; (3) the vendored component (generated sources checked in, a hand-written `config.h`, `UPSTREAM.md` with tag/commit/SHA256, MPL-2.0 text and notice under
+  `docs/third_party/`, no Kconfig symbol so the all-off proofs stay); (4) an adapter that keeps the scanner for unfolding, window prefilter and `EXDATE` handling, hands only repeating events to libical, drops events libical reports
+  errors for (`icalcomponent_count_errors()`, so fail-closed stays) and bounds iterations and results itself (`foreach_recurrence` cannot be stopped from its callback; `FREQ` below DAILY is refused; `RDATE` with `TZID` must be
+  resolved by hand); (5)-(7) a temporary parallel comparison of old and new expansion in the log, rollout through an `extras` pre-release, docs and support matrix, removal of the old expander only after an acceptance cycle.
+  Whether the option lives in the base or the extended line is not decided. Public feeds, generated feeds or invented ones are the test data (the maintainer has no feeds that may be used).
 
 ### Standing notes (not action items)
 
