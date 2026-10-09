@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -386,6 +387,36 @@ TEST(CalendarRrule, ARuleTooLongForTheBufferIsRefused)
     std::vector<std::string> got;
     EXPECT_EQ(expand(r, wall(2026, 10, 1, 9), false, wall(2026, 10, 1), wall(2026, 11, 1), &got),
               -1);
+}
+
+// The rule text is not NUL-terminated and the parts are cut off anywhere: nothing may be read past
+// `len` (an exact-size heap copy lets AddressSanitizer see it; a plain run only checks the result).
+TEST(CalendarRrule, TheRuleTextIsNeverReadPastItsLength)
+{
+    const char *cuts[] = {"WKST=M",
+                          "WKST=",
+                          "FREQ=WEEKLY;WKST=S",
+                          "FREQ=WEEKLY;BYDAY=M",
+                          "FREQ=WEEKLY;BYDAY=1",
+                          "FREQ=WEEKLY;BYDAY=",
+                          "FREQ=DAILY;INTERVAL=",
+                          "FREQ=DAILY;COUNT=",
+                          "FREQ=DAILY;UNTIL=2026",
+                          "FREQ=MONTHLY;BYMONTHDAY=-",
+                          "FREQ=MONTHLY;BYSETPOS=",
+                          "FREQ=",
+                          "FREQ",
+                          ";",
+                          "="};
+    rrule_wall_t out[8];
+    rrule_wall_t a = wall(2026, 10, 1, 9), f = wall(2026, 10, 1), t = wall(2026, 11, 1);
+    for (const char *c : cuts) {
+        size_t n = strlen(c);
+        char *exact = (char *) malloc(n);
+        memcpy(exact, c, n);
+        EXPECT_EQ(calendar_rrule_expand(exact, n, &a, false, &f, &t, out, 8), -1) << c;
+        free(exact);
+    }
 }
 
 TEST(CalendarRrule, NullArgumentsAndABadDtstartAreRefused)

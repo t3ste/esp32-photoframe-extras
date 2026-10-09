@@ -249,10 +249,12 @@ static bool sanitize(const char *rule, size_t len, bool all_day, rule_text_t *ou
             ok = !(seen & bit) && text_add(out, "FREQ", val, val_len);
         } else if (key_is(key, key_len, "INTERVAL")) {
             bit = K_INTERVAL;
-            long x;
+            long x = 0;
             ok = !(seen & bit) && read_int(val, val_len, &x, NULL) && x >= 1 &&
                  x <= RRULE_INTERVAL_MAX && text_add(out, "INTERVAL", val, val_len);
-            interval = x;
+            if (ok) {
+                interval = x;
+            }
         } else if (key_is(key, key_len, "COUNT")) {
             bit = K_COUNT;
             long x;
@@ -264,7 +266,9 @@ static bool sanitize(const char *rule, size_t len, bool all_day, rule_text_t *ou
         } else if (key_is(key, key_len, "WKST")) {
             bit = K_WKST;
             ok = !(seen & bit) && val_len == 2 && is_day_code(val) && text_add(out, "WKST", val, 2);
-            wkst = day_index(val);
+            if (ok) {
+                wkst = day_index(val);  // reads two bytes: only after the length was checked
+            }
         } else if (key_is(key, key_len, "BYDAY")) {
             bit = K_BYDAY;
             ok = !(seen & bit) && check_byday(val, val_len, &ordinal) &&
