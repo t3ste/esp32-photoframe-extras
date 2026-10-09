@@ -7,15 +7,16 @@ credentials) apply here unchanged. This page only adds what is specific to the e
 
 ## 1. What it is and why it exists
 
-The base project (`main`) is upstream's firmware plus 16 opt-in features. The extended line adds **14 more** opt-in features
-(`webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `upload-dedup`, `glyphs`, `info-screens`, `chore-wheel`,
-`weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`; bundle name **`extras`**) and one PC helper
+The base project (`main`) is upstream's firmware plus 16 opt-in features. The extended line adds **19 more** opt-in features
+(`webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `agenda-rrule`, `upload-dedup`, `glyphs`, `info-screens`,
+`chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`, `route-time`, `artworks`,
+`schedule-pages`, `recipes`; bundle name **`extras`**) and one PC helper
 (`scripts/fetch_art.py`). Decision of the maintainer (2026-09-30): these are **not merged into `main`** - the audience and target
 hardware are small, the change is large, and only one board (Waveshare PhotoPainter 7.3") exists for testing. The line is published
 next to `main` instead and kept in step with it.
 
 It keeps every rule of the base: one build option per idea, no option = upstream byte-for-byte (proved by `alloff_source.py` and
-`alloff_web.py`), releases are full builds. The 30 registry features and the bundle are checked by `scripts/test_features.py`.
+`alloff_web.py`), releases are full builds. The 35 registry features and the bundle are checked by `scripts/test_features.py`.
 
 ## 2. Where everything lives
 

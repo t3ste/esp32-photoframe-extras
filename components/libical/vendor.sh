@@ -40,6 +40,11 @@ GEN_HDRS="icalderivedparameter icalderivedproperty icalderivedvalue icaltime_p"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
+# the formatter check of this repository must not touch the vendored sources
+cat > "$OUT/.clang-format" <<'EOF'
+# The vendored library stays byte for byte as upstream has it: the formatter (make format-check) leaves it alone.
+DisableFormat: true
+EOF
 for f in $SRCS; do cp "$S/$f.c" "$OUT/"; done
 for f in $HDRS; do cp "$S/$f.h" "$OUT/"; done
 for f in $GEN_SRCS; do cp "$G/$f.c" "$OUT/"; done

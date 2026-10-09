@@ -38,6 +38,7 @@ python build.py --board waveshare_photopainter_73 --with extras
 | `webcal` | `webcal://` subscription links for the Agenda calendars (fetched over https) | `agenda` | |
 | `source-auth` | A login (`https://user:password@host/...`) in the Agenda calendar and ToDo addresses, answered with HTTP Basic or Digest | `agenda` | [SOURCE_AUTH.md](SOURCE_AUTH.md) |
 | `caldav` | CalDAV calendars (`caldavs://user:password@host/...`): the server sends only the coming days and expands repeating events | `source-auth` | [CALDAV.md](CALDAV.md) |
+| `agenda-rrule` | All of RFC 5545's recurrence rules in the Agenda calendars - monthly and yearly repeats, "the second Monday", "the last Friday", BYDAY lists, BYSETPOS - through libical; adds about 96 KB of flash | `agenda` | [CALENDAR_RRULE_ENGINE.md](CALENDAR_RRULE_ENGINE.md) |
 | `caldav-todo` | CalDAV task lists (`caldavs://...` as the ToDo address): the open to-dos with priority and due date in the ToDo column | `caldav` | [CALDAV_TODO.md](CALDAV_TODO.md) |
 | `glyphs` | Real glyphs for ä ö ü Ä Ö Ü ß ° € in the text the frame draws (overlays, Agenda, Telegram captions) instead of ae/oe/ue/ss | - | [GLYPHS.md](GLYPHS.md) |
 | `info-screens` | Full-screen information pages that take turns with the Agenda on its schedule (the base for the pages below) | `agenda`, `glyphs` | [INFO_SCREENS.md](INFO_SCREENS.md) |
@@ -62,7 +63,7 @@ for the name, the build only ever sees its members - so a build with `extras` is
 
 | Bundle | Members |
 | --- | --- |
-| `extras` | everything added after the first fork release: `webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `upload-dedup`, `glyphs`, `info-screens`, `chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`, `route-time`, `artworks`, `schedule-pages`, `recipes` |
+| `extras` | everything added after the first fork release: `webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `agenda-rrule`, `upload-dedup`, `glyphs`, `info-screens`, `chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`, `route-time`, `artworks`, `schedule-pages`, `recipes` |
 
 What the members need is added as usual (`extras` pulls in `agenda` and `overlays`). `--without fuel-prices` takes a member out again, and
 `--without extras` takes all of them out of `--all-features`. A member that the board cannot build is skipped with a notice instead of stopping the

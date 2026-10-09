@@ -385,6 +385,10 @@ typedef struct {
 #endif
     int n_cand;
     int dropped;  // events that did not fit into ICS_MAX_EVENTS
+#ifdef ICS_RRULE_COMPARE
+    int cmp_same,
+        cmp_diff;  // series whose instances the engine and the simple expander agree / differ on
+#endif
 } ics_ctx_t;
 
 typedef struct {
@@ -976,6 +980,118 @@ static bool gather_with_engine(ics_ctx_t *ctx, const ics_vevent_state_t *st, con
 }
 #endif  // FEATURE_AGENDA_RRULE
 
+// The instances of a rule that this parser's own expander understands (DAILY/WEEKLY), into
+// ctx->cand.
+static void gather_simple(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ics_rrule_t *rule,
+                          const ics_series_t *series, time_t window_start, time_t window_end)
+{
+    const ics_series_t s = *series;
+    const time_t start = s.start;
+    // First period to look at. An instance that started before the window can still reach into
+    // it (an in-progress multi-day event), so back up by as many periods as the event is long.
+    int64_t k0, back;
+    if (s.utc) {
+        int64_t period_secs = s.period_days * 86400;
+        int64_t diff = (int64_t) window_start - (int64_t) start;
+        k0 = diff > 0 ? diff / period_secs : 0;
+        back = (int64_t) s.duration / period_secs + 2;
+    } else {
+        int64_t diff = local_day_of(window_start) - s.base_day;
+        k0 = diff > 0 ? diff / s.period_days : 0;
+        int64_t span_days = s.all_day ? s.dur_days : (int64_t) s.duration / 86400 + 1;
+        back = span_days / s.period_days + 2;
+    }
+    k0 = k0 > back ? k0 - back : 0;
+
+    // Hard safety cap, sized to the window (a flat number once truncated a 30-day expansion):
+    // the periods the window spans plus the backed-up ones, never more than 400 beyond those.
+    int64_t window_days = ((int64_t) window_end - (int64_t) window_start) / 86400 + 2;
+    if (window_days < 0) {
+        window_days = 0;
+    }
+    int64_t max_iterations = window_days / s.period_days + back + 3;
+    if (max_iterations > back + 400) {
+        max_iterations = back + 400;
+    }
+
+    for (int64_t k = k0; k < k0 + max_iterations; k++) {
+        if (rule->has_count && k >= rule->count) {
+            break;  // COUNT counts the instances the rule makes, excluded ones included
+        }
+        time_t occ_start = series_start(&s, k);
+        if (occ_start >= window_end) {
+            break;  // start only increases with k - nothing further can matter
+        }
+        if (rule->has_until && occ_start > rule->until) {
+            break;  // UNTIL is inclusive (RFC 5545) - past it, nothing further can matter
+                    // either
+        }
+        if (!time_overlaps_window(occ_start, series_end(&s, occ_start), window_start, window_end)) {
+            continue;
+        }
+        if (!instance_hidden(ctx, st, occ_start, s.all_day)) {
+            add_candidate(ctx, occ_start);
+        }
+    }
+}
+
+#if FEATURE_AGENDA_RRULE && defined(ICS_RRULE_COMPARE)
+// A debugging build (-DICS_RRULE_COMPARE): the instances libical's iterator made (in ctx->cand)
+// against what this parser's own expander makes for a rule that one understands. Different ones go
+// to the log (instants only, never an event's text); the numbers at the end of calendar_ics_parse()
+// say how many series agreed.
+static void compare_with_simple(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ics_series_t *s,
+                                time_t window_start, time_t window_end)
+{
+    if (!st->rrule.supported) {
+        return;  // not a rule the simple expander takes: nothing to compare with
+    }
+    if (st->rrule.byday >= 0) {
+        struct tm t;
+        time_t at = s->start;
+        if (s->utc) {
+            gmtime_r(&at, &t);
+        } else {
+            localtime_r(&at, &t);
+        }
+        if (!st->rrule.weekly || t.tm_wday != st->rrule.byday) {
+            return;
+        }
+    }
+    time_t engine[ICS_MAX_CANDIDATES];
+    int n_engine = ctx->n_cand;
+    memcpy(engine, ctx->cand, sizeof(time_t) * (size_t) n_engine);
+    qsort(engine, (size_t) n_engine, sizeof(time_t), compare_times);
+    ctx->n_cand = 0;
+    ics_series_t simple =
+        *s;  // the series of the engine's call has no period (it has no use for one)
+    simple.period_days = (int64_t) (st->rrule.weekly ? 7 : 1) * st->rrule.interval;
+    gather_simple(ctx, st, &st->rrule, &simple, window_start, window_end);
+    qsort(ctx->cand, (size_t) ctx->n_cand, sizeof(time_t), compare_times);
+    bool same = ctx->n_cand == n_engine;
+    int first_diff = -1;
+    for (int i = 0; same && i < n_engine; i++) {
+        if (ctx->cand[i] != engine[i]) {
+            same = false;
+            first_diff = i;
+        }
+    }
+    if (same) {
+        ctx->cmp_same++;
+    } else {
+        ctx->cmp_diff++;
+        ESP_LOGW(TAG,
+                 "rrule compare: the engine made %d instance(s), the simple expander %d (first "
+                 "difference: #%d, %lld / %lld)",
+                 n_engine, ctx->n_cand, first_diff,
+                 first_diff >= 0 ? (long long) engine[first_diff] : -1LL,
+                 first_diff >= 0 ? (long long) ctx->cand[first_diff] : -1LL);
+    }
+    memcpy(ctx->cand, engine, sizeof(time_t) * (size_t) n_engine);
+    ctx->n_cand = n_engine;
+}
+#endif
+
 // Expands a series (an RRULE this parser understands, or a single event that has EXDATE/RDATE) into
 // whichever instances overlap [window_start, window_end), minus the excluded and replaced ones,
 // plus the RDATEs.
@@ -1019,56 +1135,13 @@ static void expand_series(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ic
         if (!gather_with_engine(ctx, st, &s, window_start, window_end)) {
             return;  // a rule that is not taken: the event is left out
         }
+#ifdef ICS_RRULE_COMPARE
+        compare_with_simple(ctx, st, &s, window_start, window_end);
+#endif
     } else
 #endif
     {
-        // First period to look at. An instance that started before the window can still reach into
-        // it (an in-progress multi-day event), so back up by as many periods as the event is long.
-        int64_t k0, back;
-        if (s.utc) {
-            int64_t period_secs = s.period_days * 86400;
-            int64_t diff = (int64_t) window_start - (int64_t) start;
-            k0 = diff > 0 ? diff / period_secs : 0;
-            back = (int64_t) s.duration / period_secs + 2;
-        } else {
-            int64_t diff = local_day_of(window_start) - s.base_day;
-            k0 = diff > 0 ? diff / s.period_days : 0;
-            int64_t span_days = s.all_day ? s.dur_days : (int64_t) s.duration / 86400 + 1;
-            back = span_days / s.period_days + 2;
-        }
-        k0 = k0 > back ? k0 - back : 0;
-
-        // Hard safety cap, sized to the window (a flat number once truncated a 30-day expansion):
-        // the periods the window spans plus the backed-up ones, never more than 400 beyond those.
-        int64_t window_days = ((int64_t) window_end - (int64_t) window_start) / 86400 + 2;
-        if (window_days < 0) {
-            window_days = 0;
-        }
-        int64_t max_iterations = window_days / s.period_days + back + 3;
-        if (max_iterations > back + 400) {
-            max_iterations = back + 400;
-        }
-
-        for (int64_t k = k0; k < k0 + max_iterations; k++) {
-            if (rule->has_count && k >= rule->count) {
-                break;  // COUNT counts the instances the rule makes, excluded ones included
-            }
-            time_t occ_start = series_start(&s, k);
-            if (occ_start >= window_end) {
-                break;  // start only increases with k - nothing further can matter
-            }
-            if (rule->has_until && occ_start > rule->until) {
-                break;  // UNTIL is inclusive (RFC 5545) - past it, nothing further can matter
-                        // either
-            }
-            if (!time_overlaps_window(occ_start, series_end(&s, occ_start), window_start,
-                                      window_end)) {
-                continue;
-            }
-            if (!instance_hidden(ctx, st, occ_start, s.all_day)) {
-                add_candidate(ctx, occ_start);
-            }
-        }
+        gather_simple(ctx, st, rule, &s, window_start, window_end);
     }
 
     for (int i = 0; i < ctx->n_rdates; i++) {
@@ -1385,6 +1458,11 @@ esp_err_t calendar_ics_parse(char *body, size_t body_len, time_t window_start, t
         ESP_LOGW(TAG, "%d event(s) beyond the first %d of the window were left out", ctx->dropped,
                  ICS_MAX_EVENTS);
     }
+#ifdef ICS_RRULE_COMPARE
+    if (ctx->cmp_same || ctx->cmp_diff) {
+        ESP_LOGW(TAG, "rrule compare: %d series agree, %d differ", ctx->cmp_same, ctx->cmp_diff);
+    }
+#endif
     free(ctx->overrides);
     free(ctx);
 

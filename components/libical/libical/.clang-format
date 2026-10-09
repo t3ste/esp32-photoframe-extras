@@ -1,0 +1,2 @@
+# The vendored library stays byte for byte as upstream has it: the formatter (make format-check) leaves it alone.
+DisableFormat: true

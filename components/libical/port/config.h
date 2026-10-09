@@ -1,9 +1,10 @@
 /*
  * Configuration of the vendored libical for this firmware (and for the host tests, glibc).
  *
- * It replaces the config.h that libical's own CMake build generates for a given system: only what the
- * sources in ../libical actually use is defined, for a single-threaded, little-endian, 32-bit target with
- * a 64-bit time_t (ESP-IDF's newlib) and no file system or time zone database access. Not part of upstream.
+ * It replaces the config.h that libical's own CMake build generates for a given system: only what
+ * the sources in ../libical actually use is defined, for a single-threaded, little-endian, 32-bit
+ * target with a 64-bit time_t (ESP-IDF's newlib) and no file system or time zone database access.
+ * Not part of upstream.
  *
  * SPDX-License-Identifier: LGPL-2.1-only OR MPL-2.0 (the same as libical; this file is ours)
  */
@@ -39,9 +40,10 @@ _Static_assert(sizeof(time_t) == SIZEOF_TIME_T, "libical port: time_t must be 64
 #define icalgmtime_r(timer, buf) gmtime_r(timer, buf)
 #define icallocaltime_r(timer, buf) localtime_r(timer, buf)
 
-/* Single task, no pthreads: the global variables of libical stay plain globals. Whoever calls into libical
- * must not do so from two tasks at once (calendar_rrule.c serializes with a mutex). The sources compare
- * ICAL_SYNC_MODE with these values; left undefined, both sides read as 0 and "pthread mode" is chosen. */
+/* Single task, no pthreads: the global variables of libical stay plain globals. Whoever calls into
+ * libical must not do so from two tasks at once (calendar_rrule.c serializes with a mutex). The
+ * sources compare ICAL_SYNC_MODE with these values; left undefined, both sides read as 0 and
+ * "pthread mode" is chosen. */
 #define ICAL_SYNC_MODE_NONE 1
 #define ICAL_SYNC_MODE_PTHREAD 2
 #define ICAL_SYNC_MODE_THREADLOCAL 3
@@ -52,8 +54,9 @@ _Static_assert(sizeof(time_t) == SIZEOF_TIME_T, "libical port: time_t must be 64
 #define ICALMEMORY_DEFAULT_REALLOC realloc
 #define ICALMEMORY_DEFAULT_FREE free
 
-/* An internal invariant of libical that does not hold is a bug, not an input error: stop. (calendar_rrule.c
- * only hands libical rules it has checked itself, and the host fuzzer exercises exactly that.) */
+/* An internal invariant of libical that does not hold is a bug, not an input error: stop.
+ * (calendar_rrule.c only hands libical rules it has checked itself, and the host fuzzer exercises
+ * exactly that.) */
 #define icalassert(...) assert(__VA_ARGS__)
 
 #ifndef MAXPATHLEN
