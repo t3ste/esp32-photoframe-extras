@@ -525,6 +525,882 @@ TEST_F(CalendarIcs, RruleWithUnsupportedFreqSkippedEntirely)
     EXPECT_EQ(out.count, 0);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Series in a zone with daylight saving time (the device's own: a bare or TZID-qualified time is
+// read as local time, see calendar_ics.h). Every other test of this file runs with TZ=UTC0, where
+// "n * 86400 s" and "the same wall-clock time on the n-th day" are the same thing - so none of
+// them could show a series drifting an hour when the clocks change. These run in CET/CEST (the
+// rules of Europe/Berlin as a POSIX string, so no tzdata is needed): spring forward on
+// 2026-03-29 02:00, fall back on 2026-10-25 03:00.
+// ---------------------------------------------------------------------------------------------
+class CalendarIcsLocalTime : public CalendarIcs
+{
+   protected:
+    void SetUp() override
+    {
+#if defined(_WIN32)
+        GTEST_SKIP() << "needs POSIX TZ rules";
+#else
+        setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+        tzset();
+#endif
+    }
+};
+
+// A real UTC instant (make_utc() above goes through mktime(), which is local time).
+static time_t at_utc(int year, int mon, int day, int hour, int minute, int sec)
+{
+    struct tm tm {
+    };
+    tm.tm_year = year - 1900;
+    tm.tm_mon = mon - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = hour;
+    tm.tm_min = minute;
+    tm.tm_sec = sec;
+    return timegm(&tm);
+}
+
+// Local wall-clock time of an instant as hour * 100 + minute (9:30 -> 930).
+static int local_hhmm(time_t t)
+{
+    struct tm tm;
+    localtime_r(&t, &tm);
+    return tm.tm_hour * 100 + tm.tm_min;
+}
+
+static int local_mday(time_t t)
+{
+    struct tm tm;
+    localtime_r(&t, &tm);
+    return tm.tm_mday;
+}
+
+TEST_F(CalendarIcsLocalTime, DailySeriesStaysAtItsWallClockTimeAcrossSpringForward)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART;TZID=Europe/Berlin:20260325T090000\n"
+        "DTEND;TZID=Europe/Berlin:20260325T100000\n"
+        "SUMMARY:Standup\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 3, 26, 0, 0, 0), make_utc(2026, 4, 2, 0, 0, 0));
+    ASSERT_EQ(out.count, 7);
+    for (int i = 0; i < out.count; i++) {
+        EXPECT_EQ(local_hhmm(out.events[i].start), 900) << "day " << 26 + i;
+        EXPECT_EQ(out.events[i].end - out.events[i].start, 3600);
+    }
+    // 29 March is the 23-hour day: the instant is one hour closer to the day before
+    EXPECT_EQ(out.events[3].start - out.events[2].start, 23 * 3600);
+}
+
+TEST_F(CalendarIcsLocalTime, DailySeriesStaysAtItsWallClockTimeAcrossFallBack)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20261020T090000\n"
+        "SUMMARY:Standup\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 10, 22, 0, 0, 0), make_utc(2026, 10, 29, 0, 0, 0));
+    ASSERT_EQ(out.count, 7);
+    for (int i = 0; i < out.count; i++) {
+        EXPECT_EQ(local_hhmm(out.events[i].start), 900) << "day " << 22 + i;
+    }
+}
+
+TEST_F(CalendarIcsLocalTime, SeriesBegunYearsEarlierInTheOtherSeasonKeepsItsTime)
+{
+    // Begun in winter 2000, asked for in summer 2026 and in winter 2027: 09:00 both times (a drift
+    // of one hour per switch would show up as 10:00 in summer).
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20000103T090000\n"
+        "SUMMARY:Old habit\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n";
+    ics_event_list_t summer =
+        parse(ics, make_utc(2026, 7, 6, 0, 0, 0), make_utc(2026, 7, 9, 0, 0, 0));
+    ASSERT_EQ(summer.count, 3);
+    for (int i = 0; i < summer.count; i++) {
+        EXPECT_EQ(local_hhmm(summer.events[i].start), 900);
+    }
+    ics_event_list_t winter =
+        parse(ics, make_utc(2027, 1, 11, 0, 0, 0), make_utc(2027, 1, 14, 0, 0, 0));
+    ASSERT_EQ(winter.count, 3);
+    for (int i = 0; i < winter.count; i++) {
+        EXPECT_EQ(local_hhmm(winter.events[i].start), 900);
+    }
+}
+
+TEST_F(CalendarIcsLocalTime, WeeklySeriesKeepsItsTimeAcrossBothSwitches)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20260105T080000\n"
+        "DTEND:20260105T093000\n"
+        "SUMMARY:Monday meeting\n"
+        "RRULE:FREQ=WEEKLY\n"
+        "END:VEVENT\n";
+    // 23 and 30 March (the second is after the switch), 5 April
+    ics_event_list_t spring =
+        parse(ics, make_utc(2026, 3, 23, 0, 0, 0), make_utc(2026, 4, 6, 12, 0, 0));
+    ASSERT_EQ(spring.count, 3);
+    for (int i = 0; i < spring.count; i++) {
+        EXPECT_EQ(local_hhmm(spring.events[i].start), 800);
+        EXPECT_EQ(spring.events[i].end - spring.events[i].start, 90 * 60);
+    }
+    ics_event_list_t autumn =
+        parse(ics, make_utc(2026, 10, 19, 0, 0, 0), make_utc(2026, 11, 3, 0, 0, 0));
+    ASSERT_EQ(autumn.count, 3);  // 19 and 26 October, 2 November
+    for (int i = 0; i < autumn.count; i++) {
+        EXPECT_EQ(local_hhmm(autumn.events[i].start), 800);
+    }
+}
+
+TEST_F(CalendarIcsLocalTime, SeriesInUtcKeepsItsInstantsAndTheLocalTimeMoves)
+{
+    // "07:00Z every day" is the same instant all year (that is what the Z means); on the wall
+    // clock it is 08:00 in winter and 09:00 in summer.
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20260325T070000Z\n"
+        "SUMMARY:Satellite pass\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 3, 26, 0, 0, 0), make_utc(2026, 4, 2, 0, 0, 0));
+    ASSERT_EQ(out.count, 7);
+    for (int i = 0; i < out.count; i++) {
+        EXPECT_EQ(out.events[i].start, at_utc(2026, 3, 26 + i, 7, 0, 0)) << "day " << 26 + i;
+    }
+    EXPECT_EQ(local_hhmm(out.events[0].start), 800);  // 26 March, CET
+    EXPECT_EQ(local_hhmm(out.events[6].start), 900);  // 1 April, CEST
+}
+
+TEST_F(CalendarIcsLocalTime, IntervalCountAndUntilWorkOnTheWallClock)
+{
+    const char *count_ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20260326T090000\n"
+        "SUMMARY:Every other day\n"
+        "RRULE:FREQ=DAILY;INTERVAL=2;COUNT=5\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(count_ics, make_utc(2026, 3, 20, 0, 0, 0), make_utc(2026, 4, 30, 0, 0, 0));
+    ASSERT_EQ(out.count, 5);  // 26, 28, 30 March, 1 and 3 April
+    const int days[] = {26, 28, 30, 1, 3};
+    for (int i = 0; i < 5; i++) {
+        EXPECT_EQ(local_mday(out.events[i].start), days[i]);
+        EXPECT_EQ(local_hhmm(out.events[i].start), 900);
+    }
+
+    // UNTIL is inclusive: 09:00 CEST on 30 March is 07:00Z
+    const char *until_ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20260326T090000\n"
+        "SUMMARY:Until the 30th\n"
+        "RRULE:FREQ=DAILY;UNTIL=20260330T070000Z\n"
+        "END:VEVENT\n";
+    out = parse(until_ics, make_utc(2026, 3, 20, 0, 0, 0), make_utc(2026, 4, 30, 0, 0, 0));
+    EXPECT_EQ(out.count, 5);  // 26 .. 30 March
+}
+
+TEST_F(CalendarIcsLocalTime, AllDaySeriesStartsAtLocalMidnightAndEndsAtTheNextOne)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART;VALUE=DATE:20260327\n"
+        "DTEND;VALUE=DATE:20260328\n"
+        "SUMMARY:Holiday\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 3, 27, 0, 0, 0), make_utc(2026, 4, 1, 0, 0, 0));
+    ASSERT_EQ(out.count, 5);
+    for (int i = 0; i < out.count; i++) {
+        EXPECT_TRUE(out.events[i].all_day);
+        EXPECT_EQ(out.events[i].start, make_utc(2026, 3, 27 + i, 0, 0, 0)) << "day " << 27 + i;
+        EXPECT_EQ(out.events[i].end, make_utc(2026, 3, 28 + i, 0, 0, 0)) << "day " << 27 + i;
+    }
+    EXPECT_EQ(out.events[2].end - out.events[2].start, 23 * 3600);  // 29 March
+}
+
+TEST_F(CalendarIcsLocalTime, AllDayEventWithoutDtendEndsAtTheNextLocalMidnight)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART;VALUE=DATE:20260329\n"
+        "SUMMARY:The short day\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 3, 29, 0, 0, 0), make_utc(2026, 3, 30, 0, 0, 0));
+    ASSERT_EQ(out.count, 1);
+    EXPECT_EQ(out.events[0].end, make_utc(2026, 3, 30, 0, 0, 0));
+}
+
+TEST_F(CalendarIcsLocalTime, MultiDayAllDaySeriesKeepsItsLengthInDaysAcrossTheSwitch)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART;VALUE=DATE:20260327\n"
+        "DTEND;VALUE=DATE:20260330\n"
+        "SUMMARY:Long weekend\n"
+        "RRULE:FREQ=WEEKLY\n"
+        "END:VEVENT\n";
+    // 27-29 March spans the switch; 3-5 April does not
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 3, 27, 0, 0, 0), make_utc(2026, 4, 10, 0, 0, 0));
+    ASSERT_EQ(out.count, 2);
+    EXPECT_EQ(out.events[0].start, make_utc(2026, 3, 27, 0, 0, 0));
+    EXPECT_EQ(out.events[0].end, make_utc(2026, 3, 30, 0, 0, 0));
+    EXPECT_EQ(out.events[1].start, make_utc(2026, 4, 3, 0, 0, 0));
+    EXPECT_EQ(out.events[1].end, make_utc(2026, 4, 6, 0, 0, 0));
+}
+
+TEST_F(CalendarIcsLocalTime, MultiDayAllDayOccurrenceInProgressAfterTheSwitchIsFound)
+{
+    // started on the 28th (before the switch), still going on the 30th, when the window opens
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART;VALUE=DATE:20260328\n"
+        "DTEND;VALUE=DATE:20260402\n"
+        "SUMMARY:Conference\n"
+        "RRULE:FREQ=WEEKLY;COUNT=2\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 3, 31, 0, 0, 0), make_utc(2026, 4, 1, 0, 0, 0));
+    ASSERT_EQ(out.count, 1);
+    EXPECT_EQ(out.events[0].start, make_utc(2026, 3, 28, 0, 0, 0));
+}
+
+TEST_F(CalendarIcsLocalTime, AnHourAndAHalfStaysAnHourAndAHalfOnTheSwitchDay)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20260327T200000\n"
+        "DTEND:20260327T213000\n"
+        "SUMMARY:Evening class\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 3, 28, 0, 0, 0), make_utc(2026, 3, 31, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);
+    for (int i = 0; i < out.count; i++) {
+        EXPECT_EQ(local_hhmm(out.events[i].start), 2000);
+        EXPECT_EQ(out.events[i].end - out.events[i].start, 90 * 60);
+    }
+}
+
+TEST_F(CalendarIcsLocalTime, ATimeThatDoesNotExistOnTheSwitchDayStillGivesOneInstance)
+{
+    // 02:30 does not exist on 29 March (02:00 -> 03:00): one instance that day, on that day.
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20260327T023000\n"
+        "SUMMARY:Night shift handover\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 3, 28, 0, 0, 0), make_utc(2026, 3, 31, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);
+    EXPECT_EQ(local_hhmm(out.events[0].start), 230);
+    EXPECT_EQ(local_mday(out.events[1].start), 29);
+    EXPECT_EQ(local_hhmm(out.events[2].start), 230);
+}
+
+TEST_F(CalendarIcsLocalTime, ATimeThatOccursTwiceOnTheSwitchDayGivesOneInstance)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20261023T023000\n"
+        "SUMMARY:Night shift handover\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 10, 24, 0, 0, 0), make_utc(2026, 10, 27, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);
+    EXPECT_EQ(local_mday(out.events[1].start), 25);
+}
+
+TEST_F(CalendarIcsLocalTime, BydayOfADtstartInUtcIsTheWeekdayInUtc)
+{
+    // 23:30Z on Wednesday 1 April is already Thursday 02 April locally (CEST): the BYDAY=WE of the
+    // rule is about the Wednesday of DTSTART's own zone, so this is a plain weekly series.
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20260401T233000Z\n"
+        "SUMMARY:Late call\n"
+        "RRULE:FREQ=WEEKLY;BYDAY=WE\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 4, 6, 0, 0, 0), make_utc(2026, 4, 16, 0, 0, 0));
+    ASSERT_EQ(out.count, 1);
+    EXPECT_EQ(out.events[0].start, at_utc(2026, 4, 8, 23, 30, 0));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Exceptions of a series: EXDATE, RDATE, RECURRENCE-ID (a moved or called-off instance), STATUS.
+// Before these were read, an excluded instance was still shown, a moved one was shown twice and a
+// cancelled one stayed - all of it wrong, none of it left out.
+// ---------------------------------------------------------------------------------------------
+
+// A weekly Monday series of 2024-01-01 10:00Z (an hour long) with extra lines between the rule and
+// END:VEVENT, for the tests of EXDATE/RDATE.
+static std::string weekly_with(const std::string &extra_lines, const char *rrule = "FREQ=WEEKLY")
+{
+    return std::string(
+               "BEGIN:VEVENT\n"
+               "UID:series-1\n"
+               "DTSTART:20240101T100000Z\n"
+               "DTEND:20240101T110000Z\n"
+               "SUMMARY:Weekly sync\n"
+               "RRULE:") +
+           rrule + "\n" + extra_lines + "END:VEVENT\n";
+}
+
+TEST_F(CalendarIcs, ExdateRemovesTheNamedInstanceOnly)
+{
+    std::string ics = weekly_with("EXDATE:20240108T100000Z\n");
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 29, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);
+    EXPECT_EQ(out.events[0].start, make_utc(2024, 1, 1, 10, 0, 0));
+    EXPECT_EQ(out.events[1].start, make_utc(2024, 1, 15, 10, 0, 0));
+    EXPECT_EQ(out.events[2].start, make_utc(2024, 1, 22, 10, 0, 0));
+}
+
+TEST_F(CalendarIcs, ExdateTakesSeveralLinesAndCommaLists)
+{
+    std::string ics = weekly_with(
+        "EXDATE:20240108T100000Z,20240115T100000Z\n"
+        "EXDATE:20240122T100000Z\n");
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 2, 5, 0, 0, 0));
+    ASSERT_EQ(out.count, 2);  // 1 and 29 January
+    EXPECT_EQ(out.events[0].start, make_utc(2024, 1, 1, 10, 0, 0));
+    EXPECT_EQ(out.events[1].start, make_utc(2024, 1, 29, 10, 0, 0));
+}
+
+TEST_F(CalendarIcs, ExdateInAnotherNotationOfTheSameInstantMatches)
+{
+    // DTSTART in local time (TZ=UTC0 here, so local = UTC), EXDATE in UTC with the zone's own TZID
+    // form
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240101T100000\n"
+        "SUMMARY:Local series\n"
+        "RRULE:FREQ=WEEKLY\n"
+        "EXDATE;TZID=Europe/Berlin:20240108T100000\n"
+        "EXDATE:20240115T100000Z\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 23, 0, 0, 0));
+    ASSERT_EQ(out.count, 2);  // 1 and 22 January
+}
+
+TEST_F(CalendarIcs, ExcludedInstancesStillCountTowardsCount)
+{
+    // COUNT=3 makes the instances of 1, 8 and 15 January; excluding the 8th leaves two, it does not
+    // make the series run on to the 22nd.
+    std::string ics = weekly_with("EXDATE:20240108T100000Z\n", "FREQ=WEEKLY;COUNT=3");
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 3, 1, 0, 0, 0));
+    ASSERT_EQ(out.count, 2);
+    EXPECT_EQ(out.events[1].start, make_utc(2024, 1, 15, 10, 0, 0));
+}
+
+TEST_F(CalendarIcs, ExdateOfAnAllDaySeriesIsADate)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART;VALUE=DATE:20240101\n"
+        "SUMMARY:Every day\n"
+        "RRULE:FREQ=DAILY\n"
+        "EXDATE;VALUE=DATE:20240103\n"
+        "END:VEVENT\n";
+    ics_event_list_t out = parse(ics, make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 6, 0, 0, 0));
+    ASSERT_EQ(out.count, 4);
+    EXPECT_EQ(out.events[0].start, make_utc(2024, 1, 1, 0, 0, 0));
+    EXPECT_EQ(out.events[1].start, make_utc(2024, 1, 2, 0, 0, 0));
+    EXPECT_EQ(out.events[2].start, make_utc(2024, 1, 4, 0, 0, 0));
+    EXPECT_EQ(out.events[3].start, make_utc(2024, 1, 5, 0, 0, 0));
+}
+
+TEST_F(CalendarIcs, ExdateOfATimedSeriesGivenAsADateExcludesThatDay)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240101T100000Z\n"
+        "SUMMARY:Every day\n"
+        "RRULE:FREQ=DAILY\n"
+        "EXDATE;VALUE=DATE:20240103\n"
+        "END:VEVENT\n";
+    ics_event_list_t out = parse(ics, make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 5, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);
+    EXPECT_EQ(out.events[2].start, make_utc(2024, 1, 4, 10, 0, 0));
+}
+
+TEST_F(CalendarIcs, AnExdateLineLongerThanTheLineBufferIsReadInFull)
+{
+    // 40 values on one line: more than 600 characters, a series that is excluded for nearly every
+    // day of the window - and nothing but the right days.
+    std::string list;
+    for (int day = 2; day <= 41; day++) {  // 2 January .. 10 February
+        char item[32];
+        snprintf(item, sizeof(item), "%s2024%02d%02dT100000Z", list.empty() ? "" : ",",
+                 day <= 31 ? 1 : 2, day <= 31 ? day : day - 31);
+        list += item;
+    }
+    ASSERT_GT(list.size(), 600u);
+    const std::string ics =
+        "BEGIN:VEVENT\nDTSTART:20240101T100000Z\nSUMMARY:Nearly never\nRRULE:FREQ=DAILY\nEXDATE:" +
+        list + "\nEND:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 2, 15, 0, 0, 0));
+    ASSERT_EQ(out.count, 5);  // 1 January and 11-14 February
+    EXPECT_EQ(out.events[0].start, make_utc(2024, 1, 1, 10, 0, 0));
+    EXPECT_EQ(out.events[1].start, make_utc(2024, 2, 11, 10, 0, 0));
+    EXPECT_EQ(out.events[4].start, make_utc(2024, 2, 14, 10, 0, 0));
+}
+
+TEST_F(CalendarIcs, AnExdateThatCannotBeReadDropsTheWholeEvent)
+{
+    std::string ics = weekly_with("EXDATE;VALUE=PERIOD:20240108T100000Z/20240108T110000Z\n");
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 29, 0, 0, 0));
+    EXPECT_EQ(out.count, 0);
+    ics = weekly_with("EXDATE:not-a-date\n");
+    out = parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 29, 0, 0, 0));
+    EXPECT_EQ(out.count, 0);
+}
+
+TEST_F(CalendarIcs, ExdateDoesNotMakeAnUnsupportedRuleSupported)
+{
+    std::string ics = weekly_with("EXDATE:20240108T100000Z\n", "FREQ=MONTHLY");
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 3, 1, 0, 0, 0));
+    EXPECT_EQ(out.count, 0);
+}
+
+TEST_F(CalendarIcs, RdateAddsAnInstanceWithTheLengthOfTheSeries)
+{
+    std::string ics = weekly_with("RDATE:20240110T150000Z\n");
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 15, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);  // 1 January, the RDATE of the 10th, 8 January - sorted
+    EXPECT_EQ(out.events[0].start, make_utc(2024, 1, 1, 10, 0, 0));
+    EXPECT_EQ(out.events[1].start, make_utc(2024, 1, 8, 10, 0, 0));
+    EXPECT_EQ(out.events[2].start, make_utc(2024, 1, 10, 15, 0, 0));
+    EXPECT_EQ(out.events[2].end, make_utc(2024, 1, 10, 16, 0, 0));
+}
+
+TEST_F(CalendarIcs, AnRdateThatTheRuleMakesAnywayIsOneInstance)
+{
+    std::string ics = weekly_with("RDATE:20240108T100000Z\n");
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 16, 0, 0, 0));
+    EXPECT_EQ(out.count, 3);
+}
+
+TEST_F(CalendarIcs, RdateOnAnEventWithoutARule)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240101T100000Z\n"
+        "DTEND:20240101T120000Z\n"
+        "SUMMARY:Workshop\n"
+        "RDATE:20240103T100000Z,20240105T100000Z\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 10, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);
+    EXPECT_EQ(out.events[1].start, make_utc(2024, 1, 3, 10, 0, 0));
+    EXPECT_EQ(out.events[1].end, make_utc(2024, 1, 3, 12, 0, 0));
+}
+
+TEST_F(CalendarIcs, ExdateAlsoRemovesAnRdateAndASingleEventsOwnDate)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240101T100000Z\n"
+        "SUMMARY:Called off\n"
+        "RDATE:20240103T100000Z\n"
+        "EXDATE:20240103T100000Z\n"
+        "EXDATE:20240101T100000Z\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 10, 0, 0, 0));
+    EXPECT_EQ(out.count, 0);
+}
+
+TEST_F(CalendarIcs, AnRdatePeriodDropsTheWholeEvent)
+{
+    std::string ics = weekly_with("RDATE;VALUE=PERIOD:20240110T150000Z/PT2H\n");
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 15, 0, 0, 0));
+    EXPECT_EQ(out.count, 0);
+}
+
+TEST_F(CalendarIcsLocalTime, ExdateInUtcMatchesALocalSeriesAcrossTheSwitch)
+{
+    // Monday 30 March 09:00 CEST and 6 April: the EXDATE names the instant in UTC (07:00Z)
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART;TZID=Europe/Berlin:20260105T090000\n"
+        "SUMMARY:Monday\n"
+        "RRULE:FREQ=WEEKLY\n"
+        "EXDATE:20260330T070000Z\n"
+        "EXDATE;TZID=Europe/Berlin:20260406T090000\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 3, 23, 0, 0, 0), make_utc(2026, 4, 14, 0, 0, 0));
+    ASSERT_EQ(out.count, 2);  // 23 March and 13 April
+    EXPECT_EQ(local_mday(out.events[0].start), 23);
+    EXPECT_EQ(local_mday(out.events[1].start), 13);
+}
+
+// ---- RECURRENCE-ID ---------------------------------------------------------------------------
+
+static const char *kSeriesWithMovedAndCancelled =
+    "BEGIN:VEVENT\n"
+    "UID:series-1\n"
+    "DTSTART:20240101T100000Z\n"
+    "DTEND:20240101T110000Z\n"
+    "SUMMARY:Weekly sync\n"
+    "RRULE:FREQ=WEEKLY\n"
+    "END:VEVENT\n"
+    "BEGIN:VEVENT\n"
+    "UID:series-1\n"
+    "RECURRENCE-ID:20240108T100000Z\n"
+    "DTSTART:20240109T140000Z\n"
+    "DTEND:20240109T150000Z\n"
+    "SUMMARY:Weekly sync (moved)\n"
+    "END:VEVENT\n"
+    "BEGIN:VEVENT\n"
+    "UID:series-1\n"
+    "RECURRENCE-ID:20240115T100000Z\n"
+    "DTSTART:20240115T100000Z\n"
+    "SUMMARY:Weekly sync\n"
+    "STATUS:CANCELLED\n"
+    "END:VEVENT\n";
+
+TEST_F(CalendarIcs, AMovedInstanceReplacesTheOriginalAndACancelledOneIsGone)
+{
+    ics_event_list_t out = parse(kSeriesWithMovedAndCancelled, make_utc(2024, 1, 1, 0, 0, 0),
+                                 make_utc(2024, 1, 23, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);
+    EXPECT_EQ(out.events[0].start, make_utc(2024, 1, 1, 10, 0, 0));
+    EXPECT_STREQ(out.events[0].summary, "Weekly sync");
+    EXPECT_EQ(out.events[1].start, make_utc(2024, 1, 9, 14, 0, 0));
+    EXPECT_STREQ(out.events[1].summary, "Weekly sync (moved)");
+    EXPECT_EQ(out.events[2].start, make_utc(2024, 1, 22, 10, 0, 0));
+}
+
+TEST_F(CalendarIcs, TheExceptionMayComeBeforeTheSeriesInTheFeed)
+{
+    // the same three events, the series last
+    std::string text = kSeriesWithMovedAndCancelled;
+    size_t master_end = text.find("BEGIN:VEVENT", 5);
+    std::string reordered = text.substr(master_end) + text.substr(0, master_end);
+    ics_event_list_t out =
+        parse(reordered.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 23, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);
+    EXPECT_STREQ(out.events[1].summary, "Weekly sync (moved)");
+}
+
+TEST_F(CalendarIcs, AnExceptionOfAnotherUidLeavesTheSeriesAlone)
+{
+    std::string text = kSeriesWithMovedAndCancelled;
+    // rename the UID of the two exceptions (not of the series, which is the first)
+    size_t first = text.find("UID:series-1");
+    size_t pos = text.find("UID:series-1", first + 1);
+    while (pos != std::string::npos) {
+        text.replace(pos, 12, "UID:other-99");
+        pos = text.find("UID:series-1", pos + 1);
+    }
+    ics_event_list_t out =
+        parse(text.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 23, 0, 0, 0));
+    // series: 1, 8, 15, 22 January; the exceptions are events of their own now: 9 January (moved)
+    // and the called-off one is left out
+    ASSERT_EQ(out.count, 5);
+}
+
+TEST_F(CalendarIcs, ThisAndFutureHidesTheInstancesFromThereOnAndTheChangedEventIsLeftOut)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "UID:series-1\n"
+        "DTSTART:20240101T100000Z\n"
+        "SUMMARY:Weekly sync\n"
+        "RRULE:FREQ=WEEKLY\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "UID:series-1\n"
+        "RECURRENCE-ID;RANGE=THISANDFUTURE:20240115T100000Z\n"
+        "DTSTART:20240115T130000Z\n"
+        "SUMMARY:Weekly sync (new time)\n"
+        "END:VEVENT\n";
+    ics_event_list_t out = parse(ics, make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 2, 5, 0, 0, 0));
+    ASSERT_EQ(out.count, 2);  // 1 and 8 January only - the changed ones are not guessed
+    EXPECT_EQ(out.events[1].start, make_utc(2024, 1, 8, 10, 0, 0));
+}
+
+TEST_F(CalendarIcs, ExceptionsOfAllDayInstancesAreMatchedByDate)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "UID:trip\n"
+        "DTSTART;VALUE=DATE:20240101\n"
+        "SUMMARY:Daily check\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "UID:trip\n"
+        "RECURRENCE-ID;VALUE=DATE:20240103\n"
+        "DTSTART;VALUE=DATE:20240110\n"
+        "SUMMARY:Daily check (later)\n"
+        "END:VEVENT\n";
+    ics_event_list_t out = parse(ics, make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 5, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);  // 1, 2, 4 January (the 3rd moved out of the window)
+    EXPECT_EQ(out.events[2].start, make_utc(2024, 1, 4, 0, 0, 0));
+}
+
+TEST_F(CalendarIcs, ExpandedInstancesWithTheirOwnRecurrenceIdAreJustEvents)
+{
+    // what a CalDAV server sends for "expand": one VEVENT per instance, each named by its own start
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "UID:s\nRECURRENCE-ID:20240101T100000Z\nDTSTART:20240101T100000Z\nSUMMARY:Sync\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "UID:s\nRECURRENCE-ID:20240108T100000Z\nDTSTART:20240108T100000Z\nSUMMARY:Sync\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "UID:s\nRECURRENCE-ID:20240115T100000Z\nDTSTART:20240115T100000Z\nSUMMARY:Sync\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 29, 0, 0, 0));
+    EXPECT_EQ(out.count, 3);
+}
+
+TEST_F(CalendarIcs, MoreExceptionsThanTheTableHoldsAreBoundedAndHarmless)
+{
+    // 600 called-off instances of 600 other series (more than the table of exceptions holds), next
+    // to one ordinary daily series: the feed is still read, the series is untouched, the list is in
+    // order.
+    std::string ics =
+        "BEGIN:VEVENT\n"
+        "UID:mine\n"
+        "DTSTART:20240101T100000Z\n"
+        "SUMMARY:Daily\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n";
+    for (int i = 0; i < 600; i++) {
+        char item[200];
+        snprintf(item, sizeof(item),
+                 "BEGIN:VEVENT\n"
+                 "UID:other-%d\n"
+                 "RECURRENCE-ID:20240110T100000Z\n"
+                 "DTSTART:20240110T100000Z\n"
+                 "SUMMARY:Gone\n"
+                 "STATUS:CANCELLED\n"
+                 "END:VEVENT\n",
+                 i);
+        ics += item;
+    }
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 1, 31, 0, 0, 0));
+    ASSERT_EQ(out.count, 30);
+    for (int i = 1; i < out.count; i++) {
+        EXPECT_LT(out.events[i - 1].start, out.events[i].start);
+    }
+}
+
+// ---- STATUS -----------------------------------------------------------------------------------
+
+TEST_F(CalendarIcs, ACancelledEventIsNotShown)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240115T090000Z\n"
+        "SUMMARY:Off\n"
+        "STATUS:CANCELLED\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240115T100000Z\n"
+        "SUMMARY:Maybe\n"
+        "STATUS:TENTATIVE\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240115T110000Z\n"
+        "SUMMARY:Off too\n"
+        "STATUS:Cancelled\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2024, 1, 15, 0, 0, 0), make_utc(2024, 1, 16, 0, 0, 0));
+    ASSERT_EQ(out.count, 1);
+    EXPECT_STREQ(out.events[0].summary, "Maybe");
+}
+
+TEST_F(CalendarIcs, ACancelledSeriesIsNotShown)
+{
+    std::string ics = weekly_with("STATUS:CANCELLED\n");
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 2, 1, 0, 0, 0));
+    EXPECT_EQ(out.count, 0);
+}
+
+TEST_F(CalendarIcs, AnExceptionIsOneInstanceEvenIfItCarriesTheSeriesRuleToo)
+{
+    // Some producers copy the RRULE (and EXDATE) of the series into the exception. It is still the
+    // one instance it names - not a new series that starts there.
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "UID:series-1\n"
+        "DTSTART:20240101T100000Z\n"
+        "SUMMARY:Every third week\n"
+        "RRULE:FREQ=WEEKLY;INTERVAL=3\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "UID:series-1\n"
+        "RECURRENCE-ID:20240122T100000Z\n"
+        "DTSTART:20240123T100000Z\n"
+        "SUMMARY:Every third week (moved)\n"
+        "RRULE:FREQ=WEEKLY;INTERVAL=3\n"
+        "EXDATE:20240612T100000Z\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 3, 20, 0, 0, 0));
+    // series: 1 January, 22 January (replaced), 12 February, 4 March; the exception: 23 January
+    // only
+    ASSERT_EQ(out.count, 4);
+    EXPECT_EQ(out.events[0].start, make_utc(2024, 1, 1, 10, 0, 0));
+    EXPECT_EQ(out.events[1].start, make_utc(2024, 1, 23, 10, 0, 0));
+    EXPECT_STREQ(out.events[1].summary, "Every third week (moved)");
+    EXPECT_EQ(out.events[2].start, make_utc(2024, 2, 12, 10, 0, 0));
+    EXPECT_EQ(out.events[3].start, make_utc(2024, 3, 4, 10, 0, 0));
+}
+
+// ---- DURATION -----------------------------------------------------------------------------------
+
+TEST_F(CalendarIcs, DurationGivesTheLengthOfAnEventWithoutDtend)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240115T090000Z\n"
+        "DURATION:PT1H30M\n"
+        "SUMMARY:Class\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240115T120000Z\n"
+        "DURATION:P1DT2H\n"
+        "SUMMARY:Retreat\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240115T140000Z\n"
+        "DURATION:P1W\n"
+        "SUMMARY:Week-long\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2024, 1, 15, 0, 0, 0), make_utc(2024, 1, 16, 0, 0, 0));
+    ASSERT_EQ(out.count, 3);
+    EXPECT_EQ(out.events[0].end - out.events[0].start, 90 * 60);
+    EXPECT_EQ(out.events[1].end - out.events[1].start, 26 * 3600);
+    EXPECT_EQ(out.events[2].end - out.events[2].start, 7 * 86400);
+}
+
+TEST_F(CalendarIcs, DtendWinsOverDurationAndABadDurationIsIgnored)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240115T090000Z\n"
+        "DTEND:20240115T100000Z\n"
+        "DURATION:PT5H\n"
+        "SUMMARY:Both\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240115T110000Z\n"
+        "DURATION:-PT1H\n"
+        "SUMMARY:Negative\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240115T120000Z\n"
+        "DURATION:P3M\n"
+        "SUMMARY:Months\n"
+        "END:VEVENT\n"
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240115T130000Z\n"
+        "DURATION:nonsense\n"
+        "SUMMARY:Text\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2024, 1, 15, 0, 0, 0), make_utc(2024, 1, 16, 0, 0, 0));
+    ASSERT_EQ(out.count, 4);
+    EXPECT_EQ(out.events[0].end - out.events[0].start, 3600);
+    for (int i = 1; i < 4; i++) {
+        EXPECT_EQ(out.events[i].end, out.events[i].start) << i;
+    }
+}
+
+TEST_F(CalendarIcs, ASeriesWithDurationReachesIntoTheWindowFromTheInstanceBefore)
+{
+    // started at 22:00 on the 14th and lasts 4 hours: still going on when the window opens at
+    // midnight
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART:20240101T220000Z\n"
+        "DURATION:PT4H\n"
+        "SUMMARY:Night shift\n"
+        "RRULE:FREQ=DAILY\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2024, 1, 15, 0, 0, 0), make_utc(2024, 1, 15, 1, 0, 0));
+    ASSERT_EQ(out.count, 1);
+    EXPECT_EQ(out.events[0].start, make_utc(2024, 1, 14, 22, 0, 0));
+    EXPECT_EQ(out.events[0].end, make_utc(2024, 1, 15, 2, 0, 0));
+}
+
+TEST_F(CalendarIcsLocalTime, AnAllDayDurationEndsAtALocalMidnight)
+{
+    const char *ics =
+        "BEGIN:VEVENT\n"
+        "DTSTART;VALUE=DATE:20260328\n"
+        "DURATION:P2D\n"
+        "SUMMARY:Weekend\n"
+        "END:VEVENT\n";
+    ics_event_list_t out =
+        parse(ics, make_utc(2026, 3, 28, 0, 0, 0), make_utc(2026, 3, 31, 0, 0, 0));
+    ASSERT_EQ(out.count, 1);
+    EXPECT_EQ(out.events[0].end, make_utc(2026, 3, 30, 0, 0, 0));
+}
+
+// ---- the list limit ---------------------------------------------------------------------------
+
+TEST_F(CalendarIcs, AFullListKeepsTheEarliestEventsNotTheFirstInTheFile)
+{
+    // 60 events, the latest one first in the file: the 48 that survive are the 48 that start first
+    std::string ics;
+    for (int i = 60; i >= 1; i--) {
+        char item[160];
+        snprintf(item, sizeof(item),
+                 "BEGIN:VEVENT\nDTSTART:202401%02dT%02d0000Z\nSUMMARY:E%d\nEND:VEVENT\n",
+                 1 + i / 24, i % 24, i);
+        ics += item;
+    }
+    ics_event_list_t out =
+        parse(ics.c_str(), make_utc(2024, 1, 1, 0, 0, 0), make_utc(2024, 2, 1, 0, 0, 0));
+    ASSERT_EQ(out.count, ICS_MAX_EVENTS);
+    EXPECT_STREQ(out.events[0].summary, "E1");
+    EXPECT_STREQ(out.events[ICS_MAX_EVENTS - 1].summary, "E48");
+    for (int i = 1; i < out.count; i++) {
+        EXPECT_LT(out.events[i - 1].start, out.events[i].start);
+    }
+}
+
 TEST_F(CalendarIcs, CrlfLineEndingsTolerated)
 {
     const char *ics =
