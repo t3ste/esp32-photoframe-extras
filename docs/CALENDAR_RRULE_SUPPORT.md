@@ -10,7 +10,8 @@ shown once as if it weren't recurring: showing a wrong/misleading occurrence was
 showing nothing for that event.
 
 This intentionally covers only a useful subset of RFC 5545, not the full spec - see
-[Not supported](#not-supported-and-why) for the reasoning behind each gap.
+[Not supported](#not-supported-and-why) for the reasoning behind each gap. The extended line's option `agenda-rrule`
+lifts most of them with libical: [CALENDAR_RRULE_ENGINE.md](CALENDAR_RRULE_ENGINE.md).
 
 ## Supported
 

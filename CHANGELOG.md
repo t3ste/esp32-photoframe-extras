@@ -17,6 +17,19 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Added
+
+- **Option `agenda-rrule`: monthly and yearly repeats, "the second Monday", "the last Friday", `BYDAY` lists and `BYSETPOS` in the Agenda calendars** (extended line only; needs `agenda`; part of `extras`). The Agenda's own reader takes
+  daily and weekly rules only, so a birthday, "the 15th of every month" or "the last Friday of the month" was left out. With the option the rule goes to the recurrence iterator of
+  [libical](https://github.com/libical/libical) (v4.0.6, vendored unmodified in `components/libical`, used under the MPL-2.0; `docs/third_party/LIBICAL-NOTICE.md`), which knows RFC 5545's rules; `main/calendar_rrule.c` checks a
+  rule before libical sees it (an internal assertion of libical would be a firmware abort), keeps the work bounded and refuses what it cannot judge, so the event is left out as before: `FREQ` below `DAILY`, `RSCALE`/`SKIP`,
+  and three families that libical and python-dateutil read differently (a yearly rule with `BYMONTHDAY` but no `BYMONTH`, a yearly `BYWEEKNO`, a weekly `INTERVAL` > 1 with a `BYDAY` list and a `WKST` of TU..SA). `UNTIL`,
+  `EXDATE`, `RDATE`, `RECURRENCE-ID`, durations, all-day events and the daylight saving time handling are the code of the Agenda fixes below; libical only decides which days a rule hits. Costs +98,160 bytes of flash (measured,
+  Waveshare build), about 16 KB of heap while a rule is expanded (none kept), and a 2 MB feed takes 4.3 - 5.1 s to re-expand on the ESP32-S3, of which 2.0 s is reading the file (the simple expander: 4.5 s). Checked by the adapter
+  against python-dateutil's instances, 50 refused rules, the 97 public calendars of python-recurring-ical-events, thousands of random rules through libical and dateutil, a fuzzer over the rule texts (2.1 million rules, ASan/UBSan; it found a
+  two-byte over-read of a rule ending in `WKST=`, fixed), and on a frame with the debugging build `-DICS_RRULE_COMPARE` (a parallel comparison with the simple expander: 110 series, no difference). See
+  `docs/CALENDAR_RRULE_ENGINE.md`.
+
 ### Fixed
 
 - **Repeating events in the Agenda calendar were an hour off for half the year** (`agenda` option). A daily or weekly series was expanded by adding whole multiples of 24 hours to its first date, so after the clocks
