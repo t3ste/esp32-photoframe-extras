@@ -17,6 +17,20 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Repeating events in the Agenda calendar were an hour off for half the year** (`agenda` option). A daily or weekly series was expanded by adding whole multiples of 24 hours to its first date, so after the clocks
+  changed it drifted an hour: a series that began in winter showed up an hour late in summer (09:00 as 10:00), one that began in summer an hour early in winter - and so did the example calendars of the demo package
+  (the weekly "Midnight snack check" stood at 01:00 in summer). A series now repeats on the wall clock (the same time of day on every period's calendar day), keeps its length across the switch and an all-day event
+  ends at the next local midnight; a series in UTC (`...Z`) stays at its fixed instants, as the standard says. All the host tests had run with `TZ=UTC0`, where the two are the same thing; the new tests run in CET/CEST.
+- **Exceptions of a series were not read** (`agenda` option): `EXDATE` (an instance that is left out, "not this Wednesday"), `RDATE` (an extra instance), `RECURRENCE-ID` (an instance that was moved or called off - it
+  was shown twice, at the old and at the new time) and `STATUS:CANCELLED` (a called-off event stayed on the screen) were ignored, so an event could show up that was gone. They are applied now; what can't be read
+  (an `EXDATE`/`RDATE` that is a period, a malformed date) drops the event rather than showing it wrongly, and `RECURRENCE-ID;RANGE=THISANDFUTURE` ("this and all later instances are changed", which is not
+  supported) leaves those instances out. `docs/CALENDAR_RRULE_SUPPORT.md` claimed that `EXDATE` was rejected - it never was.
+- **An event with `DURATION` instead of `DTEND` had no length** (`agenda` option): it ended where it began, so one that was already going on when the window opened was not found. `DURATION` is read now (`PT1H30M`, `P1DT2H`, `P1W`, ...).
+- **A full calendar list kept the wrong events** (`agenda` option): when more than 48 events overlapped the window, the first 48 of the file were kept, whichever time they were at; it is the 48 that start first now.
+- A weekly series with `BYDAY` whose `DTSTART` is in UTC (`...Z`) is judged by the weekday in UTC (it was the local weekday, so a series at 23:30Z whose rule says the UTC weekday was dropped).
+
 ## [v219.0.1] - 2026-10-05
 
 This release is `v219.0.0` with the fix below; **`v219.0.0` was withdrawn** (set back to a draft) the same day because of it.

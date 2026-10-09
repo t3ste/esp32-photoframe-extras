@@ -131,9 +131,11 @@ TEST_F(ExampleCalendars, CalendarARecursForTwoYears)
 {
     const int week_offsets[] = {0, 26, 52, 78, 104};  // ~0, 6, 12, 18, 24 months out
     for (int weeks : week_offsets) {
-        time_t week_start =
-            local_midnight(kBaseYear, kBaseMonth, kBaseMonday) + (time_t) weeks * 7 * 86400;
-        time_t week_end = week_start + 7 * 86400;
+        // Whole calendar days (mktime() normalizes the day of the month), not n * 86400 s: half a
+        // year on, the clocks differ by an hour, and a window that starts at 01:00 would miss the
+        // "Midnight snack check" that stays at 00:00 local all year.
+        time_t week_start = local_midnight(kBaseYear, kBaseMonth, kBaseMonday + weeks * 7);
+        time_t week_end = local_midnight(kBaseYear, kBaseMonth, kBaseMonday + weeks * 7 + 7);
         ics_event_list_t out = parse_calendar("calendar-a.ics", week_start, week_end);
         EXPECT_EQ(out.count, 14) << "week offset " << weeks;
         EXPECT_EQ(count_on_day(out, week_start, week_start + 86400), 8)

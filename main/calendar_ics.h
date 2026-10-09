@@ -33,10 +33,15 @@ typedef struct {
  * "secret address in iCal format", a plain authless HTTPS GET) and
  * extracts non-recurring VEVENTs overlapping [window_start, window_end).
  *
- * Recurring events (a VEVENT with an RRULE) are not expanded by this pass
- * - see calendar_ics.c's RRULE-lite extension for DAILY/WEEKLY support.
- * An RRULE'd event with none of the supported forms is silently skipped
- * (fail-soft: better to omit one event than show a wrong occurrence).
+ * Recurring events (a VEVENT with an RRULE) are expanded for DAILY/WEEKLY
+ * rules - see calendar_ics.c's RRULE-lite - on the wall clock of the device's
+ * time zone, so a series keeps its time of day when the clocks change.
+ * EXDATE, RDATE, RECURRENCE-ID (a moved or called-off instance; with
+ * RANGE=THISANDFUTURE the later instances are left out) and STATUS:CANCELLED
+ * are applied. An event with a rule of none of the supported forms, or with an
+ * EXDATE/RDATE that cannot be read, is silently skipped (fail-soft: better to
+ * omit one event than show a wrong occurrence). At most ICS_MAX_EVENTS events
+ * come back - the ones that start first.
  *
  * If `cache_path` is non-NULL, this is a conditional GET: `etag_in` (may be
  * NULL/empty) is sent as If-None-Match, and on a 304 reply the body cached
