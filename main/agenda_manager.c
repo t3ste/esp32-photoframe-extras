@@ -15,6 +15,7 @@
 #include "display_manager.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "todo.h"
 #include "utils.h"
 #include "weather.h"
@@ -166,6 +167,7 @@ static bool load_extra_ics_source(bool enabled, const char *raw_cache_path,
     }
 
     time_t expand_end = now + (time_t) AGENDA_EXTRA_ICS_EXPAND_DAYS * 86400;
+    int64_t parse_started_us = esp_timer_get_time();
     if (calendar_ics_read_cache(raw_cache_path, now, expand_end, out) != ESP_OK) {
         ESP_LOGW(TAG,
                  "Extra ICS source '%s' is enabled but has no saved URL/file - that column will "
@@ -174,8 +176,9 @@ static bool load_extra_ics_source(bool enabled, const char *raw_cache_path,
         return false;  // source never configured, or the raw cache is missing/corrupt
     }
     calendar_ics_write_expanded_cache(flat_cache_path, out);
-    ESP_LOGI(TAG, "Re-expanded extra ICS source '%s' for the next %d days", display_name,
-             AGENDA_EXTRA_ICS_EXPAND_DAYS);
+    ESP_LOGI(TAG, "Re-expanded extra ICS source '%s' for the next %d days: %d event(s), %d ms",
+             display_name, AGENDA_EXTRA_ICS_EXPAND_DAYS, out->count,
+             (int) ((esp_timer_get_time() - parse_started_us) / 1000));
     inject_stale_reminder_if_needed(out, display_name, now);
     return true;
 }
