@@ -156,6 +156,7 @@ class BundleTest(unittest.TestCase):
                 "source-auth",
                 "caldav",
                 "caldav-todo",
+                "agenda-rrule",
                 "upload-dedup",
                 "glyphs",
                 "info-screens",

@@ -1071,6 +1071,56 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# libical (components/libical, vendored unmodified) and main/calendar_rrule.c, the build option `agenda-rrule`:
+# the library as a static library of its own, and two programs - the adapter alone, and calendar_ics.c with the
+# option on (the other calendar tests above build calendar_ics.c with it off, which is the default firmware).
+set(LIBICAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../components/libical)
+file(GLOB LIBICAL_SOURCES ${LIBICAL_DIR}/libical/*.c)
+add_library(libical_host STATIC ${LIBICAL_SOURCES})
+target_compile_definitions(libical_host PRIVATE HAVE_CONFIG_H=1)
+target_compile_options(libical_host PRIVATE -w)
+target_include_directories(libical_host PUBLIC ${LIBICAL_DIR}/libical PRIVATE ${LIBICAL_DIR}/port)
+
+add_executable(
+  calendar_rrule_test
+  test_calendar_rrule.cpp
+  ../main/calendar_rrule.c
+)
+target_compile_definitions(calendar_rrule_test PRIVATE ${FORK_FEATURE_DEFS} CONFIG_FEATURE_AGENDA_RRULE)
+target_link_libraries(calendar_rrule_test libical_host GTest::gtest_main)
+target_include_directories(
+  calendar_rrule_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
+add_executable(
+  calendar_ics_rrule_test
+  test_calendar_ics_rrule.cpp
+  ../main/calendar_ics.c
+  ../main/calendar_rrule.c
+  ../main/caldav.c
+  ../main/caldav_fetch.c
+  stubs/fake_http_fetch.c
+  stubs/fake_image_processor_sanitize.c
+)
+target_compile_definitions(
+  calendar_ics_rrule_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+  CONFIG_FEATURE_AGENDA_RRULE
+)
+target_link_libraries(calendar_ics_rrule_test libical_host GTest::gtest_main)
+target_include_directories(
+  calendar_ics_rrule_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Demo package (examples/waveshare_photopainter_73/, docs/DEMO_PLAN.md): the
 # example calendars and todo.txt run through the firmware's own parsers, not
 # a re-implementation - links calendar_ics.c and todo.c directly, same stubs
@@ -1202,6 +1252,8 @@ gtest_discover_tests(kws_test)
 gtest_discover_tests(headlines_test)
 gtest_discover_tests(todo_test)
 gtest_discover_tests(calendar_ics_test)
+gtest_discover_tests(calendar_rrule_test)
+gtest_discover_tests(calendar_ics_rrule_test)
 gtest_discover_tests(example_calendars_test)
 
 # On-device image pipeline characterization tests (host build of

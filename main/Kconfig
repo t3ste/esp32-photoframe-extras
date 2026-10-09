@@ -365,6 +365,17 @@ menu "Photoframe optional features"
             text is skipped, and a small QR code of the recipe's address can be
             added. Needs the information screens option.
 
+    config FEATURE_AGENDA_RRULE
+        bool "Full recurrence rules in the Agenda calendars"
+        default n
+        depends on FEATURE_AGENDA
+        help
+            The Agenda's calendar reader takes every recurrence rule of RFC
+            5545 - monthly and yearly repeats, BYDAY lists and ordinals
+            ("second Monday", "last Friday"), BYMONTHDAY, BYSETPOS, and so on -
+            through libical's recurrence iterator, instead of daily and weekly
+            repeats only. Adds about 100 KB of flash. Needs the Agenda feature.
+
     config FEATURE_MULTI_UPLOAD
         bool "Upload several images at once"
         default n

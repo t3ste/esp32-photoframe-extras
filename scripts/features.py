@@ -160,6 +160,14 @@ FEATURES = (
         "CalDAV task lists (caldavs:// as the ToDo address): open to-dos in the ToDo column",
     ),
     Feature(
+        "agenda-rrule",
+        "FEATURE_AGENDA_RRULE",
+        (),
+        ("agenda",),
+        "All of RFC 5545's recurrence rules in the Agenda calendars (monthly, yearly, BYDAY lists, "
+        "BYSETPOS, ...) through libical",
+    ),
+    Feature(
         "upload-dedup",
         "FEATURE_UPLOAD_DEDUP",
         (),
@@ -288,6 +296,7 @@ BUNDLES = (
             "source-auth",
             "caldav",
             "caldav-todo",
+            "agenda-rrule",
             "upload-dedup",
             "glyphs",
             "info-screens",
@@ -303,6 +312,7 @@ BUNDLES = (
             "recipes",
         ),
         "Everything added after the first fork release: webcal, CalDAV calendars and to-dos, "
+        "the full recurrence rules of the Agenda calendars, "
         "multi-upload, duplicate detection, glyphs, the information pages, the travel time on the fuel "
         "page, the artworks mode, the pages per schedule and the recipe page",
     ),

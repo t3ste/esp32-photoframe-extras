@@ -44,6 +44,7 @@ MODULES = {
     "source-auth": ["source_auth"],
     "caldav": ["caldav", "caldav_fetch"],
     "caldav-todo": ["vtodo"],
+    "agenda-rrule": ["calendar_rrule"],
     "glyphs": ["glyph_extras"],
     "info-screens": [
         "screen_canvas",
@@ -227,7 +228,11 @@ def sources_for(feature_names):
     for stem, flag in ALWAYS_HELPERS.items():
         if flag in flags:
             files.append(main / f"{stem}.c")
-    headers = sorted(main.glob("*.h")) + sorted((ROOT / "components").rglob("*.h"))
+    # (the vendored libical is third-party code with no feature guards - and its port/config.h would shadow
+    # main/config.h, which is not what this check is about)
+    headers = sorted(main.glob("*.h")) + sorted(
+        p for p in (ROOT / "components").rglob("*.h") if "libical" not in p.parts
+    )
     comp = [ROOT / "components/board_hal/src/driver_waveshare_photopainter_73.c"]
     if "FORK_AUDIO_HAL" in flags:
         comp.append(ROOT / "components/board_hal/src/audio_chime.c")

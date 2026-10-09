@@ -81,6 +81,9 @@ endif()
 if(CONFIG_FEATURE_CALDAV)
     list(APPEND SOURCES "caldav.c" "caldav_fetch.c")
 endif()
+if(CONFIG_FEATURE_AGENDA_RRULE)
+    list(APPEND SOURCES "calendar_rrule.c")
+endif()
 if(CONFIG_FEATURE_CALDAV_TODO)
     list(APPEND SOURCES "vtodo.c")
 endif()
@@ -203,6 +206,10 @@ target_add_binary_data(${COMPONENT_LIB} "splash_data/setup_complete.epdgz" BINAR
 # during IDF's early requirement expansion, so it is added after registration.
 if(CONFIG_FEATURE_HTTPS)
     idf_component_optional_requires(PRIVATE esp_https_server)
+endif()
+# libical (components/libical) makes the recurrence rules of the Agenda calendars.
+if(CONFIG_FEATURE_AGENDA_RRULE)
+    idf_component_optional_requires(PRIVATE libical)
 endif()
 # The duplicate index hashes with the ROM's MD5.
 if(CONFIG_FEATURE_UPLOAD_DEDUP)

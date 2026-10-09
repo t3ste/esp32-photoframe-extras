@@ -7,6 +7,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "calendar_rrule.h"
 #include "esp_log.h"
 #include "http_fetch.h"
 #include "image_processor.h"
@@ -379,6 +380,9 @@ typedef struct {
     ics_stamp_t rdates[ICS_MAX_RDATES];
     int n_rdates;
     time_t cand[ICS_MAX_CANDIDATES];
+#if FEATURE_AGENDA_RRULE
+    rrule_wall_t wall[ICS_MAX_CANDIDATES];  // what calendar_rrule_expand() returns
+#endif
     int n_cand;
     int dropped;  // events that did not fit into ICS_MAX_EVENTS
 } ics_ctx_t;
@@ -400,6 +404,8 @@ typedef struct {
 
     bool has_rrule;
     ics_rrule_t rrule;
+    const char *rrule_text;  // the raw value, for calendar_rrule.c (NULL if the line was cut)
+    size_t rrule_len;
 
     bool has_exdate;
     bool has_rdate;
@@ -860,6 +866,116 @@ static void add_candidate(ics_ctx_t *ctx, time_t start)
     }
 }
 
+#if FEATURE_AGENDA_RRULE
+// The wall-clock fields of an instant: in the device's time zone, or in UTC for a series in UTC.
+static void wall_of(time_t t, bool utc, rrule_wall_t *w)
+{
+    struct tm tm;
+    if (utc) {
+        gmtime_r(&t, &tm);
+    } else {
+        localtime_r(&t, &tm);
+    }
+    w->year = (int16_t) (tm.tm_year + 1900);
+    w->month = (int8_t) (tm.tm_mon + 1);
+    w->day = (int8_t) tm.tm_mday;
+    w->hour = (int8_t) tm.tm_hour;
+    w->minute = (int8_t) tm.tm_min;
+    w->second = (int8_t) tm.tm_sec;
+}
+
+static time_t instant_of(const rrule_wall_t *w, bool utc)
+{
+    if (utc) {
+        struct tm tm;
+        memset(&tm, 0, sizeof(tm));
+        tm.tm_year = w->year - 1900;
+        tm.tm_mon = w->month - 1;
+        tm.tm_mday = w->day;
+        tm.tm_hour = w->hour;
+        tm.tm_min = w->minute;
+        tm.tm_sec = w->second;
+        return ics_timegm(&tm);
+    }
+    return local_time_on_day(days_from_civil(w->year, w->month, w->day), w->hour, w->minute,
+                             w->second);
+}
+
+// The UNTIL of a rule as an instant (a bare date is a local midnight, a date-time is local or UTC
+// as written - as parse_rrule() reads it). 1: found, 0: none, -1: malformed.
+static int rule_until(const char *text, size_t len, time_t *until)
+{
+    size_t i = 0;
+    while (i < len) {
+        size_t s = i;
+        while (i < len && text[i] != ';') {
+            i++;
+        }
+        size_t part_len = i - s;
+        if (i < len) {
+            i++;
+        }
+        if (part_len >= 6 && strncasecmp(text + s, "UNTIL=", 6) == 0) {
+            struct tm tm;
+            bool all_day, utc;
+            if (!parse_ics_datetime(text + s + 6, part_len - 6, &tm, &all_day, &utc)) {
+                return -1;
+            }
+            *until = ics_datetime_to_time(&tm, utc);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// The instances of the series from libical's iterator, into ctx->cand. False: the rule is not
+// taken.
+static bool gather_with_engine(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ics_series_t *s,
+                               time_t window_start, time_t window_end)
+{
+    if (!st->rrule_text) {
+        return false;
+    }
+    time_t until = 0;
+    int has_until = rule_until(st->rrule_text, st->rrule_len, &until);
+    if (has_until < 0) {
+        return false;
+    }
+    // From the event's length (and a day) before the window to a day after it: an instance can
+    // start before the window and reach into it; the day on both sides covers what a time zone rule
+    // moves.
+    int64_t lead = (s->all_day ? s->dur_days * 86400 : (int64_t) s->duration) + 86400;
+    rrule_wall_t dtstart, from, to;
+    dtstart.year = (int16_t) (st->dtstart_tm.tm_year + 1900);
+    dtstart.month = (int8_t) (st->dtstart_tm.tm_mon + 1);
+    dtstart.day = (int8_t) st->dtstart_tm.tm_mday;
+    dtstart.hour = (int8_t) st->dtstart_tm.tm_hour;
+    dtstart.minute = (int8_t) st->dtstart_tm.tm_min;
+    dtstart.second = (int8_t) st->dtstart_tm.tm_sec;
+    wall_of(window_start - (time_t) lead, s->utc, &from);
+    wall_of(window_end + 86400, s->utc, &to);
+    int n = calendar_rrule_expand(st->rrule_text, st->rrule_len, &dtstart, s->all_day, &from, &to,
+                                  ctx->wall, ICS_MAX_CANDIDATES);
+    if (n < 0) {
+        ESP_LOGW(TAG, "Skipping a repeating event: its rule is not taken");
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        time_t occ_start = instant_of(&ctx->wall[i], s->utc);
+        if (has_until && occ_start > until) {
+            break;  // UNTIL is inclusive (RFC 5545)
+        }
+        if (!time_overlaps_window(occ_start, series_end(s, occ_start), window_start, window_end)) {
+            continue;
+        }
+        if (!instance_hidden(ctx, st, occ_start, s->all_day)) {
+            add_candidate(ctx, occ_start);
+        }
+    }
+    return true;
+}
+#endif  // FEATURE_AGENDA_RRULE
+
 // Expands a series (an RRULE this parser understands, or a single event that has EXDATE/RDATE) into
 // whichever instances overlap [window_start, window_end), minus the excluded and replaced ones,
 // plus the RDATEs.
@@ -880,7 +996,7 @@ static void expand_series(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ic
     s.duration = end > start ? end - start : 0;
     s.all_day = st->all_day;
     s.utc = st->dtstart_utc && !st->all_day;
-    s.period_days = (int64_t) (rule->weekly ? 7 : 1) * rule->interval;
+    s.period_days = rule ? (int64_t) (rule->weekly ? 7 : 1) * rule->interval : 1;
     if (s.period_days <= 0) {
         s.period_days = 1;  // defensive - interval is already clamped >= 1 by parse_rrule()
     }
@@ -896,50 +1012,62 @@ static void expand_series(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ic
     s.min = st->dtstart_tm.tm_min;
     s.sec = st->dtstart_tm.tm_sec;
 
-    // First period to look at. An instance that started before the window can still reach into it
-    // (an in-progress multi-day event), so back up by as many periods as the event is long.
-    int64_t k0, back;
-    if (s.utc) {
-        int64_t period_secs = s.period_days * 86400;
-        int64_t diff = (int64_t) window_start - (int64_t) start;
-        k0 = diff > 0 ? diff / period_secs : 0;
-        back = (int64_t) s.duration / period_secs + 2;
-    } else {
-        int64_t diff = local_day_of(window_start) - s.base_day;
-        k0 = diff > 0 ? diff / s.period_days : 0;
-        int64_t span_days = s.all_day ? s.dur_days : (int64_t) s.duration / 86400 + 1;
-        back = span_days / s.period_days + 2;
-    }
-    k0 = k0 > back ? k0 - back : 0;
-
-    // Hard safety cap, sized to the window (a flat number once truncated a 30-day expansion): the
-    // periods the window spans plus the backed-up ones, never more than 400 beyond those.
-    int64_t window_days = ((int64_t) window_end - (int64_t) window_start) / 86400 + 2;
-    if (window_days < 0) {
-        window_days = 0;
-    }
-    int64_t max_iterations = window_days / s.period_days + back + 3;
-    if (max_iterations > back + 400) {
-        max_iterations = back + 400;
-    }
-
     ctx->n_cand = 0;
-    for (int64_t k = k0; k < k0 + max_iterations; k++) {
-        if (rule->has_count && k >= rule->count) {
-            break;  // COUNT counts the instances the rule makes, excluded ones included
+#if FEATURE_AGENDA_RRULE
+    if (!rule) {
+        // libical's iterator makes the instances of the rule (calendar_rrule.c)
+        if (!gather_with_engine(ctx, st, &s, window_start, window_end)) {
+            return;  // a rule that is not taken: the event is left out
         }
-        time_t occ_start = series_start(&s, k);
-        if (occ_start >= window_end) {
-            break;  // start only increases with k - nothing further can matter
+    } else
+#endif
+    {
+        // First period to look at. An instance that started before the window can still reach into
+        // it (an in-progress multi-day event), so back up by as many periods as the event is long.
+        int64_t k0, back;
+        if (s.utc) {
+            int64_t period_secs = s.period_days * 86400;
+            int64_t diff = (int64_t) window_start - (int64_t) start;
+            k0 = diff > 0 ? diff / period_secs : 0;
+            back = (int64_t) s.duration / period_secs + 2;
+        } else {
+            int64_t diff = local_day_of(window_start) - s.base_day;
+            k0 = diff > 0 ? diff / s.period_days : 0;
+            int64_t span_days = s.all_day ? s.dur_days : (int64_t) s.duration / 86400 + 1;
+            back = span_days / s.period_days + 2;
         }
-        if (rule->has_until && occ_start > rule->until) {
-            break;  // UNTIL is inclusive (RFC 5545) - past it, nothing further can matter either
+        k0 = k0 > back ? k0 - back : 0;
+
+        // Hard safety cap, sized to the window (a flat number once truncated a 30-day expansion):
+        // the periods the window spans plus the backed-up ones, never more than 400 beyond those.
+        int64_t window_days = ((int64_t) window_end - (int64_t) window_start) / 86400 + 2;
+        if (window_days < 0) {
+            window_days = 0;
         }
-        if (!time_overlaps_window(occ_start, series_end(&s, occ_start), window_start, window_end)) {
-            continue;
+        int64_t max_iterations = window_days / s.period_days + back + 3;
+        if (max_iterations > back + 400) {
+            max_iterations = back + 400;
         }
-        if (!instance_hidden(ctx, st, occ_start, s.all_day)) {
-            add_candidate(ctx, occ_start);
+
+        for (int64_t k = k0; k < k0 + max_iterations; k++) {
+            if (rule->has_count && k >= rule->count) {
+                break;  // COUNT counts the instances the rule makes, excluded ones included
+            }
+            time_t occ_start = series_start(&s, k);
+            if (occ_start >= window_end) {
+                break;  // start only increases with k - nothing further can matter
+            }
+            if (rule->has_until && occ_start > rule->until) {
+                break;  // UNTIL is inclusive (RFC 5545) - past it, nothing further can matter
+                        // either
+            }
+            if (!time_overlaps_window(occ_start, series_end(&s, occ_start), window_start,
+                                      window_end)) {
+                continue;
+            }
+            if (!instance_hidden(ctx, st, occ_start, s.all_day)) {
+                add_candidate(ctx, occ_start);
+            }
         }
     }
 
@@ -1037,6 +1165,9 @@ static void finalize_vevent(ics_ctx_t *ctx, const ics_vevent_state_t *st, time_t
     single.count = 1;
     const ics_rrule_t *rule = &single;
     if (st->has_rrule) {
+#if FEATURE_AGENDA_RRULE
+        rule = NULL;  // libical's iterator takes it, or does not (expand_series())
+#else
         if (!st->rrule.supported) {
             return;
         }
@@ -1062,6 +1193,7 @@ static void finalize_vevent(ics_ctx_t *ctx, const ics_vevent_state_t *st, time_t
             }
         }
         rule = &st->rrule;
+#endif
     }
 
     // Only exceptions that can touch the window are kept: an instance outside it is not shown
@@ -1230,6 +1362,10 @@ esp_err_t calendar_ics_parse(char *body, size_t body_len, time_t window_start, t
         } else if (name_is(name, name_len, "RRULE")) {
             st.has_rrule = true;
             parse_rrule(value, value_len, &st.rrule);  // rrule.supported tells finalize_vevent()
+            // the engine (calendar_rrule.c) wants the text; a line that was cut at the buffer is
+            // not one
+            st.rrule_text = (size_t) (line_end - line) <= ICS_LINE_MAX_LEN ? value : NULL;
+            st.rrule_len = value_len;
         } else if (name_is(name, name_len, "EXDATE")) {
             st.has_exdate = true;
         } else if (name_is(name, name_len, "RDATE")) {
