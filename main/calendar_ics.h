@@ -37,10 +37,11 @@ typedef struct {
  * time zone, so a series keeps its time of day when the clocks change.
  * EXDATE, RDATE, RECURRENCE-ID (a moved or called-off instance; with
  * RANGE=THISANDFUTURE the later instances are left out) and STATUS:CANCELLED
- * are applied. An event with a rule of none of the supported forms, or with an
- * EXDATE/RDATE that cannot be read, is silently skipped (fail-soft: better to
- * omit one event than show a wrong occurrence). At most ICS_MAX_EVENTS events
- * come back - the ones that start first.
+ * are applied; DURATION gives the length of an event that has no DTEND. An
+ * event with a rule of none of the supported forms, or with an EXDATE/RDATE
+ * that cannot be read, is silently skipped (fail-soft: better to omit one
+ * event than show a wrong occurrence). At most ICS_MAX_EVENTS events come
+ * back - the ones that start first.
  *
  * If `cache_path` is non-NULL, this is a conditional GET: `etag_in` (may be
  * NULL/empty) is sent as If-None-Match, and on a 304 reply the body cached
