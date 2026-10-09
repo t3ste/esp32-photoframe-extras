@@ -1129,6 +1129,24 @@ TEST_F(CalendarIcs, AnExceptionOfAnotherUidLeavesTheSeriesAlone)
     ASSERT_EQ(out.count, 5);
 }
 
+TEST_F(CalendarIcs, ANulByteInTheFeedDoesNotHideTheExceptionsBehindIt)
+{
+    // The feed is not trusted to be text: a NUL byte in a line of the series must not make the
+    // exceptions after it invisible (they are found by length, not as a C string).
+    std::string text = kSeriesWithMovedAndCancelled;
+    size_t at = text.find("SUMMARY:Weekly sync\n");
+    ASSERT_NE(at, std::string::npos);
+    text.insert(at, std::string("X-JUNK:a") + std::string(1, '\0') + "b\n");
+    std::vector<char> buf(text.begin(), text.end());
+    buf.push_back('\0');
+    ics_event_list_t out;
+    ASSERT_EQ(calendar_ics_parse(buf.data(), text.size(), make_utc(2024, 1, 1, 0, 0, 0),
+                                 make_utc(2024, 1, 23, 0, 0, 0), &out),
+              ESP_OK);
+    ASSERT_EQ(out.count, 3);  // 1 January, the moved one on the 9th, 22 January
+    EXPECT_STREQ(out.events[1].summary, "Weekly sync (moved)");
+}
+
 TEST_F(CalendarIcs, ThisAndFutureHidesTheInstancesFromThereOnAndTheChangedEventIsLeftOut)
 {
     const char *ics =

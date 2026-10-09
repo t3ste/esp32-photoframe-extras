@@ -1091,6 +1091,26 @@ static int compare_events_by_start(const void *a, const void *b)
     return 0;
 }
 
+// True if `needle` occurs in the first `len` bytes of `buf` (which may hold NUL bytes: a feed is
+// not trusted to be text, so strstr() would stop at the first one).
+static bool contains_text(const char *buf, size_t len, const char *needle)
+{
+    size_t n = strlen(needle);
+    const char *p = buf;
+    const char *end = buf + len;
+    while (p < end && (size_t) (end - p) >= n) {
+        p = memchr(p, needle[0], (size_t) (end - p) - n + 1);
+        if (!p) {
+            return false;
+        }
+        if (memcmp(p, needle, n) == 0) {
+            return true;
+        }
+        p++;
+    }
+    return false;
+}
+
 esp_err_t calendar_ics_parse(char *body, size_t body_len, time_t window_start, time_t window_end,
                              ics_event_list_t *out)
 {
@@ -1108,7 +1128,7 @@ esp_err_t calendar_ics_parse(char *body, size_t body_len, time_t window_start, t
     if (!ctx) {
         return ESP_ERR_NO_MEM;
     }
-    if (strstr(body, "RECURRENCE-ID") != NULL) {
+    if (contains_text(body, body_len, "RECURRENCE-ID")) {
         collect_overrides(ctx, body, body_len, window_start, window_end);
     }
 
