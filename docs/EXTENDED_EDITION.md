@@ -2,7 +2,7 @@
 
 The **extended edition** is this firmware plus a group of newer options that are **not** part of the base project
 ([t3stier/esp32-photoframe-rebuild](https://github.com/t3stier/esp32-photoframe-rebuild), branch `main`): `webcal`, `source-auth`,
-`caldav`, `caldav-todo`, `multi-upload`, `upload-dedup`, `glyphs` and the information pages (`info-screens`, `chore-wheel`,
+`caldav`, `caldav-todo`, `agenda-rrule`, `multi-upload`, `upload-dedup`, `glyphs` and the information pages (`info-screens`, `chore-wheel`,
 `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`), the travel time on the fuel page (`route-time`), the pages per Agenda schedule
 (`schedule-pages`), the recipe page (`recipes`) and the rotation mode `artworks`.
 Together they are the bundle

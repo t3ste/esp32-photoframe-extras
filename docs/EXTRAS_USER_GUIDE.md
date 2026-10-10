@@ -17,6 +17,7 @@ something does not show up. Each section ends with a link to the detailed page f
 | A calendar or to-do list on a home server with a password | `source-auth` | the same address fields | the server's user name and password |
 | Only the coming days from your own calendar server, repeating events right | `caldav` | Calendars A-E | a CalDAV server |
 | Your CalDAV task list in the ToDo column | `caldav-todo` | Settings -> Agenda -> ToDo | a CalDAV server |
+| Monthly and yearly repeats ("every second Monday", a birthday) in your calendars | `agenda-rrule` | nothing to set | nothing |
 | Upload many photos at once | `multi-upload` | Gallery -> Upload Image | nothing |
 | Stop the same photo from being stored twice | `upload-dedup` | Settings -> Maintenance -> Duplicate Images | storage (SD card or flash) |
 | Real umlauts (ä ö ü ß), degree and euro on the display | `glyphs` | nothing to set | nothing |
@@ -90,6 +91,20 @@ The same `caldavs://...` form works in the **ToDo** field, pointing at a task li
 column shows the open to-dos: the text, a priority chip (priority 1-2 -> A, 3-4 -> B, 5 -> C, 6-9 -> D) and the due date in
 its colour. Finished ones are left out; a repeating to-do appears once. The frame only reads - ticking a to-do off on the frame
 is not possible. More: [CALDAV_TODO.md](CALDAV_TODO.md).
+
+### Monthly and yearly repeating events
+
+Without this option the frame's own reader shows daily and weekly repeats only; an event that repeats monthly or yearly - "the
+second Monday of the month", "the last Friday", "every 15th", a birthday - was left out of the Agenda. With `agenda-rrule` they
+show up on the right days, together with repeats on several weekdays (Monday, Wednesday and Friday) and every other rule the
+calendar standard has. Nothing to switch on or to enter: it works for every calendar (A to E, webcal, CalDAV).
+
+A rule the frame cannot judge safely is still left out rather than shown on a wrong day: repeats every hour or minute, a yearly
+repeat that names a day of the month but no month, a yearly repeat by week number, and a daily or weekly rule with a repeat count
+that began so long ago that more than 5000 repeats lie before today. The frame's log says why (`Skipping a repeating event: its
+rule is not taken`, or that the count starts too long before). The option adds about 100 KB to the firmware; reading a large
+calendar file (2 MB) takes about 4 to 5 seconds when a source changes, as it did before. More:
+[CALENDAR_RRULE_ENGINE.md](CALENDAR_RRULE_ENGINE.md).
 
 ## 2. Pictures
 
