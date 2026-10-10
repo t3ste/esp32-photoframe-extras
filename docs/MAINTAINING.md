@@ -582,6 +582,13 @@ fix; the rest are standing notes, not work items.
   in the log (`read_bmp24_mapped()` returned success after a failed `fread`; `rotate_sequential()`/`rotate_random()` ignored `display_manager_show_image()`'s result). It builds clean for the Waveshare board on v2.19.0 and
   is `clang-format-18` clean; there is no host test (no host build of the display path) and the failure branch could not be provoked on a device. **Follow-up:** answer the review; when upstream merges it, the next upstream
   merge drops the `fixes` copy of this fix (`GUI_BMPfile.c`, `display_manager.c`) like the others (section 12).
+- **Upstream pull requests from the Web UI test (2026-10-10), prepared, not opened**: six branches on top of upstream's `main` (v2.19.0, `186ebaf`), one concern each, written without directives (`fixes` code of this
+  repository, section 12 drops each when upstream merges it): `webapp-gallery-missing-thumbnail` (the gallery and its two dialogs asked for `<album>/undefined`), `webapp-gallery-tell-failures` (album and image actions
+  ignored the frame's refusal), `webapp-unreadable-image` (a file the browser cannot read as an image gave a blank preview and dead buttons), `webapp-import-robustness` (a JSON file that is no config export was
+  "imported successfully", mistyped values the frame skips were not named, the frame's own message on a 400 was dropped), `webapp-settings-store-catch` (`catch (_error)` that prints `error`: a ReferenceError in the failure
+  case, three places) and `webapp-offline-assets` (icons and Roboto from CDNs: a frame without internet access, e.g. in its own hotspot, shows a page without icons; bundled instead, +540 KB of `index.css.gz`, woff2 only,
+  inlined). Each passes upstream's own `prettier --check`, `eslint`, `vitest` and `vite build` on v2.19.0. The drafts (disclosure as in #145, what/why/fix/validation) are in the maintainer's `local-tools/scratch/upstream_prs/`,
+  the branches are in the git worktree `C:/pfpr/wt-up` (`local-tools/scratch/make_upstream_prs.py` rebuilds them). **They are opened only after the maintainer read the drafts and said yes** (as with #145).
 - **A library issue behind upstream's JPEG fix goes to Espressif privately**: upstream's maintainer suggested reporting the library side of his fix. Espressif's `SECURITY.md` asks that
   vulnerabilities are **not** reported as public issues but through its security incident response process (coordinated disclosure; the private forms or the bug bounty address named there). Nothing is
   published by this repository about it; the report is the maintainer's to submit. **Decided 2026-10-05: not submitted.**
