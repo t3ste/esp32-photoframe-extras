@@ -10,6 +10,7 @@ export default [
       // (see feature-directives.js): both variants are in the text, so ESLint cannot
       // parse them as they are; the build strips one variant before Vue sees the file.
       "src/components/AlbumGallery.vue",
+      "src/components/ImageProcessing.vue",
       "src/components/ImageUpload.vue",
       "src/components/SettingsPanel.vue",
       "src/stores/app.js",

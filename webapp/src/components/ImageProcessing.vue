@@ -326,11 +326,11 @@ async function loadAndProcessImage(file) {
     await updatePreview();
   } catch (error) {
     console.error("Image loading failed:", error);
-// #if FORK_FIXES
+    // #if FORK_FIXES
     // The parent tells the user: a file the browser cannot read as an image gave a blank preview and
     // an Upload button that did nothing.
     emit("error", error);
-// #endif
+    // #endif
   } finally {
     processing.value = false;
   }
