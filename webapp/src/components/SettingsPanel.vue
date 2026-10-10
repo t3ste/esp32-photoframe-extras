@@ -573,6 +573,9 @@ function canEnableExtraCal(slot) {
   const urlKey = `agendaCal${slot.toUpperCase()}Url`;
   return !!settingsStore.deviceSettings[configuredKey] || !!settingsStore.deviceSettings[urlKey];
 }
+// #endif
+// #if FEATURE_AGENDA || FEATURE_ALARMCLOCK
+// The hint of a switch that cannot be turned on yet (Agenda calendars, Alarm Clock).
 function flashBlockedEnable(message) {
   saveError.value = true;
   saveMessage.value = message;
@@ -746,7 +749,9 @@ async function resetDisplayHistory() {
 }
 
 // #endif
-// #if FORK_FIXES
+// #if FORK_FIXES || FEATURE_AGENDA
+// Also declared without the `fixes` option: exportConfig() below reads it for the Agenda's fields
+// (off, so they are always left out of the export - there is no checkbox without `fixes`).
 // Default OFF: an export is downloaded to disk as plaintext JSON, so
 // credentials should only end up in it when the user explicitly opts in
 // (e.g. to get a fully self-contained backup for re-import elsewhere).

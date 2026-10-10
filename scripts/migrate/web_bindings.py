@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Proof that no feature set leaves the web UI with a name it never defines.
+"""Proof that no feature set leaves the web UI with a name it never defines (template or script).
 
 The web sources fence parts of a component with `#if FEATURE_*` directives
 (webapp/feature-directives.js), and the template of a component and its script are fenced
@@ -11,7 +11,8 @@ all-off proof (alloff_web.py) nor a build sees it.
 This resolves the directives of every component that has any for each feature set - every
 feature alone (with what it needs), the full build, every feature left out of the full build,
 and a few combinations - compiles the script and the template the way Vite does and reports
-each name the template uses that the script does not define.
+each name the template uses that the script does not define, and each name the script itself uses
+without declaring it (a declaration fenced by one option, the code that uses it by another).
 
 Needs node and `npm ci` in webapp/ (for @vue/compiler-sfc).
 
@@ -58,16 +59,49 @@ try {
   process.exit(0);
 }
 const GLOBALS = new Set(['attrs', 'slots', 'emit', 'props', 'route', 'router', 'el', 'refs', 't', 'parent']);
-function vueFiles(dir) {
+// The script part is checked as well: a name that a function body uses but a fenced-out
+// declaration was meant to provide (a ReferenceError the moment the function runs).
+const { Linter } = require('eslint');
+const globals = require('globals');
+const linter = new Linter({ configType: 'flat' });
+const LINT = [
+  {
+    files: ['**/*.js'],
+    languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: { ...globals.browser } },
+    rules: { 'no-undef': 'error' },
+  },
+];
+function undefinedInScript(code) {
+  const messages = linter.verify(code, LINT, { filename: 'x.js' });
+  const fatal = messages.find((m) => m.fatal);
+  if (fatal) return { error: fatal.message };
+  return { names: [...new Set(messages.filter((m) => m.ruleId === 'no-undef').map((m) => m.message.split("'")[1]))] };
+}
+// The script of a resolved source: the code of a .js file, the compiled <script setup> of a .vue.
+function scriptOf(file, source, sfc) {
+  if (file.endsWith('.js')) return source;
+  const { descriptor } = sfc.parse(source, { filename: file });
+  return sfc.compileScript(descriptor, { id: 'x', inlineTemplate: false }).content;
+}
+function sourceFiles(dir) {
   const out = [];
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
-    if (statSync(p).isDirectory()) out.push(...vueFiles(p));
-    else if (name.endsWith('.vue')) out.push(p);
+    if (statSync(p).isDirectory()) out.push(...sourceFiles(p));
+    else if (name.endsWith('.vue') || name.endsWith('.js')) out.push(p);
   }
   return out;
 }
-const files = vueFiles('webapp/src').filter((f) => readFileSync(f, 'utf8').includes('#if '));
+const files = sourceFiles('webapp/src').filter((f) => readFileSync(f, 'utf8').includes('#if '));
+// Names that the text of upstream itself (every directive off) already uses without declaring - an
+// upstream defect the all-off proof keeps as it is - are not reported for any set.
+const upstreamUndefined = {};
+for (const file of files) {
+  try {
+    const source = applyDirectives(readFileSync(file, 'utf8'), flagsFor(''));
+    upstreamUndefined[file] = new Set(undefinedInScript(scriptOf(file, source, sfc)).names || []);
+  } catch { upstreamUndefined[file] = new Set(); }
+}
 let input = '';
 process.stdin.on('data', (chunk) => (input += chunk));
 process.stdin.on('end', () => {
@@ -77,11 +111,20 @@ process.stdin.on('end', () => {
     const problems = [];
     for (const file of files) {
       const source = applyDirectives(readFileSync(file, 'utf8'), flags);
+      const lintScript = (code) => {
+        const lint = undefinedInScript(code);
+        if (lint.error) { problems.push(`${file}: script: ${lint.error}`); return; }
+        const names = lint.names.filter((n) => !upstreamUndefined[file].has(n));
+        if (names.length) problems.push(`${file}: used by the script, not defined: ${names.join(', ')}`);
+      };
+      if (file.endsWith('.js')) { lintScript(source); continue; }
       const { descriptor, errors } = sfc.parse(source, { filename: file });
       if (errors.length) { problems.push(`${file}: ${errors[0].message}`); continue; }
       let bindings = {};
       try {
-        bindings = sfc.compileScript(descriptor, { id: 'x', inlineTemplate: false }).bindings || {};
+        const compiled = sfc.compileScript(descriptor, { id: 'x', inlineTemplate: false });
+        bindings = compiled.bindings || {};
+        lintScript(compiled.content);
       } catch (e) { problems.push(`${file}: script: ${String(e.message).split('\n')[0]}`); continue; }
       if (!descriptor.template) continue;
       const t = sfc.compileTemplate({
@@ -171,7 +214,7 @@ def main():
     print(
         f"{len(sets)} feature sets checked, {bad} with an undefined name"
         if bad
-        else f"{len(sets)} feature sets checked, every name a template uses is defined"
+        else f"{len(sets)} feature sets checked, every name a template or a script uses is defined"
     )
     return 1 if bad else 0
 
