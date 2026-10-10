@@ -11,9 +11,31 @@ showing nothing for that event.
 
 This intentionally covers only a useful subset of RFC 5545, not the full spec - see
 [Not supported](#not-supported-and-why) for the reasoning behind each gap. The extended line's option `agenda-rrule`
-lifts most of them with libical: [CALENDAR_RRULE_ENGINE.md](CALENDAR_RRULE_ENGINE.md).
+lifts most of them with libical: [CALENDAR_RRULE_ENGINE.md](CALENDAR_RRULE_ENGINE.md); the matrix below says which build takes what.
 
-## Supported
+## Support matrix
+
+Two readers, one list of rules. **`agenda`** alone has the reader's own expander (everything below the matrix describes it). With the extended line's option **`agenda-rrule`** that expander is not compiled
+any more and libical takes every rule ([CALENDAR_RRULE_ENGINE.md](CALENDAR_RRULE_ENGINE.md)). "Left out" means the whole event is not shown (fail-closed), never one occurrence on a wrong day.
+
+| Rule or property | `agenda` | `agenda` + `agenda-rrule` |
+|---|---|---|
+| `FREQ=DAILY`, `WEEKLY` | ✅ | ✅ |
+| `FREQ=MONTHLY` | left out | ✅ |
+| `FREQ=YEARLY` | left out | ✅ - except with `BYMONTHDAY` but no `BYMONTH`, and with `BYWEEKNO` (left out: libical and the reference implementation read them differently) |
+| `FREQ=HOURLY`, `MINUTELY`, `SECONDLY` | left out | left out |
+| `INTERVAL`, `COUNT`, `UNTIL` | ✅ | ✅ (`INTERVAL` up to 1000, `COUNT` up to 100000; a `COUNT` rule that begins more than 5000 instances before the window is left out) |
+| `BYDAY` = one day | ✅ only the weekday of `DTSTART` | ✅ any |
+| `BYDAY` list or with an ordinal (`MO,WE,FR`, `2MO`, `-1FR`) | left out | ✅ (a weekly `INTERVAL` > 1 with a `BYDAY` list and a `WKST` of TU..SA is left out) |
+| `BYMONTHDAY`, `BYMONTH`, `BYYEARDAY`, `BYSETPOS`, `BYHOUR`, `BYMINUTE`, `BYSECOND` | left out | ✅ |
+| `BYWEEKNO` | left out | left out (it is yearly only, and yearly `BYWEEKNO` is left out) |
+| `WKST` | ignored (it changes nothing for what is taken) | ✅ |
+| `RSCALE`, `SKIP`, unknown or malformed parts | left out | left out |
+| `EXDATE`, `RDATE`, `RECURRENCE-ID`, `STATUS:CANCELLED`, `DURATION`, all-day events, the wall-clock repeat across daylight saving time | ✅ | ✅ (the same code) |
+| `RECURRENCE-ID;RANGE=THISANDFUTURE`, `RDATE`/`EXDATE` of a period | those instances / the event left out | the same |
+| A foreign `TZID` | read as the device's time zone | the same |
+
+## Supported (the reader's own expander, a build without `agenda-rrule`)
 
 | `RRULE` part | Support | Notes |
 |---|---|---|
@@ -101,29 +123,30 @@ At most `ICS_MAX_EVENTS` (48) events come back for a window. When more overlap i
 **start first** are kept (the agenda shows what comes first); until this was fixed it was the first 48 in
 the order of the file, whichever time they were at.
 
-## Not supported (and why)
+## Not supported (and why) - without `agenda-rrule`
 
-| `RRULE` part | Why not | Could it be added later? |
-|---|---|---|
-| `FREQ=MONTHLY` | Months have variable length (28-31 days) - the expander steps in whole days (`period_days`), which works for DAILY/WEEKLY. A real calendar-arithmetic expansion (increment the month, re-normalize) would be needed | Yes, but needs a separate expansion path, not a small tweak |
-| `FREQ=YEARLY` | Same problem, worse (leap years: 365 vs. 366 days) | Yes - combined with `BYMONTHDAY`+`BYMONTH` this is the classic birthday/anniversary pattern, and was in fact the most common rejected rule found in real-world testing. Meaningfully more work than the `WKST`/`BYDAY`/`UNTIL` fixes, since it's a new expansion strategy rather than a new accepted parameter |
-| `FREQ=HOURLY`/`MINUTELY`/`SECONDLY` | Not meaningful for a display that wakes at most every few minutes | No - out of scope for this project regardless of implementation cost |
-| Multiple `BYDAY` values (e.g. `BYDAY=MO,WE,FR`) | A genuinely different pattern (multiple weekdays per week) - this parser's model represents "one occurrence every N periods," not "occurrences on several specific weekdays within each period" | Possible in principle, but a real architecture change (would need to generate several candidate weekdays per period and merge them) |
-| `BYDAY` with an ordinal prefix (e.g. `BYDAY=1MO`, `BYDAY=-1FR` - "1st Monday", "last Friday") | Different meaning entirely ("Nth weekday of the period," used with `BYSETPOS` or `FREQ=MONTHLY`/`YEARLY`) - the current single-letter-code parser doesn't recognize the numeric prefix and fails closed on the malformed-looking value | Only meaningful together with `BYSETPOS`/`MONTHLY`/`YEARLY` support |
-| `BYMONTHDAY`, `BYMONTH`, `BYWEEKNO`, `BYYEARDAY`, `BYHOUR`, `BYMINUTE`, `BYSECOND` | Only meaningful combined with `MONTHLY`/`YEARLY` (see above), or a time-of-day set the model has no room for | Same as `FREQ=YEARLY` above |
-| `BYSETPOS` (e.g. "the 2nd Tuesday of the month") | Needs the full monthly/yearly occurrence set generated first, then picked by position - a materially different algorithm | Possible, but the most complex of the unsupported list; not seen in real-world testing so far |
-| `RECURRENCE-ID;RANGE=THISANDFUTURE` | The changes would have to be applied to the series from the named instance on; the instances from there on are left out instead | Possible, with the same machinery a time zone database would need |
-| `RDATE;VALUE=PERIOD`, `EXDATE` of a period | Not readable; the whole event is dropped (fail-closed) | Rare in practice |
-| A foreign `TZID` (not the device's zone) | Read as the device's own time zone, see above | Needs the `VTIMEZONE` of the feed or a time zone database |
-| Any unrecognized/malformed component | Fails closed - a value this parser doesn't understand at all could silently mean something that changes which occurrences are valid | N/A by design - the whole point of failing closed |
+| `RRULE` part | Why not | Could it be added later? | With `agenda-rrule` |
+|---|---|---|---|
+| `FREQ=MONTHLY` | Months have variable length (28-31 days) - the expander steps in whole days (`period_days`), which works for DAILY/WEEKLY. A real calendar-arithmetic expansion (increment the month, re-normalize) would be needed | Yes, but needs a separate expansion path, not a small tweak | ✅ taken |
+| `FREQ=YEARLY` | Same problem, worse (leap years: 365 vs. 366 days) | Yes - combined with `BYMONTHDAY`+`BYMONTH` this is the classic birthday/anniversary pattern, and was in fact the most common rejected rule found in real-world testing. Meaningfully more work than the `WKST`/`BYDAY`/`UNTIL` fixes, since it's a new expansion strategy rather than a new accepted parameter | ✅ taken (not with `BYMONTHDAY` without `BYMONTH`, not with `BYWEEKNO`) |
+| `FREQ=HOURLY`/`MINUTELY`/`SECONDLY` | Not meaningful for a display that wakes at most every few minutes | No - out of scope for this project regardless of implementation cost | Still left out |
+| Multiple `BYDAY` values (e.g. `BYDAY=MO,WE,FR`) | A genuinely different pattern (multiple weekdays per week) - this parser's model represents "one occurrence every N periods," not "occurrences on several specific weekdays within each period" | Possible in principle, but a real architecture change (would need to generate several candidate weekdays per period and merge them) | ✅ taken |
+| `BYDAY` with an ordinal prefix (e.g. `BYDAY=1MO`, `BYDAY=-1FR` - "1st Monday", "last Friday") | Different meaning entirely ("Nth weekday of the period," used with `BYSETPOS` or `FREQ=MONTHLY`/`YEARLY`) - the current single-letter-code parser doesn't recognize the numeric prefix and fails closed on the malformed-looking value | Only meaningful together with `BYSETPOS`/`MONTHLY`/`YEARLY` support | ✅ taken |
+| `BYMONTHDAY`, `BYMONTH`, `BYWEEKNO`, `BYYEARDAY`, `BYHOUR`, `BYMINUTE`, `BYSECOND` | Only meaningful combined with `MONTHLY`/`YEARLY` (see above), or a time-of-day set the model has no room for | Same as `FREQ=YEARLY` above | ✅ taken, except `BYWEEKNO` |
+| `BYSETPOS` (e.g. "the 2nd Tuesday of the month") | Needs the full monthly/yearly occurrence set generated first, then picked by position - a materially different algorithm | Possible, but the most complex of the unsupported list; not seen in real-world testing so far | ✅ taken |
+| `RECURRENCE-ID;RANGE=THISANDFUTURE` | The changes would have to be applied to the series from the named instance on; the instances from there on are left out instead | Possible, with the same machinery a time zone database would need | The same |
+| `RDATE;VALUE=PERIOD`, `EXDATE` of a period | Not readable; the whole event is dropped (fail-closed) | Rare in practice | The same |
+| A foreign `TZID` (not the device's zone) | Read as the device's own time zone, see above | Needs the `VTIMEZONE` of the feed or a time zone database | The same |
+| Any unrecognized/malformed component | Fails closed - a value this parser doesn't understand at all could silently mean something that changes which occurrences are valid | N/A by design - the whole point of failing closed | The same: left out |
 
 ## Where to look in code
 
-- `ics_rrule_t` / `parse_rrule()` (`main/calendar_ics.c`) - what's parsed from the raw `RRULE`
+- `ics_rrule_t` / `parse_rrule()` (`main/calendar_ics.c`, only in a build without `agenda-rrule`) - what's parsed from the raw `RRULE`
   value and why each rejected component is rejected.
-- `expand_series()` (`main/calendar_ics.c`) - how accepted rules are turned into actual occurrence
-  timestamps within a requested window (wall-clock arithmetic for local `DTSTART`s, fixed instants for
-  UTC ones), minus the exceptions, plus the `RDATE`s.
+- `expand_series()` (`main/calendar_ics.c`) - how a series is turned into actual occurrence
+  timestamps within a requested window, minus the exceptions, plus the `RDATE`s: with `agenda-rrule` the instances come from
+  `gather_with_engine()` (libical, `main/calendar_rrule.c`) or, for a single event with an `EXDATE`/`RDATE`, from `gather_single()`; without it from
+  `gather_simple()` (wall-clock arithmetic for local `DTSTART`s, fixed instants for UTC ones).
 - `finalize_vevent()` (`main/calendar_ics.c`) - the `BYDAY`-vs-`DTSTART`-weekday cross-check that
   only becomes possible once `DTSTART` is known (RRULE components can appear in any order within a
   `VEVENT` block per RFC 5545, so `parse_rrule()` alone can't validate this at parse time), the

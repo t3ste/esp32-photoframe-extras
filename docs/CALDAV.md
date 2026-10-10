@@ -22,7 +22,7 @@ server one question - a CalDAV `REPORT` (RFC 4791 `calendar-query`) - "which eve
 - **Only what is shown is transferred.** A calendar with years of history is no longer a download of megabytes (the frame
   reads at most 2 MB of an ICS file and cuts the rest off).
 - **The server expands repeating events.** The frame's own reader understands daily and weekly repeats and their exceptions ("not on the
-  3rd", a moved or called-off instance); a monthly or yearly event or a `BYDAY` list is left out ([CALENDAR_RRULE_SUPPORT.md](CALENDAR_RRULE_SUPPORT.md)). The server sends every
+  3rd", a moved or called-off instance); a monthly or yearly event or a `BYDAY` list is left out unless the firmware has the extended line's option `agenda-rrule` ([CALENDAR_RRULE_SUPPORT.md](CALENDAR_RRULE_SUPPORT.md)). The server sends every
   occurrence as a single event instead, so they all show up. (A server that does not take this - it answers 400, 415, 422 or 501 - is asked again without
   it, and the frame's own reader does what it can.)
 - Calendars C-E are queried **once** (on save or **Refresh now**) for the time from last week to a year ahead.

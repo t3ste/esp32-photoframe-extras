@@ -80,7 +80,7 @@ caldavs://user:password@cloud.example.org/remote.php/dav/calendars/user/personal
 Use the address of the **calendar itself**, the one a calendar app such as Thunderbird asks for, not the server's start page.
 The benefit: the server sends only the coming days instead of the whole history, and it expands monthly and yearly repeating
 events (and the exceptions of every kind of repeat) correctly; the frame's own reader handles daily and weekly repeats with
-their exceptions, but not monthly or yearly ones.
+their exceptions, and with `agenda-rrule` (below) monthly and yearly ones as well.
 
 If nothing shows, the frame's log tells why: `refused the login (HTTP 401)` is a wrong user name or password (or an unencoded
 `@`); `REPORT returned HTTP 404/405` is not the address of a calendar. More: [CALDAV.md](CALDAV.md).

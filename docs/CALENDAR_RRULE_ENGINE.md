@@ -1,8 +1,8 @@
 # Recurrence rules through libical (`agenda-rrule`)
 
 > **Build option:** `python build.py --with agenda-rrule` (needs `agenda`; part of the `extras` bundle of the extended line). Without it the firmware keeps the Agenda's own
-> expander, which takes daily and weekly rules only - see [CALENDAR_RRULE_SUPPORT.md](CALENDAR_RRULE_SUPPORT.md). With no build option at all the firmware is the upstream
-> firmware (see [FEATURES.md](FEATURES.md)).
+> expander, which takes daily and weekly rules only; with it that expander is not compiled any more and libical takes every rule - the matrix is in
+> [CALENDAR_RRULE_SUPPORT.md](CALENDAR_RRULE_SUPPORT.md). With no build option at all the firmware is the upstream firmware (see [FEATURES.md](FEATURES.md)).
 
 The Agenda's own reader leaves a **monthly or yearly event out** ("the second Monday of the month", "the last Friday", a birthday), as it does a `BYDAY` list, `BYSETPOS` and the like. With
 this option a recurrence rule goes to the recurrence iterator of [libical](https://github.com/libical/libical) (v4.0.6, vendored unmodified in `components/libical`), which knows RFC 5545's
@@ -40,6 +40,17 @@ A rule is checked in [`main/calendar_rrule.c`](../main/calendar_rrule.c) before 
 The three "the two disagree" lines come from running thousands of random rules through libical and python-dateutil (see below): every `DAILY`, `WEEKLY` and `MONTHLY` rule and every other
 `YEARLY` rule gave the same instances; these three families did not, and a wrong date on a wall is worse than no date.
 
+## What happened to the reader's own expander
+
+The Agenda's own rule reader (`ics_rrule_t`, `parse_rrule()`, the DAILY/WEEKLY loop `gather_simple()` and the check that a single `BYDAY` names `DTSTART`'s weekday) is **compiled out in a build with
+`agenda-rrule`**: every rule - the daily and weekly ones too - goes to libical, and a single event that has an `EXDATE` or `RDATE` is a series of one (`gather_single()`: its own instance, which an
+`EXDATE` can take away). It was never a fallback at run time - a rule the engine refuses leaves the event out, it does not hand it to the old code - so taking it out changes no result. Before it went, the two were run
+side by side (a debugging build that expanded every series with both and logged a difference as instants): 4068 series over 1176 windows on a PC and 110 series on the frame (the demo calendars, an invented feed of rules,
+a feed that crosses both daylight saving changes, a 2 MB generated feed) agreed in every instance; and the engine build before and after the removal gave the same events in all of 1236 windows of the public and invented feeds.
+
+The old code stays **in a build without the option**: that is the base project's `agenda`, which does not carry libical (and an `agenda` build that does not want 96 KB more flash). It is the code the tests of
+`host_tests/test_calendar_ics.cpp` run on. It can only go if the base project takes libical in as well.
+
 ## Limits and cost
 
 - **Flash:** +98,160 bytes (about 96 KB) on a Waveshare build (ESP32-S3), measured against the same build with `agenda` only.
@@ -61,14 +72,13 @@ The three "the two disagree" lines come from running thousands of random rules t
 - A mutation fuzzer over `calendar_rrule_expand()` (random and broken rule texts in exact-size buffers, random starts and windows, ASan / UBSan / leak, the count, order and window of the result checked): 2.1 million rules over seven
   seeds, about a quarter accepted. It found one defect, a read of two bytes past the end of a rule that ends in `WKST=`, which is fixed and has a test.
 - The 97 public calendars of python-recurring-ical-events as fixtures, ASan / UBSan / leak runs of the tests, a mutation fuzzer over the feed parser (64,000 rounds with the engine compiled in, rule fragments among the insertions).
-- **The parallel comparison** (`-DICS_RRULE_COMPARE`, never in a release build): `calendar_ics.c` expands every series with libical *and*, for a rule its own expander understands too (daily,
-  weekly, a single `BYDAY`), with that one; a difference is logged as instants (never an event's text) and the end of a parse says `rrule compare: N series agree, M differ`. On the host it
-  compared 4068 series over 1176 windows of the invented and the public feeds without a difference. **On the frame** (Waveshare, ESP32-S3, libical compiled for the Xtensa) it compared 110 series - the demo
-  calendars, an invented feed of rules, a feed that crosses both daylight saving changes, a 2 MB generated feed - and found no difference either.
+- **The parallel comparison with the old expander** (a debugging build, gone again with the old expander, see above): 4068 series over 1176 windows on a PC and 110 series on the frame (Waveshare, ESP32-S3, libical compiled for the
+  Xtensa), no difference. It is the check that libical, built for the Xtensa, gives what it gives on the host.
+- After the removal: the engine build gives the same events as before in 1236 windows of the public and invented feeds, and the tests of a single event with an `EXDATE` or `RDATE` are new.
 
 ## Where to look in code
 
 - `components/libical/` - the vendored library, `UPSTREAM.md` (tag, commit, checksum, update procedure via `vendor.sh`), `port/config.h` (our build configuration), licence texts. The
   component is empty without the option. libical is used under the **MPL-2.0** ([notice](third_party/LIBICAL-NOTICE.md)).
 - `main/calendar_rrule.c` / `.h` - `calendar_rrule_expand()`: the checks, the iterator, the bounds.
-- `main/calendar_ics.c` - `gather_with_engine()` (window, `UNTIL`, overlap, hidden instances) and `compare_with_simple()` (debug only), both under `FEATURE_AGENDA_RRULE`.
+- `main/calendar_ics.c` - with the option: `gather_with_engine()` (window, `UNTIL`, overlap, hidden instances) and `gather_single()`; without it: `parse_rrule()` and `gather_simple()` (the reader's own expander).

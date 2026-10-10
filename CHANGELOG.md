@@ -27,7 +27,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   `EXDATE`, `RDATE`, `RECURRENCE-ID`, durations, all-day events and the daylight saving time handling are the code of the Agenda fixes below; libical only decides which days a rule hits. Costs +98,160 bytes of flash (measured,
   Waveshare build), about 16 KB of heap while a rule is expanded (none kept), and a 2 MB feed takes 4.3 - 5.1 s to re-expand on the ESP32-S3, of which 2.0 s is reading the file (the simple expander: 4.5 s). Checked by the adapter
   against python-dateutil's instances, 50 refused rules, the 97 public calendars of python-recurring-ical-events, thousands of random rules through libical and dateutil, a fuzzer over the rule texts (2.1 million rules, ASan/UBSan; it found a
-  two-byte over-read of a rule ending in `WKST=`, fixed), and on a frame with the debugging build `-DICS_RRULE_COMPARE` (a parallel comparison with the simple expander: 110 series, no difference). See
+  two-byte over-read of a rule ending in `WKST=`, fixed), and on a frame with a debugging build that expanded every series with libical and with the old expander side by side (110 series, no difference; the build is gone again). In a build with the option the
+  reader's own DAILY/WEEKLY expander is not compiled any more - a build with `agenda` only keeps it, and the support matrix in `docs/CALENDAR_RRULE_SUPPORT.md` says which build takes what. See
   `docs/CALENDAR_RRULE_ENGINE.md`.
 
 ### Fixed
