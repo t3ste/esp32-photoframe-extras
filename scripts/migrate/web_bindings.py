@@ -93,7 +93,8 @@ function sourceFiles(dir) {
 }
 const files = sourceFiles('webapp/src').filter((f) => readFileSync(f, 'utf8').includes('#if '));
 // Names that the text of upstream itself (every directive off) already uses without declaring - an
-// upstream defect the all-off proof keeps as it is - are not reported for any set.
+// upstream defect the all-off proof keeps as it is - are not reported for a set without the `fixes`
+// option (which corrects them: with it they must be defined).
 const upstreamUndefined = {};
 for (const file of files) {
   try {
@@ -113,7 +114,8 @@ process.stdin.on('end', () => {
       const lintScript = (code) => {
         const lint = undefinedInScript(code);
         if (lint.error) { problems.push(`${file}: script: ${lint.error}`); return; }
-        const names = lint.names.filter((n) => !upstreamUndefined[file].has(n));
+        const known = flags.has('FORK_FIXES') ? new Set() : upstreamUndefined[file];
+        const names = lint.names.filter((n) => !known.has(n));
         if (names.length) problems.push(`${file}: used by the script, not defined: ${names.join(', ')}`);
       };
       if (file.endsWith('.js')) { lintScript(source); continue; }
