@@ -307,7 +307,11 @@ function onShowThumbnailsChange(val) {
       <v-card-actions>
         <v-spacer />
         <v-btn variant="text" @click="newAlbumDialog = false"> Cancel </v-btn>
+<!-- #if FORK_FIXES -->
+        <v-btn color="primary" :disabled="!newAlbumName.trim()" @click="createAlbum"> Create </v-btn>
+<!-- #else -->
         <v-btn color="primary" @click="createAlbum"> Create </v-btn>
+<!-- #endif -->
       </v-card-actions>
     </v-card>
   </v-dialog>
