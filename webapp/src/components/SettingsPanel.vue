@@ -749,8 +749,8 @@ async function resetDisplayHistory() {
 }
 
 // #endif
-// #if FORK_FIXES || FEATURE_AGENDA
-// Also declared without the `fixes` option: exportConfig() below reads it for the Agenda's fields
+// #if FORK_FIXES || FEATURE_AGENDA || FEATURE_ROUTE_TIME
+// Also declared without the `fixes` option: exportConfig() below reads it for the Agenda's and the route fields
 // (off, so they are always left out of the export - there is no checkbox without `fixes`).
 // Default OFF: an export is downloaded to disk as plaintext JSON, so
 // credentials should only end up in it when the user explicitly opts in

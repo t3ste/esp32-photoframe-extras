@@ -12,9 +12,9 @@ import { isMarketKey } from "../utils/marketKey";
 // #endif
 // #if FEATURE_ARTWORKS
 import { isArtAlbumName, isArtKey } from "../utils/artKey";
+// #endif
 // #if FEATURE_ROUTE_TIME
 import { isRouteKey } from "../utils/routeKey";
-// #endif
 // #endif
 // #if FEATURE_RECIPES
 import { isMealDbKey } from "../utils/recipeKey";
