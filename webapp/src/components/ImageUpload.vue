@@ -1032,6 +1032,7 @@ async function generateAiImage() {
            controls render beside the preview instead of in the Settings tab. -->
       <div v-else :class="{ 'edit-split': wideEdit }">
         <div class="edit-preview">
+          <!-- #if FORK_FIXES -->
           <ImageProcessing
             ref="imageProcessingRef"
             :image-file="selectedFile"
@@ -1039,10 +1040,18 @@ async function generateAiImage() {
             :palette="settingsStore.palette"
             :tone-curve-teleport="wideEdit ? '#tone-curve-slot' : null"
             @processed="processedResult = $event"
-<!-- #if FORK_FIXES -->
             @error="onImageUnreadable"
-<!-- #endif -->
           />
+          <!-- #else -->
+          <ImageProcessing
+            ref="imageProcessingRef"
+            :image-file="selectedFile"
+            :params="settingsStore.params"
+            :palette="settingsStore.palette"
+            :tone-curve-teleport="wideEdit ? '#tone-curve-slot' : null"
+            @processed="processedResult = $event"
+          />
+          <!-- #endif -->
         </div>
         <div v-if="wideEdit" class="edit-controls">
           <!-- ImageProcessing teleports the Tone Curve card in here -->
