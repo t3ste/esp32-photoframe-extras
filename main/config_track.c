@@ -69,8 +69,9 @@ cJSON *config_track_end(void)
     cJSON *unknown = cJSON_CreateArray();
     int i = 0;
     for (const cJSON *c = s_root->child; c && i < CONFIG_TRACK_MAX_KEYS; c = c->next, i++) {
-        if (!c->string) {
-            continue;
+        if (!c->string || cJSON_IsNull(c)) {
+            continue;  // JSON null is "no value" (docs/API.md: it leaves a setting unchanged), not
+                       // a wrong type
         }
         if (!(s_state[i] & STATE_LOOKED)) {
             if (unknown) {

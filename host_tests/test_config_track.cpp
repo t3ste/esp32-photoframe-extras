@@ -171,6 +171,18 @@ TEST(ConfigTrack, ABoolIsTakenByIsTrueOnlyWhenItIsABool)
     cJSON_Delete(report);
 }
 
+TEST(ConfigTrack, JsonNullIsNoValueAndNeverListed)
+{
+    Parsed p(R"({"http_password":null,"timezone":null,"x":"y"})");
+    ASSERT_TRUE(config_track_begin(p.root));
+    take_string(p.root, "http_password");  // looked up, null is not a string - and not a mistake
+    cJSON *report = config_track_end();
+    ASSERT_NE(report, nullptr);
+    EXPECT_EQ(cJSON_GetObjectItem(report, "ignored"), nullptr);
+    EXPECT_EQ(list(report, "unknown"), V{"x"});  // "timezone": null is not listed as unknown either
+    cJSON_Delete(report);
+}
+
 TEST(ConfigTrack, OnlyOneRequestIsTrackedAtATime)
 {
     Parsed a(R"({"x":1})");

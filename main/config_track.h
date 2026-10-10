@@ -36,8 +36,8 @@ bool config_track_taken(const cJSON *item, bool matched);
 
 // Stops tracking. Returns {"ignored": [keys], "unknown": [keys]} - "ignored": a key a handler
 // looked up but whose JSON type it does not read, "unknown": a key no handler looked up; an empty
-// list is left out - or NULL when there is nothing to report (or nothing was tracked). The caller
-// frees it.
+// list is left out and JSON null never counts - or NULL when there is nothing to report (or nothing
+// was tracked). The caller frees it.
 cJSON *config_track_end(void);
 
 #endif
