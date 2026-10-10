@@ -60,7 +60,7 @@ The three "the two disagree" lines come from running thousands of random rules t
 - A random-rule differential (thousands of rules, libical against dateutil) and an exhaustive `WKST` run found the three refused families above.
 - A mutation fuzzer over `calendar_rrule_expand()` (random and broken rule texts in exact-size buffers, random starts and windows, ASan / UBSan / leak, the count, order and window of the result checked): 2.1 million rules over seven
   seeds, about a quarter accepted. It found one defect, a read of two bytes past the end of a rule that ends in `WKST=`, which is fixed and has a test.
-- The 97 public calendars of python-recurring-ical-events as fixtures, ASan / UBSan / leak runs of the tests, a mutation fuzzer over the feed parser.
+- The 97 public calendars of python-recurring-ical-events as fixtures, ASan / UBSan / leak runs of the tests, a mutation fuzzer over the feed parser (64,000 rounds with the engine compiled in, rule fragments among the insertions).
 - **The parallel comparison** (`-DICS_RRULE_COMPARE`, never in a release build): `calendar_ics.c` expands every series with libical *and*, for a rule its own expander understands too (daily,
   weekly, a single `BYDAY`), with that one; a difference is logged as instants (never an event's text) and the end of a parse says `rrule compare: N series agree, M differ`. On the host it
   compared 4068 series over 1176 windows of the invented and the public feeds without a difference. **On the frame** (Waveshare, ESP32-S3, libical compiled for the Xtensa) it compared 110 series - the demo
