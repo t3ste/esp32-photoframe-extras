@@ -11,11 +11,11 @@
  * @file calendar_rrule.h
  * @brief Recurrence rules of the Agenda's calendars through libical (build option `agenda-rrule`).
  *
- * calendar_ics.c's own expander knows DAILY and WEEKLY with a single BYDAY; this module hands a
- * rule to libical's recurrence iterator (components/libical, unmodified), which knows all of RFC
- * 5545: MONTHLY and YEARLY, BYDAY lists and ordinals ("second Monday", "last Friday"), BYMONTHDAY
- * (negative too), BYMONTH, BYYEARDAY, BYWEEKNO, BYSETPOS, BYHOUR/BYMINUTE/BYSECOND, WKST, invalid
- * dates skipped.
+ * calendar_ics.c's own expander (compiled only without this option) knows DAILY and WEEKLY with a
+ * single BYDAY; this module hands every rule to libical's recurrence iterator (components/libical,
+ * unmodified), which knows all of RFC 5545: MONTHLY and YEARLY, BYDAY lists and ordinals ("second
+ * Monday", "last Friday"), BYMONTHDAY (negative too), BYMONTH, BYYEARDAY, BYWEEKNO, BYSETPOS,
+ * BYHOUR/BYMINUTE/BYSECOND, WKST, invalid dates skipped.
  *
  * What this module adds around libical:
  *  - the rule is checked here first (known parts only, ranges, the combinations the standard

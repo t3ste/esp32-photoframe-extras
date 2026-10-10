@@ -257,6 +257,37 @@ TEST_F(CalendarIcsRrule, RulesThatAreNotTakenLeaveTheEventOutAndTheOthersAlone)
     EXPECT_STREQ(l.events[0].summary, "Fine");
 }
 
+TEST_F(CalendarIcsRrule, ASingleEventWithAnRdateIsASeriesOfTwo)
+{
+    // no RRULE: the event itself plus the extra date, no rule involved
+    auto l =
+        parse(vevent("DTSTART:20261008T090000\nDTEND:20261008T100000\nRDATE:20261015T090000\n"),
+              local(2026, 10, 1), local(2026, 11, 1));
+    EXPECT_EQ(all(l), (V{"2026-10-08 09:00", "2026-10-15 09:00"}));
+    EXPECT_EQ(l.events[1].end - l.events[1].start, 3600);
+}
+
+TEST_F(CalendarIcsRrule, ASingleEventWithAnExdateIsGoneOnlyWhenItIsItsOwnDate)
+{
+    auto gone = parse(vevent("DTSTART:20261008T090000\nEXDATE:20261008T090000\n"),
+                      local(2026, 10, 1), local(2026, 11, 1));
+    EXPECT_EQ(gone.count, 0);
+    auto stays = parse(vevent("DTSTART:20261008T090000\nEXDATE:20261015T090000\n"),
+                       local(2026, 10, 1), local(2026, 11, 1));
+    EXPECT_EQ(all(stays), (V{"2026-10-08 09:00"}));
+    // an all-day event with an EXDATE of its day (a bare date)
+    auto gone_day = parse(vevent("DTSTART;VALUE=DATE:20261008\nEXDATE;VALUE=DATE:20261008\n"),
+                          local(2026, 10, 1), local(2026, 11, 1));
+    EXPECT_EQ(gone_day.count, 0);
+}
+
+TEST_F(CalendarIcsRrule, ASingleEventOutsideTheWindowStaysOutEvenWithAnRdateInside)
+{
+    auto l = parse(vevent("DTSTART:20260108T090000\nRDATE:20261015T090000\n"), local(2026, 10, 1),
+                   local(2026, 11, 1));
+    EXPECT_EQ(all(l), (V{"2026-10-15 09:00"}));
+}
+
 TEST_F(CalendarIcsRrule, WhatTheOldReaderTookGivesTheSameInstances)
 {
     // daily, weekly, interval, count, a single BYDAY - the rules the option-off reader understands

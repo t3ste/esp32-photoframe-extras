@@ -34,7 +34,8 @@ typedef struct {
  * extracts non-recurring VEVENTs overlapping [window_start, window_end).
  *
  * Recurring events (a VEVENT with an RRULE) are expanded for DAILY/WEEKLY
- * rules - see calendar_ics.c's RRULE-lite - on the wall clock of the device's
+ * rules - see calendar_ics.c's RRULE-lite; with the build option agenda-rrule for
+ * every rule of RFC 5545 through libical, see calendar_rrule.h - on the wall clock of the device's
  * time zone, so a series keeps its time of day when the clocks change.
  * EXDATE, RDATE, RECURRENCE-ID (a moved or called-off instance; with
  * RANGE=THISANDFUTURE the later instances are left out) and STATUS:CANCELLED

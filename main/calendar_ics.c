@@ -208,6 +208,10 @@ static void decode_ics_text(const char *in, size_t in_len, char *out, size_t out
     out[o] = '\0';
 }
 
+// The reader's own rule parser and expander (DAILY and WEEKLY) exist only in a build without
+// the option agenda-rrule: with it, calendar_rrule.c (libical) takes every rule and none of this
+// is compiled.
+#if !FEATURE_AGENDA_RRULE
 // RRULE-lite: FREQ=DAILY/WEEKLY only, optional INTERVAL (default 1), COUNT,
 // UNTIL, WKST (ignored, see parse_rrule()), and a single-value BYDAY.
 // Anything else in the rule (a multi-value BYDAY like "MO,WE,FR",
@@ -350,6 +354,7 @@ static bool parse_rrule(const char *value, size_t value_len, ics_rrule_t *out)
     out->supported = have_freq;
     return out->supported;
 }
+#endif  // !FEATURE_AGENDA_RRULE
 
 // A date or date-time of an EXDATE/RDATE value.
 typedef struct {
@@ -385,10 +390,6 @@ typedef struct {
 #endif
     int n_cand;
     int dropped;  // events that did not fit into ICS_MAX_EVENTS
-#ifdef ICS_RRULE_COMPARE
-    int cmp_same,
-        cmp_diff;  // series whose instances the engine and the simple expander agree / differ on
-#endif
 } ics_ctx_t;
 
 typedef struct {
@@ -407,9 +408,12 @@ typedef struct {
     bool have_summary;
 
     bool has_rrule;
-    ics_rrule_t rrule;
+#if FEATURE_AGENDA_RRULE
     const char *rrule_text;  // the raw value, for calendar_rrule.c (NULL if the line was cut)
     size_t rrule_len;
+#else
+    ics_rrule_t rrule;
+#endif
 
     bool has_exdate;
     bool has_rdate;
@@ -832,11 +836,14 @@ typedef struct {
     int64_t dur_days;  // whole days, all-day events
     bool all_day;
     bool utc;  // DTSTART in UTC: the instants are fixed, whatever the clocks do locally
+#if !FEATURE_AGENDA_RRULE
     int64_t period_days;
-    int64_t base_day;    // civil day of DTSTART (local series)
+    int64_t base_day;  // civil day of DTSTART (local series)
+#endif
     int hour, min, sec;  // wall-clock time of DTSTART (local series)
 } ics_series_t;
 
+#if !FEATURE_AGENDA_RRULE
 static time_t series_start(const ics_series_t *s, int64_t k)
 {
     if (k == 0) {
@@ -847,6 +854,7 @@ static time_t series_start(const ics_series_t *s, int64_t k)
     }
     return local_time_on_day(s->base_day + k * s->period_days, s->hour, s->min, s->sec);
 }
+#endif
 
 static time_t series_end(const ics_series_t *s, time_t occ_start)
 {
@@ -978,8 +986,20 @@ static bool gather_with_engine(ics_ctx_t *ctx, const ics_vevent_state_t *st, con
     }
     return true;
 }
+
+// A single event that has an EXDATE or RDATE is a series of one: its own instance, which an
+// EXDATE can take away, into ctx->cand.
+static void gather_single(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ics_series_t *s,
+                          time_t window_start, time_t window_end)
+{
+    if (time_overlaps_window(s->start, series_end(s, s->start), window_start, window_end) &&
+        !instance_hidden(ctx, st, s->start, s->all_day)) {
+        add_candidate(ctx, s->start);
+    }
+}
 #endif  // FEATURE_AGENDA_RRULE
 
+#if !FEATURE_AGENDA_RRULE
 // The instances of a rule that this parser's own expander understands (DAILY/WEEKLY), into
 // ctx->cand.
 static void gather_simple(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ics_rrule_t *rule,
@@ -1034,65 +1054,10 @@ static void gather_simple(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ic
         }
     }
 }
+#endif  // !FEATURE_AGENDA_RRULE
 
-#if FEATURE_AGENDA_RRULE && defined(ICS_RRULE_COMPARE)
-// A debugging build (-DICS_RRULE_COMPARE): the instances libical's iterator made (in ctx->cand)
-// against what this parser's own expander makes for a rule that one understands. Different ones go
-// to the log (instants only, never an event's text); the numbers at the end of calendar_ics_parse()
-// say how many series agreed.
-static void compare_with_simple(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ics_series_t *s,
-                                time_t window_start, time_t window_end)
-{
-    if (!st->rrule.supported) {
-        return;  // not a rule the simple expander takes: nothing to compare with
-    }
-    if (st->rrule.byday >= 0) {
-        struct tm t;
-        time_t at = s->start;
-        if (s->utc) {
-            gmtime_r(&at, &t);
-        } else {
-            localtime_r(&at, &t);
-        }
-        if (!st->rrule.weekly || t.tm_wday != st->rrule.byday) {
-            return;
-        }
-    }
-    time_t engine[ICS_MAX_CANDIDATES];
-    int n_engine = ctx->n_cand;
-    memcpy(engine, ctx->cand, sizeof(time_t) * (size_t) n_engine);
-    qsort(engine, (size_t) n_engine, sizeof(time_t), compare_times);
-    ctx->n_cand = 0;
-    ics_series_t simple =
-        *s;  // the series of the engine's call has no period (it has no use for one)
-    simple.period_days = (int64_t) (st->rrule.weekly ? 7 : 1) * st->rrule.interval;
-    gather_simple(ctx, st, &st->rrule, &simple, window_start, window_end);
-    qsort(ctx->cand, (size_t) ctx->n_cand, sizeof(time_t), compare_times);
-    bool same = ctx->n_cand == n_engine;
-    int first_diff = -1;
-    for (int i = 0; same && i < n_engine; i++) {
-        if (ctx->cand[i] != engine[i]) {
-            same = false;
-            first_diff = i;
-        }
-    }
-    if (same) {
-        ctx->cmp_same++;
-    } else {
-        ctx->cmp_diff++;
-        ESP_LOGW(TAG,
-                 "rrule compare: the engine made %d instance(s), the simple expander %d (first "
-                 "difference: #%d, %lld / %lld)",
-                 n_engine, ctx->n_cand, first_diff,
-                 first_diff >= 0 ? (long long) engine[first_diff] : -1LL,
-                 first_diff >= 0 ? (long long) ctx->cand[first_diff] : -1LL);
-    }
-    memcpy(ctx->cand, engine, sizeof(time_t) * (size_t) n_engine);
-    ctx->n_cand = n_engine;
-}
-#endif
-
-// Expands a series (an RRULE this parser understands, or a single event that has EXDATE/RDATE) into
+// Expands a series (an RRULE - the rules of libical's iterator with the option agenda-rrule, DAILY
+// and WEEKLY without it - or a single event that has EXDATE/RDATE) into
 // whichever instances overlap [window_start, window_end), minus the excluded and replaced ones,
 // plus the RDATEs.
 //
@@ -1102,7 +1067,10 @@ static void compare_with_simple(ics_ctx_t *ctx, const ics_vevent_state_t *st, co
 // (a series started in winter would show up an hour late in summer). A DTSTART in UTC repeats at
 // fixed instants, as the standard says. The first instance is found by jumping to the right period
 // rather than walking from DTSTART, which can be years in the past.
-static void expand_series(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ics_rrule_t *rule,
+static void expand_series(ics_ctx_t *ctx, const ics_vevent_state_t *st,
+#if !FEATURE_AGENDA_RRULE
+                          const ics_rrule_t *rule,
+#endif
                           time_t start, time_t end, const char *summary, time_t window_start,
                           time_t window_end, ics_event_list_t *out)
 {
@@ -1112,37 +1080,39 @@ static void expand_series(ics_ctx_t *ctx, const ics_vevent_state_t *st, const ic
     s.duration = end > start ? end - start : 0;
     s.all_day = st->all_day;
     s.utc = st->dtstart_utc && !st->all_day;
+#if !FEATURE_AGENDA_RRULE
     s.period_days = rule ? (int64_t) (rule->weekly ? 7 : 1) * rule->interval : 1;
     if (s.period_days <= 0) {
         s.period_days = 1;  // defensive - interval is already clamped >= 1 by parse_rrule()
     }
+#endif
     if (s.all_day) {
         s.dur_days = ((int64_t) s.duration + 43200) / 86400;
         if (s.dur_days < 1) {
             s.dur_days = 1;
         }
     }
+#if !FEATURE_AGENDA_RRULE
     s.base_day = days_from_civil(st->dtstart_tm.tm_year + 1900, st->dtstart_tm.tm_mon + 1,
                                  st->dtstart_tm.tm_mday);
+#endif
     s.hour = st->dtstart_tm.tm_hour;
     s.min = st->dtstart_tm.tm_min;
     s.sec = st->dtstart_tm.tm_sec;
 
     ctx->n_cand = 0;
 #if FEATURE_AGENDA_RRULE
-    if (!rule) {
+    if (st->has_rrule) {
         // libical's iterator makes the instances of the rule (calendar_rrule.c)
         if (!gather_with_engine(ctx, st, &s, window_start, window_end)) {
             return;  // a rule that is not taken: the event is left out
         }
-#ifdef ICS_RRULE_COMPARE
-        compare_with_simple(ctx, st, &s, window_start, window_end);
-#endif
-    } else
-#endif
-    {
-        gather_simple(ctx, st, rule, &s, window_start, window_end);
+    } else {
+        gather_single(ctx, st, &s, window_start, window_end);
     }
+#else
+    gather_simple(ctx, st, rule, &s, window_start, window_end);
+#endif
 
     for (int i = 0; i < ctx->n_rdates; i++) {
         time_t occ_start = ctx->rdates[i].t;
@@ -1229,6 +1199,7 @@ static void finalize_vevent(ics_ctx_t *ctx, const ics_vevent_state_t *st, time_t
 
     // A series, or a single event that has an EXDATE/RDATE (one instance that can be excluded, plus
     // the RDATEs): the latter is a series of one.
+#if !FEATURE_AGENDA_RRULE
     ics_rrule_t single;
     memset(&single, 0, sizeof(single));
     single.supported = true;
@@ -1238,9 +1209,6 @@ static void finalize_vevent(ics_ctx_t *ctx, const ics_vevent_state_t *st, time_t
     single.count = 1;
     const ics_rrule_t *rule = &single;
     if (st->has_rrule) {
-#if FEATURE_AGENDA_RRULE
-        rule = NULL;  // libical's iterator takes it, or does not (expand_series())
-#else
         if (!st->rrule.supported) {
             return;
         }
@@ -1266,8 +1234,8 @@ static void finalize_vevent(ics_ctx_t *ctx, const ics_vevent_state_t *st, time_t
             }
         }
         rule = &st->rrule;
-#endif
     }
+#endif
 
     // Only exceptions that can touch the window are kept: an instance outside it is not shown
     // anyway.
@@ -1286,7 +1254,11 @@ static void finalize_vevent(ics_ctx_t *ctx, const ics_vevent_state_t *st, time_t
                  "is ignored",
                  ICS_MAX_EXDATES, ICS_MAX_RDATES);
     }
+#if FEATURE_AGENDA_RRULE
+    expand_series(ctx, st, start, end, summary, window_start, window_end, out);
+#else
     expand_series(ctx, st, rule, start, end, summary, window_start, window_end, out);
+#endif
 }
 
 static int compare_events_by_start(const void *a, const void *b)
@@ -1434,11 +1406,14 @@ esp_err_t calendar_ics_parse(char *body, size_t body_len, time_t window_start, t
             st.have_summary = true;
         } else if (name_is(name, name_len, "RRULE")) {
             st.has_rrule = true;
-            parse_rrule(value, value_len, &st.rrule);  // rrule.supported tells finalize_vevent()
+#if FEATURE_AGENDA_RRULE
             // the engine (calendar_rrule.c) wants the text; a line that was cut at the buffer is
             // not one
             st.rrule_text = (size_t) (line_end - line) <= ICS_LINE_MAX_LEN ? value : NULL;
             st.rrule_len = value_len;
+#else
+            parse_rrule(value, value_len, &st.rrule);  // rrule.supported tells finalize_vevent()
+#endif
         } else if (name_is(name, name_len, "EXDATE")) {
             st.has_exdate = true;
         } else if (name_is(name, name_len, "RDATE")) {
@@ -1458,11 +1433,6 @@ esp_err_t calendar_ics_parse(char *body, size_t body_len, time_t window_start, t
         ESP_LOGW(TAG, "%d event(s) beyond the first %d of the window were left out", ctx->dropped,
                  ICS_MAX_EVENTS);
     }
-#ifdef ICS_RRULE_COMPARE
-    if (ctx->cmp_same || ctx->cmp_diff) {
-        ESP_LOGW(TAG, "rrule compare: %d series agree, %d differ", ctx->cmp_same, ctx->cmp_diff);
-    }
-#endif
     free(ctx->overrides);
     free(ctx);
 
