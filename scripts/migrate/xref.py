@@ -97,6 +97,16 @@ SELECTS = {
     "FORK_AUDIO_HAL": ["chimes", "alarmclock"],
 }
 
+LIBRARY_WRAPPERS = {
+    "cJSON_GetObjectItem",
+    "cJSON_IsString",
+    "cJSON_IsNumber",
+    "cJSON_IsBool",
+    "cJSON_IsArray",
+    "cJSON_IsObject",
+    "cJSON_IsTrue",
+}
+
 KEYWORDS = set(
     "if else for while do switch case default return break continue goto sizeof "
     "static const extern inline volatile register typedef struct union enum void "
@@ -326,6 +336,9 @@ def check(feature_names):
     candidates = set(inactive_defs)
     for header in headers:
         candidates |= file_defs[header]
+    # a macro that wraps a library function of the same name (utils.c tracks which fields of a config
+    # request were read, see config_track.h) does not make the name the project's: the library has it
+    candidates -= LIBRARY_WRAPPERS
     problems = {}
     for path in sources:
         text = strip_macro_arguments(active_text[path], macros)

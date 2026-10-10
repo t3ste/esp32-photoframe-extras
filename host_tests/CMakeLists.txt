@@ -944,6 +944,27 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# Which fields of a config request apply_config_from_json() ignored (the fixes option; the real cJSON)
+add_executable(
+  config_track_test
+  test_config_track.cpp
+  ../main/config_track.c
+  ${CJSON_DIR}/cJSON.c
+)
+
+target_link_libraries(
+  config_track_test
+  GTest::gtest_main
+  m
+)
+
+target_include_directories(
+  config_track_test
+  PRIVATE
+  ${CJSON_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Stop-word (keyword) recognition: MFCC + DTW template matching, tested on
 # text-to-speech samples (host_tests/data/kws) (voice-stop feature)
 add_executable(
@@ -1248,6 +1269,7 @@ gtest_discover_tests(alarm_pattern_test)
 gtest_discover_tests(history_decimate_test)
 gtest_discover_tests(jpeg_header_test)
 gtest_discover_tests(http_origin_test)
+gtest_discover_tests(config_track_test)
 gtest_discover_tests(kws_test)
 gtest_discover_tests(headlines_test)
 gtest_discover_tests(todo_test)

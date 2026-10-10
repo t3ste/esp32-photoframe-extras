@@ -1733,17 +1733,23 @@ function sameValue(a, b) {
   return keysA.length === Object.keys(b).length && keysA.every((key) => sameValue(a[key], b[key]));
 }
 
-async function settingsNotTaken(config) {
+// `report` is the frame's own answer to the PATCH ({ignored, unknown}, newer firmware): "ignored" is a key
+// of the wrong JSON type, "unknown" one the firmware does not take - which includes the read-only values of
+// GET /api/config that an export carries, so only a key that GET does not know either is a mistake.
+async function settingsNotTaken(config, report) {
   if (!config || typeof config !== "object") return [];
+  const told = [...(report?.ignored || [])];
   try {
     const response = await fetch("/api/config");
-    if (!response.ok) return [];
+    if (!response.ok) return told;
     const now = await response.json();
-    return Object.keys(config).filter(
+    told.push(...(report?.unknown || []).filter((key) => !(key in now)));
+    const differs = Object.keys(config).filter(
       (key) => key in now && !IMPORT_NOT_COMPARED.test(key) && !sameValue(config[key], now[key])
     );
+    return [...new Set([...told, ...differs])];
   } catch {
-    return []; // nothing to compare with: say nothing rather than guess
+    return told; // nothing to compare with: say what the frame said, nothing more
   }
 }
 
@@ -1798,6 +1804,9 @@ async function performImport() {
     if (importData.value.config) {
       requests.push(["/api/config", "PATCH", importData.value.config]);
     }
+// #if FORK_FIXES
+    let frameReport = null;
+// #endif
     for (const [url, method, body] of requests) {
       const response = await fetch(url, {
         method,
@@ -1820,6 +1829,11 @@ async function performImport() {
         throw new Error(`${method} ${url} failed with HTTP ${response.status}`);
 // #endif
       }
+// #if FORK_FIXES
+      if (url === "/api/config") {
+        frameReport = await response.json().catch(() => null);
+      }
+// #endif
     }
 
     // Reload all settings from device
@@ -1845,10 +1859,10 @@ async function performImport() {
     }
 
 // #if FORK_FIXES
-    const notTaken = await settingsNotTaken(importData.value.config);
+    const notTaken = await settingsNotTaken(importData.value.config, frameReport);
     const shown = notTaken.slice(0, 6).join(", ") + (notTaken.length > 6 ? ` and ${notTaken.length - 6} more` : "");
     const taken = notTaken.length
-      ? `Config imported, but the frame does not report these as imported (wrong type or not accepted): ${shown}.`
+      ? `Config imported, but the frame does not report these as imported (wrong type, unknown or not accepted): ${shown}.`
       : "";
     saveSuccess.value = true;
     saveError.value = false;

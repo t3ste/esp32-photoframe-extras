@@ -32,6 +32,9 @@ set(SOURCES
 )
 
 # Optional features (main/Kconfig): a feature that is off contributes no source.
+if(CONFIG_FORK_FIXES)
+    list(APPEND SOURCES "config_track.c")
+endif()
 if(CONFIG_FORK_HTTP_FETCH)
     list(APPEND SOURCES "http_fetch.c")
 endif()

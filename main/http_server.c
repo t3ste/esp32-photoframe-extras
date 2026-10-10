@@ -2294,6 +2294,28 @@ static esp_err_t crash_clear_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+#if FORK_FIXES
+// The fields of a config request that were ignored - "ignored": a key whose JSON type its handler
+// does not read, "unknown": a key no handler knows (a typo, a setting of another firmware) - see
+// config_track.h. Left out of the answer when there is nothing to report, so a client that sends
+// only what the frame knows sees no change.
+static void add_config_report(cJSON *response)
+{
+    cJSON *report = utils_consume_config_report();
+    if (!report) {
+        return;
+    }
+    const char *names[] = {"ignored", "unknown"};
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        cJSON *list = cJSON_DetachItemFromObject(report, names[i]);
+        if (list) {
+            cJSON_AddItemToObject(response, names[i], list);
+        }
+    }
+    cJSON_Delete(report);
+}
+
+#endif
 static esp_err_t config_handler(httpd_req_t *req)
 {
     if (!system_ready) {
@@ -3031,6 +3053,9 @@ static esp_err_t config_handler(httpd_req_t *req)
                     "Failed to connect to WiFi network. Please check SSID and password.");
             }
 
+#if FORK_FIXES
+            add_config_report(error_response);
+#endif
             char *json_str = cJSON_Print(error_response);
             httpd_resp_set_type(req, "application/json");
             httpd_resp_set_status(req, "400 Bad Request");
@@ -3046,6 +3071,9 @@ static esp_err_t config_handler(httpd_req_t *req)
 
         cJSON *response = cJSON_CreateObject();
         cJSON_AddStringToObject(response, "status", "success");
+#if FORK_FIXES
+        add_config_report(response);
+#endif
 
         char *json_str = cJSON_Print(response);
         httpd_resp_set_type(req, "application/json");
