@@ -27,6 +27,26 @@ function gzipOutput(outDir) {
   };
 }
 
+// With the `fixes` option the icon font and Roboto are bundled (src/main.js) instead of loaded from
+// CDNs. Their stylesheets list every font format there ever was; only woff2 is kept (every browser the
+// Web UI needs reads it), and the font files are inlined into the stylesheet (build.assetsInlineLimit
+// below), so the firmware serves no extra file for them.
+function woff2Only() {
+  const FONT_CSS = /[\\/](@mdi[\\/]font[\\/]css[\\/]materialdesignicons|@fontsource[\\/]roboto[\\/]latin-\d+)\.css$/;
+  return {
+    name: "woff2-only",
+    enforce: "pre",
+    transform(code, id) {
+      if (!FONT_CSS.test(id.split("?")[0])) return null;
+      return code.replace(/@font-face\s*\{[^}]*\}/g, (block) => {
+        const woff2 = block.match(/url\(\s*["']?([^"')]+\.woff2[^"')]*)["']?\s*\)\s*format\(\s*["']woff2["']\s*\)/);
+        if (!woff2) return block;
+        return block.replace(/\s*src:[^;]*;/g, "").replace(/\}\s*$/, `  src: url("${woff2[1]}") format("woff2");\n}`);
+      });
+    },
+  };
+}
+
 // Files copied verbatim from public/ that belong to an optional feature (see
 // feature-directives.js): they are dropped from the output when it is off.
 function dropDisabledPublicFiles(outDir, featureList) {
@@ -51,6 +71,7 @@ const outDir = resolve(__dirname, process.env.VITE_OUT_DIR || "../main/webapp");
 export default defineConfig({
   plugins: [
     featureDirectives(features),
+    woff2Only(),
     vue(),
     vuetify({ autoImport: true }),
     dropDisabledPublicFiles(outDir, features),
@@ -59,6 +80,8 @@ export default defineConfig({
   build: {
     outDir,
     emptyOutDir: true,
+    // the bundled fonts go into the stylesheet (see woff2Only); every other asset keeps Vite's default
+    assetsInlineLimit: (file) => (file.endsWith(".woff2") ? true : undefined),
     rollupOptions: {
       external: ["/measurement_sample.jpg"],
       output: {

@@ -1041,6 +1041,32 @@ function looksLikeConfigExport(data) {
   );
 }
 
+// What a frame does not take is not an error for it: a value of the wrong type is skipped and the PATCH still
+// answers "success". After an import the file is compared with what the frame reports now; read-only status
+// values (the "..._configured" / "..._available" flags, the last fetch error) are not settings of the file.
+const IMPORT_NOT_COMPARED = /(_configured|_available)$|^(last_fetch_error|http_auth_enabled)$/;
+
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  const keysA = Object.keys(a);
+  return keysA.length === Object.keys(b).length && keysA.every((key) => sameValue(a[key], b[key]));
+}
+
+async function settingsNotTaken(config) {
+  if (!config || typeof config !== "object") return [];
+  try {
+    const response = await fetch("/api/config");
+    if (!response.ok) return [];
+    const now = await response.json();
+    return Object.keys(config).filter(
+      (key) => key in now && !IMPORT_NOT_COMPARED.test(key) && !sameValue(config[key], now[key])
+    );
+  } catch {
+    return []; // nothing to compare with: say nothing rather than guess
+  }
+}
+
 // #endif
 function onImportFileSelected(event) {
   const file = event.target.files?.[0];
@@ -1099,7 +1125,20 @@ async function performImport() {
         body: JSON.stringify(body),
       });
       if (!response.ok) {
+// #if FORK_FIXES
+        // the frame says why (an invalid rule, a WiFi network it cannot join, ...): show it
+        let detail = "";
+        try {
+          detail = (await response.json()).message || "";
+        } catch {
+          // not JSON: the status alone
+        }
+        throw Object.assign(new Error(`${method} ${url} failed with HTTP ${response.status}`), {
+          detail,
+        });
+// #else
         throw new Error(`${method} ${url} failed with HTTP ${response.status}`);
+// #endif
       }
     }
 
@@ -1125,14 +1164,36 @@ async function performImport() {
         : " The device password was left in place: turn it off under General → Advanced network settings if you want the frame open.";
     }
 
+// #if FORK_FIXES
+    const notTaken = await settingsNotTaken(importData.value.config);
+    const shown = notTaken.slice(0, 6).join(", ") + (notTaken.length > 6 ? ` and ${notTaken.length - 6} more` : "");
+    const taken = notTaken.length
+      ? `Config imported, but the frame does not report these as imported (wrong type or not accepted): ${shown}.`
+      : "";
+    saveSuccess.value = true;
+    saveError.value = false;
+    saveMessage.value = taken
+      ? `${taken}${authNote}`
+      : authNote
+        ? `Config imported.${authNote}`
+        : "Config imported successfully!";
+    setTimeout(() => (saveSuccess.value = false), authNote || taken ? 10000 : 3000);
+// #else
     saveSuccess.value = true;
     saveError.value = false;
     saveMessage.value = authNote ? `Config imported.${authNote}` : "Config imported successfully!";
     setTimeout(() => (saveSuccess.value = false), authNote ? 10000 : 3000);
+// #endif
   } catch (error) {
     console.error("Failed to import config:", error);
     saveError.value = true;
+// #if FORK_FIXES
+    saveMessage.value = error.detail
+      ? `Failed to import config: ${error.detail}`
+      : "Failed to import config";
+// #else
     saveMessage.value = "Failed to import config";
+// #endif
     setTimeout(() => (saveError.value = false), 5000);
   } finally {
     saving.value = false;

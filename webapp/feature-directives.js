@@ -82,5 +82,7 @@ export function featureDirectives(featureList) {
       const result = applyDirectives(code, flags);
       return result === code ? null : { code: result, map: null };
     },
+    // The dev server serves index.html without a transform() call; a build already resolved it (no-op).
+    transformIndexHtml: { order: "pre", handler: (html) => applyDirectives(html, flags) },
   };
 }
