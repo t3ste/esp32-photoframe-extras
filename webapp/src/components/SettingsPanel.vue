@@ -1711,6 +1711,17 @@ function onExtraIcsFileSelected(event, slot) {
 }
 
 // #endif
+// #if FORK_FIXES
+// Valid JSON is not yet a config export: null, a number, a list or an object without any settings block
+// would be "imported" - nothing is sent - and still end in "Config imported successfully!".
+function looksLikeConfigExport(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  return ["config", "processing", "palette"].some(
+    (key) => data[key] && typeof data[key] === "object" && !Array.isArray(data[key])
+  );
+}
+
+// #endif
 function onImportFileSelected(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -1720,6 +1731,15 @@ function onImportFileSelected(event) {
   reader.onload = (e) => {
     try {
       importData.value = JSON.parse(e.target.result);
+// #if FORK_FIXES
+      if (!looksLikeConfigExport(importData.value)) {
+        importData.value = null;
+        saveError.value = true;
+        saveMessage.value = "This file is not a config export (it has no settings in it)";
+        setTimeout(() => (saveError.value = false), 5000);
+        return;
+      }
+// #endif
       showImportDialog.value = true;
     } catch {
       saveError.value = true;

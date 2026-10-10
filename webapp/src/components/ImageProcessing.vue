@@ -24,7 +24,11 @@ const props = defineProps({
   },
 });
 
+// #if FORK_FIXES
+const emit = defineEmits(["processed", "error"]);
+// #else
 const emit = defineEmits(["processed"]);
+// #endif
 const appStore = useAppStore();
 const settingsStore = useSettingsStore();
 
@@ -322,6 +326,11 @@ async function loadAndProcessImage(file) {
     await updatePreview();
   } catch (error) {
     console.error("Image loading failed:", error);
+// #if FORK_FIXES
+    // The parent tells the user: a file the browser cannot read as an image gave a blank preview and
+    // an Upload button that did nothing.
+    emit("error", error);
+// #endif
   } finally {
     processing.value = false;
   }
