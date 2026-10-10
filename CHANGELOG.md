@@ -19,6 +19,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ### Fixed
 
+- **The Settings export failed in a build with the Agenda but without the `fixes` option** (Web UI: *Failed to export config: ReferenceError: exportIncludeSecrets is not defined*, no file was written): the code that leaves the credentials out of an export used a switch that only the `fixes` option declared. It is declared in every build that uses it now. The same mistake made the Alarm Clock's on switch fail with a ReferenceError (instead of the hint "Add a schedule below first") in a build with the Alarm Clock but without the Agenda. Releases are full builds and were not affected. `scripts/migrate/web_bindings.py` now also checks the script of every fenced component for names it uses without declaring them, in every feature set (it only looked at what the templates use), so a fence that cuts a declaration off from its users is found before a build.
+
 - **Repeating events in the Agenda calendar were an hour off for half the year** (`agenda` option). A daily or weekly series was expanded by adding whole multiples of 24 hours to its first date, so after the clocks
   changed it drifted an hour: a series that began in winter showed up an hour late in summer (09:00 as 10:00), one that began in summer an hour early in winter - and so did the example calendars of the demo package
   (the weekly "Midnight snack check" stood at 01:00 in summer). A series now repeats on the wall clock (the same time of day on every period's calendar day), keeps its length across the switch and an all-day event
