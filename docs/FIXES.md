@@ -24,6 +24,7 @@ included), the 8 KiB cap of the settings POSTs, the lock around the enabled-albu
   entries in one request, occasionally hitting a transient SD DMA-allocation failure that stalled the request
   indefinitely rather than just slowly (confirmed live 2026-09-29). Enabling a nonexistent album now reports a
   proper 404 instead of a generic 500.
+- **The gallery's confirmation dialogs for an image without a thumbnail** (Display image / Delete image) asked the frame for `<album>/undefined`: a 404 in the browser console and a broken picture in the dialog. They show no picture then. (The grid itself already had the placeholder.)
 - **Time zone / DST correctness**: the Agenda calendar's ICS date parser (`--with agenda`) lets `mktime()` work
   out daylight saving itself (`tm_isdst = -1`) instead of a zero-initialized `struct tm` forcing standard time -
   without this, a local event time during DST landed exactly one hour off. (The external RTC drivers had the
