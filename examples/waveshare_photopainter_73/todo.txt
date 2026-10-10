@@ -1,0 +1,19 @@
+(A) 2026-09-10 Renew home insurance +Household @phone due:2026-10-15
+(A) File the tax documents +Finance @desk due:2026-09-20
+(B) Book the dentist check-up +Health @phone
+(B) 2026-08-15 Order a birthday present for Alex +Family @online due:2027-02-14
+(B) Replace the smoke detector batteries +Household @home
+(C) Read chapter 4 of the gardening book +Reading @home
+(C) Water the balcony plants +Household @home
+(C) Sort last year's photos into albums +Family @home
+Call the plumber about the leaking tap +Household @phone due:2026-10-02
+Pick up the dry cleaning +Errands @car
+Return the library books +Errands @car due:2026-10-05
+Update the router firmware +Household @home
+Plan the weekend hike route +Family @home
+Write the monthly budget summary +Finance @desk
+Clean out the garage shelf +Household @home
+Research a new bike helmet +Health @online
+Send the school permission slip back +Family @desk due:2026-09-30
+Back up photos from the phone +Household @home
+Schedule the annual car service +Household @phone

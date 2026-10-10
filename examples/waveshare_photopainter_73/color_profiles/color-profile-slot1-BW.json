@@ -1,0 +1,33 @@
+{
+  "type": "spectra6-firmware-profile",
+  "version": 1,
+  "name": "s1_spectra6",
+  "mode": "color",
+  "mark": "white",
+  "headerFollowsEntries": true,
+  "headerFollowsEntriesColor": true,
+  "headerFollowsEntriesColorSafeInk": true,
+  "dayheadLeaderLine": true,
+  "markColorsHeader": false,
+  "headerDividerFilled": true,
+  "colors": {
+    "text": "white",
+    "textBg": "black",
+    "headerText": "#000000",
+    "headerBg": "#ffffff",
+    "topText": "#ffffff",
+    "topBg": "#000000",
+    "a": "#0000ff",
+    "b": "#ff0000",
+    "c": "#ffc840",
+    "d": "#00ff00",
+    "e": "#00ff00",
+    "aBg": "black",
+    "bBg": "black",
+    "cBg": "black",
+    "dBg": "black",
+    "eBg": "black",
+    "iconBg": "#000000",
+    "iconBgMarked": "#ffffff"
+  }
+}

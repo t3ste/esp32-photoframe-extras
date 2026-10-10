@@ -1,0 +1,30 @@
+{
+  "name": "ESP32 PhotoFrame Waveshare ESP32-S3-PhotoPainter (7.3\" 6-color) (Pre-release)",
+  "version": "v219.0.1-rc2",
+  "home_assistant_domain": "esphome",
+  "new_install_prompt_erase": true,
+  "new_install_improv_wait_time": 15,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        {
+          "path": "photoframe-firmware-waveshare_photopainter_73-prerelease-boot.bin",
+          "offset": 0
+        },
+        {
+          "path": "photoframe-firmware-waveshare_photopainter_73-prerelease-partitions.bin",
+          "offset": 32768
+        },
+        {
+          "path": "photoframe-firmware-waveshare_photopainter_73-prerelease-otadata.bin",
+          "offset": 61440
+        },
+        {
+          "path": "photoframe-firmware-waveshare_photopainter_73-prerelease-app.bin",
+          "offset": 131072
+        }
+      ]
+    }
+  ]
+}
