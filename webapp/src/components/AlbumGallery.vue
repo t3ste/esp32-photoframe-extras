@@ -302,7 +302,11 @@ function onShowThumbnailsChange(val) {
         <div class="mb-3">Show this image on the e-paper display?</div>
         <div class="d-flex justify-center">
           <img
+<!-- #if FORK_FIXES -->
+            v-if="imageToDisplay && imageToDisplay.thumbnail"
+<!-- #else -->
             v-if="imageToDisplay"
+<!-- #endif -->
             :src="getThumbnailUrl(imageToDisplay)"
             alt=""
             class="confirm-thumb"
@@ -328,7 +332,11 @@ function onShowThumbnailsChange(val) {
         <div class="mb-3">Are you sure you want to delete this image?</div>
         <div class="d-flex justify-center">
           <img
+<!-- #if FORK_FIXES -->
+            v-if="imageToDelete && imageToDelete.thumbnail"
+<!-- #else -->
             v-if="imageToDelete"
+<!-- #endif -->
             :src="getThumbnailUrl(imageToDelete)"
             alt=""
             class="confirm-thumb"
