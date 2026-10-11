@@ -642,7 +642,9 @@ fix; the rest are standing notes, not work items.
   table, so only a smaller app helps it. Measured on the CI images of `v219.0.2` / `v219.0.2-rc1`: the full builds of the base took 3.10 MiB on the reTerminal E1004 (407 KiB free), 3.02 MiB on the XIAO EE02
   (495 KiB) and 2.6-2.7 MiB on the others; the extended line was at 3.46 MiB on the E1004 (**40 KiB free**) and 3.38 MiB on the XIAO EE02 (126 KiB). The Web UI without internet access had added about 540 KB
   to every board. **Since the size changes of 2026-10-11** (`fixes`: icon font cut down to the icons the UI uses, the example photo re-encoded, `-Os`, Roboto 300 dropped) every image is about 0.75 MB smaller
-  (Waveshare, local IDF, all features: base 2,902,368 -> 2,148,064 B against the CI image of `v219.0.2`; extended 3,246,640 -> 2,501,824 B, -22.9 %); re-measure the other boards from a CI run. The CI build
+  (Waveshare, local IDF, all features: base 2,902,368 -> 2,148,064 B against the CI image of `v219.0.2`; extended 3,246,640 -> 2,501,824 B, -22.9 %). Extended full builds of all eight boards, local IDF (the CI image is about 1 % bigger),
+  against the 3.5 MiB (3,670,016 B) slots: E1004 2,862,992 B (**807 KB free**, was 40 KiB), XIAO EE02 2,783,440 (887 KB free, was 126 KiB), E1002 2,465,104, E1003 2,423,120, EE04 2,385,328, EE03 2,368,800; Waveshare 2,501,824 and
+  M5Paper 2,378,320 have 7.5 MiB slots. The base's numbers are about 0.75 MB lower still. Re-measure from a CI run before relying on them. The CI build
   fails when an app does not fit, so a release cannot ship an image that is too big - but check the headroom before adding something big. Measure with the artifacts of a Build Firmware run: download
   `photoframe-firmware-<board>` of every board and compare the app with the slot in the partition table at `0x8000` of the merged image (`local-tools/scratch/slot_headroom.py <dir>`). What is in the image:
   `python -m esp_idf_size --files --format csv build/esp32-photoframe.map` (IDF shell). Not done, if it is needed again: the two splash images of the big boards (about 250 KB each on the E1004/EE02, dithered
