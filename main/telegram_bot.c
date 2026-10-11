@@ -1149,7 +1149,11 @@ static void preserve_telegram_original(const char *path, const char *archival_fi
     const char *fname = strrchr(path, '/');
     fname = fname ? fname + 1 : path;
     char dest[320];
-    snprintf(dest, sizeof(dest), "%s/%s", TELEGRAM_ORIGINALS_DIRECTORY, fname);
+    int dest_len = snprintf(dest, sizeof(dest), "%s/%s", TELEGRAM_ORIGINALS_DIRECTORY, fname);
+    if (dest_len < 0 || (size_t) dest_len >= sizeof(dest)) {
+        ESP_LOGW(TAG, "Not preserving the original: its path is too long");
+        return;
+    }
 
     if (archival_file_id && archival_file_id[0] != '\0') {
         if (telegram_download_file_id(archival_file_id, dest) == ESP_OK) {
@@ -1645,6 +1649,12 @@ static void queue_command(const char *text)
 // (shared with /status) but needed here for the optional wake-up ping.
 static void build_status_message(const char *title, char *out, size_t out_len);
 
+// The status text: the fixed lines and the longest of every value, then the list of switches
+// (format_toggles(): 17 lines, 625 characters). The buffers used to be 900 and 384 bytes, which cut
+// the list off after its eleventh line.
+#define TELEGRAM_TOGGLES_MAX 640
+#define TELEGRAM_STATUS_MESSAGE_MAX 1600
+
 static void send_wake_notification_if_enabled(void)
 {
     // Suppressed in power save mode regardless of the setting's own stored
@@ -1656,9 +1666,14 @@ static void send_wake_notification_if_enabled(void)
         config_manager_get_telegram_power_save_enabled()) {
         return;
     }
-    char wake_msg[900];
-    build_status_message("PhotoFrame awake", wake_msg, sizeof(wake_msg));
+    // On the heap: this runs on the main task, whose stack is small (see below).
+    char *wake_msg = malloc(TELEGRAM_STATUS_MESSAGE_MAX);
+    if (!wake_msg) {
+        return;
+    }
+    build_status_message("PhotoFrame awake", wake_msg, TELEGRAM_STATUS_MESSAGE_MAX);
     telegram_bot_send_message(wake_msg);
+    free(wake_msg);
 }
 
 // ----------------------------------------------------------------------------
@@ -2379,7 +2394,7 @@ static void build_status_message(const char *title, char *out, size_t out_len)
     char weather_source[64];
     format_weather_source(weather_source, sizeof(weather_source));
 
-    char toggles[384];
+    char toggles[TELEGRAM_TOGGLES_MAX];
     format_toggles(toggles, sizeof(toggles));
 
     const char *ssid = config_manager_get_wifi_ssid();
@@ -2439,9 +2454,12 @@ static void execute_command(const char *raw_text)
     ESP_LOGI(TAG, "Executing Telegram command: %s%s%s", cmd, args ? " " : "", args ? args : "");
 
     if (strcmp(cmd, "/status") == 0) {
-        char msg[900];
-        build_status_message("PhotoFrame Status", msg, sizeof(msg));
-        telegram_bot_send_message(msg);
+        char *msg = malloc(TELEGRAM_STATUS_MESSAGE_MAX);
+        if (msg) {
+            build_status_message("PhotoFrame Status", msg, TELEGRAM_STATUS_MESSAGE_MAX);
+            telegram_bot_send_message(msg);
+            free(msg);
+        }
     } else if (strcmp(cmd, "/clear") == 0) {
         esp_err_t err = display_manager_clear();
         telegram_bot_send_message(err == ESP_OK ? "[OK] Display cleared."

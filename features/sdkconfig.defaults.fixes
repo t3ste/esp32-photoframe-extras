@@ -11,3 +11,8 @@ CONFIG_LWIP_MAX_ACTIVE_TCP=24
 # mbedTLS: allocate through malloc() so the 16 KiB + 4 KiB TLS buffers can go to PSRAM
 # instead of failing with -0x008D (out of memory) once internal RAM is fragmented.
 CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
+
+# Optimise for size instead of the IDF default (-Og): the app is 5% smaller (168 KB on the Waveshare
+# build with every feature) and the 3.5 MiB update slots of the boards with internal flash have no room to
+# spare. Assertion texts and the log levels stay as they are.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
