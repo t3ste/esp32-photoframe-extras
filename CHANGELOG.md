@@ -17,6 +17,23 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Changed
+
+- **The firmware and the update are about 750 KB smaller** (`fixes` option). The boards with internal flash have a 3.5 MiB update slot and the offline Web UI had filled it (the extended build of the
+  reTerminal E1004 had 40 KiB left). Measured on the Waveshare build with every option (local ESP-IDF): base 2,902,368 -> 2,148,064 bytes (against the CI image of `v219.0.2`), extended 3,246,640 -> 2,501,824 bytes
+  (-22.9 %). Four changes, none of which takes a function away:
+  - the **icon font holds only the icons the Web UI uses** (105 of 7,448; the stylesheet in the firmware went from 596 KB to 130 KB): `webapp/mdi-subset/` has the Vite plugin, the cut-down font and the list,
+    a build error when a source uses an icon that is not in it, and `npm run mdi-subset` to cut the font again (Python with `fonttools` and `brotli`);
+  - the **example photo of the palette calibration help** is embedded re-encoded: 42 KB instead of 152 KB (JPEG quality 80, same size);
+  - the firmware is built with **`-Os`** instead of ESP-IDF's default `-Og` (168 KB; the on-device processing of a JPEG took 26.6 s instead of 27.6 s, most of it the panel's refresh);
+  - **Roboto 300**, which the Web UI does not use (only Vuetify's `text-h1`/`text-h2`), is no longer bundled (22 KB).
+
+### Fixed
+
+- **The status text of the Telegram bot lost its last switches** (`telegram` option): `/status` and the wake-up message list 17 switches (625 characters) in buffers of 384 and 900 bytes, so the list ended in the
+  middle of its eleventh line. The text has room now (the message buffer is on the heap: the wake-up message is built on the main task, whose stack is small). Found by the `-Os` build, which sees what
+  `-Og` did not; the same build made one more path safe that could have been cut: the one of a preserved Telegram original is skipped when it does not fit.
+
 ## [v219.0.2] - 2026-10-10
 
 Fixes only, on upstream v2.19.0. The Web UI fixes come from driving the Web UI of a frame with a script (every tab, panel and control, the import and export, uploads, the albums); seven of them are offered upstream as pull requests ([#147](https://github.com/aitjcize/esp32-photoframe/pull/147) - [#153](https://github.com/aitjcize/esp32-photoframe/pull/153)). The Agenda fixes concern calendar feeds with repeating events.
