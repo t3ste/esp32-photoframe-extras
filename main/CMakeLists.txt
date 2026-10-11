@@ -177,6 +177,19 @@ set(MAIN_EMBED_FILES
     "webapp/assets/__vite-browser-external.js.gz"
     "resources/measurement_sample.jpg"
 )
+# `fixes`: the example photo of the palette calibration help, re-encoded (JPEG quality 80, same size,
+# 42 KB instead of 152 KB). Same file name, so the embedded symbols and the served file are the same.
+if(CONFIG_FORK_FIXES)
+    list(REMOVE_ITEM MAIN_EMBED_FILES "resources/measurement_sample.jpg")
+    list(APPEND MAIN_EMBED_FILES "resources/fixes/measurement_sample.jpg")
+endif()
+# `fixes` builds with -Os (features/sdkconfig.defaults.fixes). At that level GCC can see that the 512-byte
+# album path plus "/combined_<time>.png" could exceed the 512-byte buffer of upstream's
+# compose_rotation_pair() and -Werror=all makes it an error; paths on the card are far shorter, and the
+# upstream file stays as it is.
+if(CONFIG_FORK_FIXES)
+    set_source_files_properties("display_manager.c" PROPERTIES COMPILE_OPTIONS "-Wno-format-truncation")
+endif()
 # The Agenda colour-profile editor page (built into the web app only with the feature)
 # and the default profile.
 if(CONFIG_FEATURE_AGENDA)
