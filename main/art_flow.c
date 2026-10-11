@@ -360,8 +360,12 @@ static bool make_picture(const art_work_t *work, const char *data, size_t len, c
                          const char *base, uint32_t seq, char *path, size_t path_len)
 {
     char jpg[320];
-    snprintf(jpg, sizeof(jpg), "%s/%s.jpg", dir, base);
-    snprintf(path, path_len, "%s/%s.epdgz", dir, base);
+    int jpg_n = snprintf(jpg, sizeof(jpg), "%s/%s.jpg", dir, base);
+    int path_n = snprintf(path, path_len, "%s/%s.epdgz", dir, base);
+    if (jpg_n < 0 || (size_t) jpg_n >= sizeof(jpg) || path_n < 0 || (size_t) path_n >= path_len) {
+        ESP_LOGW(TAG, "The path of %s/%s is too long", dir, base);
+        return false;
+    }
 
     FILE *file = fopen(jpg, "wb");
     if (!file) {
@@ -388,7 +392,11 @@ static bool make_picture(const art_work_t *work, const char *data, size_t len, c
         return false;
     }
     if (actual != IMAGE_FORMAT_EPD_GZ) {  // written as a PNG for lack of memory
-        snprintf(path, path_len, "%s/%s.png", dir, base);
+        path_n = snprintf(path, path_len, "%s/%s.png", dir, base);
+        if (path_n < 0 || (size_t) path_n >= path_len) {
+            art_store_remove(dir, base);
+            return false;
+        }
     }
 
     // The downloaded JPEG becomes the preview of the web gallery (the true colours of the original)
