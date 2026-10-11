@@ -94,6 +94,8 @@ and `docs/FEATURES.md`, `main/Kconfig`, `main/feature_config.h` (the `FORK_ANY` 
 `.github/workflows/build.yml` (`feature_set`), `webapp/src/components/SettingsPanel.vue`, `webapp/src/stores/settings.js`,
 `main/config_manager.{c,h}`, `main/config.h`, `main/http_server.c`, `main/utils.c`. The changes here sit in `#if FEATURE_X` blocks
 and are additive, so a textual conflict usually means "both added lines at the same place: keep both".
+One file pair is **generated, not merged**: `webapp/mdi-subset/icons.json` and `mdi-subset.woff2` (the icon font holds only the icons the UI uses, and this line uses more than the base). After a merge that touches
+them - or whenever the web build says "The icon subset does not fit the sources" - run `cd webapp && npm run mdi-subset` and commit both files; this line's subset is the superset of the base's (111 icons against 105 on 2026-10-11).
 
 ## 4. Releases of the extended repository
 
