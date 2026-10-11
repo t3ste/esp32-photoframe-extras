@@ -529,6 +529,7 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
 | Web flasher install lost WiFi and all settings | Merged image covers NVS with 0xFF | Manifests list parts (`generate_manifests.py`); test with the multi-part esptool command |
 | "No flags" web bundle differs from upstream although `verify_baseline.py` passes | `LandingPage.vue` is in the device bundle; fork changes were ungated; `verify_baseline.py` gives both builds the same prebuilt web assets | Fence with `#if FORK_SITE`; `alloff_web.py` (in CI) and the manual byte compare |
 | `verify_baseline.py` fails with `exit status 2` | Its output was piped; the nested build's output fills the pipe | Run unpiped/in background, read the output file |
+| `vite build` stops with "The icon subset (webapp/mdi-subset) does not fit the sources" (or `mdiSubset.test.js` fails) | A source uses an `mdi-<name>` icon that is not in the cut-down icon font (`webapp/mdi-subset/icons.json`, `mdi-subset.woff2`), or `@mdi/font` was updated | `cd webapp && npm run mdi-subset` (Python with `fonttools` and `brotli`; `PYTHONPATH` or `PYTHON=` if they live elsewhere), commit `icons.json` and the `.woff2`. After a merge of the two lines run it again instead of resolving the binary conflict |
 | `verify_baseline.py` says DIFFERENT, with symbols of an IDF component (e.g. `mdns_*`) only in one build | The reference tree is built fresh and resolves the newest component version; the persistent `candidate` tree keeps the `dependencies.lock` of its first build (the sync skips ignored files) | Delete `.verify/<board>/candidate/dependencies.lock` and `.verify/<board>/candidate/managed_components`, run again with `--fullclean`. Seen 2026-10-10: `espressif/mdns` 1.14.0 vs 1.13.1 |
 | `git` commands all fail: `bad boolean config value` | `git config core.filemode --show-scope` wrote a value | Edit `.git/config` as text; use `git config --show-scope <key>` |
 | Executable bit not recorded | `core.fileMode=false` | `git update-index --chmod=+x <path>` |
@@ -662,12 +663,15 @@ fix; the rest are standing notes, not work items.
   2026-09-29 specifically because it isn't meant to be public; its user-facing counterpart is the tracked
   [DEMO_PACKAGE.md](DEMO_PACKAGE.md). Do not track either without being asked.
 - Upstream's `gh-pages` and side branches copied into the fork are ignored; do not "clean up" without asking.
-- **Update slot headroom (measured 2026-10-10, `v219.0.2`).** The boards with internal flash only have a 3.5 MiB update slot (`ota_0`; Waveshare and M5Paper have 7.5 MiB). The Web UI without internet access
-  (`fixes`: icons and Roboto inside `index.css`) made every app about 540 KB bigger. The full builds of the base now take 3.10 MiB on the reTerminal E1004 (407 KiB free), 3.02 MiB on the XIAO EE02 (495 KiB) and
-  2.6-2.7 MiB on the others; the extended line is at 3.46 MiB on the E1004 (**40 KiB free**) and 3.38 MiB on the XIAO EE02 (126 KiB). The CI build fails when an app does not fit, so a release cannot ship an image
-  that is too big - but the next feature of the extended line may break the E1004 build. Measure with the artifacts of a Build Firmware run: download `photoframe-firmware-<board>` of every board and compare the
-  app with the slot in the partition table at `0x8000` of the merged image (`local-tools/scratch/slot_headroom.py <dir>`). Possible savings, not examined: fewer Roboto weights, a subset of the icon font (it is the whole
-  Material Design Icons set, the UI uses a few hundred icons).
+- **Update slot headroom.** The boards with internal flash only have a 3.5 MiB update slot (`ota_0`; Waveshare and M5Paper have 7.5 MiB), and a frame that was updated over the air keeps its old partition
+  table, so only a smaller app helps it. Measured on the CI images of `v219.0.2` / `v219.0.2-rc1`: the full builds of the base took 3.10 MiB on the reTerminal E1004 (407 KiB free), 3.02 MiB on the XIAO EE02
+  (495 KiB) and 2.6-2.7 MiB on the others; the extended line was at 3.46 MiB on the E1004 (**40 KiB free**) and 3.38 MiB on the XIAO EE02 (126 KiB). The Web UI without internet access had added about 540 KB
+  to every board. **Since the size changes of 2026-10-11** (`fixes`: icon font cut down to the icons the UI uses, the example photo re-encoded, `-Os`, Roboto 300 dropped) every image is about 0.75 MB smaller
+  (Waveshare, local IDF, all features: base 2,902,368 -> 2,148,064 B against the CI image of `v219.0.2`; extended 3,246,640 -> 2,501,824 B, -22.9 %); re-measure the other boards from a CI run. The CI build
+  fails when an app does not fit, so a release cannot ship an image that is too big - but check the headroom before adding something big. Measure with the artifacts of a Build Firmware run: download
+  `photoframe-firmware-<board>` of every board and compare the app with the slot in the partition table at `0x8000` of the merged image (`local-tools/scratch/slot_headroom.py <dir>`). What is in the image:
+  `python -m esp_idf_size --files --format csv build/esp32-photoframe.map` (IDF shell). Not done, if it is needed again: the two splash images of the big boards (about 250 KB each on the E1004/EE02, dithered
+  flat background), the recipes bitmap font (82 KB), Vuetify's utility CSS; not worth their loss: the full certificate bundle (67 KB), assertion texts, log levels, WPA3/enterprise Wi-Fi.
 
 ## 17. File map
 
