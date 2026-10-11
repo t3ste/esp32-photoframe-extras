@@ -31,6 +31,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   reader's own DAILY/WEEKLY expander is not compiled any more - a build with `agenda` only keeps it, and the support matrix in `docs/CALENDAR_RRULE_SUPPORT.md` says which build takes what. See
   `docs/CALENDAR_RRULE_ENGINE.md`.
 
+## [v219.0.3] - 2026-10-11
+
+The image is about 750 KB smaller, nothing was taken away; and one fix of the Telegram bot's status text. On upstream v2.19.0 as before.
+
 ### Changed
 
 - **The firmware and the update are about 750 KB smaller** (`fixes` option). The boards with internal flash have a 3.5 MiB update slot and the offline Web UI had filled it (a full build for the
