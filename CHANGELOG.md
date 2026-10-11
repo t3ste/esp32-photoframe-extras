@@ -31,6 +31,11 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   reader's own DAILY/WEEKLY expander is not compiled any more - a build with `agenda` only keeps it, and the support matrix in `docs/CALENDAR_RRULE_SUPPORT.md` says which build takes what. See
   `docs/CALENDAR_RRULE_ENGINE.md`.
 
+### Fixed
+
+- **The CLEAR button of the crash report (Settings > Maintenance) did nothing** (every build with an option; the Web UI said *Failed to clear the crash report*, `POST /api/crash/clear` answered `404`): upstream registers its routes in a list that only a build without options uses, the fork has a list of its own (`register_all_handlers()`), and this route was missing from it since the merge of upstream v2.19.0 - so `v219.0.0` to `v219.0.3`. It is in the list now, and `scripts/test_http_routes.py` (part of the CI's tooling tests) checks that every route of upstream's list is in the fork's as well, so the next merge cannot lose one silently. The compiler had pointed at it all along (`'crash_clear_handler' defined but not used`).
+- **Firefox logged "Error in parsing value for 'opacity'. Declaration dropped." for every progress bar of the Web UI** (`fixes` option; harmless, the declaration was ignored): Vuetify 3.11 writes `opacity: parseFloat(props.bgOpacity)` into the bar's inline style, which is `NaN` while the prop is not set. The value the stylesheet gives the bar anyway (`--v-border-opacity`, 0.12) is passed as the default now, so the bars look the same.
+
 ## [v219.0.3] - 2026-10-11
 
 The image is about 750 KB smaller, nothing was taken away; and one fix of the Telegram bot's status text. On upstream v2.19.0 as before.

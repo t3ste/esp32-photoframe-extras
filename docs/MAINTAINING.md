@@ -458,6 +458,8 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
    third merge (`495e0b6`) conflicted twice in `main/main.c`, where an upstream change rewrote a function this
    fork had added a `FORK_FIXES` line to (take upstream's structure, re-add the guarded fork line) and removed
    calls next to a fork-only `FEATURE_CLIMATE` line (drop the calls, keep the fork line).
+   Upstream's new **routes** land in the `#else` list of `http_server_init()` only, and a build with an option never uses it: add each one to the fork's `register_all_handlers()` too. `scripts/test_http_routes.py`
+   (a tooling test, run by CI) fails when one is missing - `POST /api/crash/clear` was lost in every release since the v2.19.0 merge (`v219.0.0` to `v219.0.3`).
 3. Re-run the whole section 6 set, **including the manual web bundle byte compare** - the second merge is what
    revealed that the web bundle equality had broken.
 4. Move the baselines (`upstream_sha` in `verify_baseline.py`, `BASELINE` in `alloff_source.py`), add a

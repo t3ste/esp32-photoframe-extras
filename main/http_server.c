@@ -4983,6 +4983,7 @@ static void register_all_handlers(httpd_handle_t handle)
 #endif
     register_uri(handle, "/api/debug/log", HTTP_GET, debug_log_download_handler);
     register_uri(handle, "/api/debug/log", HTTP_DELETE, debug_log_clear_handler);
+    register_uri(handle, "/api/crash/clear", HTTP_POST, crash_clear_handler);
     register_uri(handle, "/api/battery", HTTP_GET, battery_handler);
 #endif
 #if FEATURE_BATTERY_HISTORY
