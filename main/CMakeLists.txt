@@ -124,6 +124,12 @@ set(MAIN_EMBED_FILES
     "webapp/assets/__vite-browser-external.js.gz"
     "resources/measurement_sample.jpg"
 )
+# `fixes`: the example photo of the palette calibration help, re-encoded (JPEG quality 80, same size,
+# 42 KB instead of 152 KB). Same file name, so the embedded symbols and the served file are the same.
+if(CONFIG_FORK_FIXES)
+    list(REMOVE_ITEM MAIN_EMBED_FILES "resources/measurement_sample.jpg")
+    list(APPEND MAIN_EMBED_FILES "resources/fixes/measurement_sample.jpg")
+endif()
 # The Agenda colour-profile editor page (built into the web app only with the feature)
 # and the default profile.
 if(CONFIG_FEATURE_AGENDA)
