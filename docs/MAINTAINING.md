@@ -358,7 +358,7 @@ percentage) needs `int64_t` - a host test cannot show the difference.
 - The release feed answer must stay **below 64 KB** (the firmware's buffer): 16 assets are about 33 KB. Do not
   attach many more or long-named assets to a release. Measured 2026-10-10: with the 8 ELF files (24 assets) and release notes of
   about 6 KB the answer of `releases/latest` was **58,178 bytes** (`v219.0.2`) and of the extended repository's
-  `releases?per_page=1` 59,777 bytes (`v219.0.2-rc1`) - 5-7 KB below the limit. Keep the notes short, add no assets, and
+  `releases?per_page=1` 59,777 bytes (`v219.0.2-rc1`) - 5-7 KB below the limit. With notes of about 3 KB (2026-10-11) it was 54,191 bytes (`v219.0.3`) and 56,365 bytes (`v219.0.3-rc1`): short notes are what keeps it there. Keep the notes short, add no assets, and
   measure with `curl -s https://api.github.com/repos/<owner>/<repo>/releases/latest | wc -c` after publishing.
 - GitHub's runners: `actions/checkout@v5`, Node 18 in `ci.yml`. Keep the Node version in mind when web
   dependencies are updated.
