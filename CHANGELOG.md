@@ -35,7 +35,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 - **The firmware and the update are about 750 KB smaller** (`fixes` option). The boards with internal flash have a 3.5 MiB update slot and the offline Web UI had filled it (a full build for the
   reTerminal E1004 took 3.10 MiB of it, with the extras 3.46 MiB). Measured on the CI images with every option: the Waveshare image went from 2,902,368 to 2,171,456 bytes (-25.2 %), the E1004's from 3.10 to 2.41 MiB,
-  the XIAO EE02's from 3.02 to 2.33 MiB. Four changes, none of which takes a function away:
+  the XIAO EE02's from 3.02 to 2.33 MiB; with the extras the Waveshare image went from 3,274,512 to 2,525,376 bytes (-22.9 %), the E1004's from 3.46 to 2.75 MiB (769 KiB free instead of 40) and the XIAO EE02's
+  from 3.38 to 2.67 MiB. Four changes, none of which takes a function away:
   - the **icon font holds only the icons the Web UI uses** (105 of 7,448; the stylesheet in the firmware went from 596 KB to 130 KB): `webapp/mdi-subset/` has the Vite plugin, the cut-down font and the list,
     a build error when a source uses an icon that is not in it, and `npm run mdi-subset` to cut the font again (Python with `fonttools` and `brotli`);
   - the **example photo of the palette calibration help** is embedded re-encoded: 42 KB instead of 152 KB (JPEG quality 80, same size);
