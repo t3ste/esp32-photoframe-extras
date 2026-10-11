@@ -5,6 +5,7 @@ import { resolve } from "path";
 import { gzipSync } from "node:zlib";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { featureDirectives, flagsFor } from "./feature-directives.js";
+import { mdiSubset } from "./mdi-subset/plugin.js";
 
 // The firmware embeds only the .gz files (main/CMakeLists.txt EMBED_FILES)
 // and serves the stored bytes verbatim with Content-Encoding: gzip
@@ -28,11 +29,12 @@ function gzipOutput(outDir) {
 }
 
 // With the `fixes` option the icon font and Roboto are bundled (src/main.js) instead of loaded from
-// CDNs. Their stylesheets list every font format there ever was; only woff2 is kept (every browser the
-// Web UI needs reads it), and the font files are inlined into the stylesheet (build.assetsInlineLimit
-// below), so the firmware serves no extra file for them.
+// CDNs. The icon font is cut down to the icons the UI uses (mdi-subset/plugin.js). Roboto's stylesheets
+// list every font format there ever was; only woff2 is kept (every browser the Web UI needs reads it),
+// and the font files are inlined into the stylesheet (build.assetsInlineLimit below), so the firmware
+// serves no extra file for them.
 function woff2Only() {
-  const FONT_CSS = /[\\/](@mdi[\\/]font[\\/]css[\\/]materialdesignicons|@fontsource[\\/]roboto[\\/]latin-\d+)\.css$/;
+  const FONT_CSS = /[\\/]@fontsource[\\/]roboto[\\/]latin-\d+\.css$/;
   return {
     name: "woff2-only",
     enforce: "pre",
@@ -71,6 +73,7 @@ const outDir = resolve(__dirname, process.env.VITE_OUT_DIR || "../main/webapp");
 export default defineConfig({
   plugins: [
     featureDirectives(features),
+    mdiSubset(),
     woff2Only(),
     vue(),
     vuetify({ autoImport: true }),

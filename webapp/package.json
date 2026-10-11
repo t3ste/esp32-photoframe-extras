@@ -13,7 +13,8 @@
     "lint:check": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs",
     "format": "prettier --write \"src/**/*.{vue,js,jsx,ts,tsx,css,scss,json}\"",
     "format:check": "prettier --check \"src/**/*.{vue,js,jsx,ts,tsx,css,scss,json}\"",
-    "test": "vitest run"
+    "test": "vitest run",
+    "mdi-subset": "node mdi-subset/generate.mjs"
   },
   "dependencies": {
     "@aitjcize/epaper-image-convert": "^0.1.21",

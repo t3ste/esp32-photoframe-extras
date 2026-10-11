@@ -6,8 +6,9 @@ import App from "./App.vue";
 // #if FORK_FIXES
 // The icons and the font ship with the firmware (a frame has no internet access in its own hotspot, on a
 // LAN without outbound access, ...): the page used to load them from cdn.jsdelivr.net and fonts.googleapis.com.
+// The icon font holds only the icons the UI uses (mdi-subset/); Roboto comes in the weights the UI has
+// (300, the light weight of Vuetify's text-h1/h2, is not used).
 import "@mdi/font/css/materialdesignicons.css";
-import "@fontsource/roboto/latin-300.css";
 import "@fontsource/roboto/latin-400.css";
 import "@fontsource/roboto/latin-500.css";
 import "@fontsource/roboto/latin-700.css";
