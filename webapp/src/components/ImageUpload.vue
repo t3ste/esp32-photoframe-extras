@@ -1292,10 +1292,55 @@ async function generateAiImage() {
 .v-window:has(.wide-edit-card) {
   overflow: visible;
 }
-/* the Tone Curve card keeps the 20 px left margin it has beside the preview in the normal layout: in the
-   controls column it made it narrower than the preset card below it */
+/* The Tone Curve card in the controls column: it keeps the 20 px left margin it has beside the preview in
+   the normal layout (so it was narrower than the preset card below it), and its chart, its padding and the
+   room under it are made for a page of its own - the point of the wide-edit mode is every parameter beside
+   the picture without scrolling, so it is smaller here. (The utility classes of the template are !important.) */
+#tone-curve-slot {
+  margin-bottom: 8px !important;
+}
 #tone-curve-slot .tone-curve-card {
   margin-left: 0;
+}
+#tone-curve-slot .tone-curve-card .v-card-subtitle {
+  padding-top: 6px !important;
+}
+#tone-curve-slot .tone-curve-card > .d-flex {
+  padding: 2px 8px 8px !important;
+}
+#tone-curve-slot .curve-canvas {
+  width: 128px;
+  height: 128px;
+}
+@container wide-card (max-width: 1359px) {
+  #tone-curve-slot .curve-canvas {
+    width: 104px;
+    height: 104px;
+  }
+}
+/* In a wide card the Tone Curve card sits to the right of the controls instead of above them: the
+   controls column is then as high as the controls alone, and everything is beside the picture without
+   scrolling. (The width of the card decides: the controls column is about 100 px narrower than half of
+   it.) */
+.wide-edit-card {
+  container: wide-card / inline-size;
+}
+@container wide-card (min-width: 1360px) {
+  .edit-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 16px;
+    align-items: start;
+  }
+  .edit-controls > .processing-controls {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  #tone-curve-slot {
+    grid-column: 2;
+    grid-row: 1;
+    margin-bottom: 0 !important;
+  }
 }
 </style>
 <!-- #endif -->
