@@ -26,6 +26,26 @@ events:
 
 <img src="screens/agenda-grid-b.png" width="560" alt="The Agenda as a 7-day grid, template B: today in a double-height cell">
 
+### The list, the priority of the calendars and the week
+
+With **Layout -> List** the Calendar shows one to three days (plus a few rows of the next). The entries of a day come in the order of
+**Settings -> Agenda -> Calendar -> Calendar priority** (default `A,B,C,D,E`: the household calendar A first, then work B, ...), each calendar by
+time, and when the rows run out the entries of the **lowest** priority are the ones left to `+N more` - not whatever comes last. Today's
+heading and every Monday's carry the calendar week (`CW40`, `KW40` with German overlay text) where it fits beside the forecast. See
+[CALENDAR_PRIORITY.md](CALENDAR_PRIORITY.md).
+
+<img src="screens/agenda-list-3days.png" width="560" alt="The Agenda as a list of days: the entries of calendars A and B first, the lower priority ones counted in +8 more">
+
+The same week with the priority `D,E,B,A,C` (school and chores first): what used to be hidden at the bottom is shown, and the household
+entries are the ones counted in `+8 more`:
+
+<img src="screens/agenda-list-3days-priority.png" width="560" alt="The same list with the priority D,E,B,A,C">
+
+The **rotation pattern** (2-2-3, week / week, 3-4) marks days in the list as well, here "2-2-3" starting on Tuesday 29 September, with the
+built-in profile's yellow mark:
+
+<img src="screens/agenda-list-3days-marked.png" width="560" alt="The list with every other stretch of days marked in yellow">
+
 ### ToDo and Calendar together
 
 With both columns shown, **Settings -> Agenda -> Appearance** puts them **stacked** (the ToDo list above the Calendar, the
@@ -105,7 +125,7 @@ The program knows more cases than are shown here (German variants, empty and err
 **The Agenda pictures** (`agenda-*.png`) and **the artworks picture** (`artworks-caption.png`: a public-domain painting, letterboxed, with
 the real caption drawing) come from small programs that are not part of this repository. The Agenda pictures are the real `agenda_renderer.c` and colour-profile loader, run on a PC with made-up sources (a week of
 events in five calendars, a ToDo list, a forecast) on the fixed day above. The small program that did it is **not part of this repository**, so
-these six pictures cannot be redrawn from a checkout; the colour profile in `agenda-grid-a-profile.png` is
+these pictures cannot be redrawn from a checkout; the colour profile in `agenda-grid-a-profile.png` is
 [color-profile-slot1-BW.json](../examples/waveshare_photopainter_73/color_profiles/color-profile-slot1-BW.json).
 
 Keep the sample data made up: no real names, places, calendars or prices of real shops.
