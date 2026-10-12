@@ -459,6 +459,7 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
   slot). **Never** flash `...-merged.bin` at `0x0` for tests: it erases settings.
 - If the device does not answer: check **once** (HTTP, then serial), then stop and ask the maintainer to press
   RESET/BOOT or replug USB or check the SD card. No retry loops, no ping sweeps, no serial resets of your own.
+- A test that waits (an Agenda render takes a minute or more) has to keep the frame awake: its auto-sleep timer (120 s) is reset by `POST /api/keep_alive`, which the Web UI sends too; send it every 25 s. Settings a test changes (`PATCH /api/config`) are saved first and put back afterwards, in a `finally`. Pictures of what the panel shows (`GET /api/current_image`) contain the frame's real calendar: look, then delete them.
 - Debug log: `GET /api/debug/log` (persists across boots including crash reboots; covers the current and previous
   boot - use the **last** `Firmware:` line). Its content may contain WiFi SSID and location strings: **act on it,
   never quote it** into replies, files or commits.
