@@ -38,6 +38,9 @@
 #include "periodic_tasks.h"
 #include "storage.h"
 #include "utils.h"
+#if FORK_FIXES
+#include "http_server.h"
+#endif
 #include "wifi_manager.h"
 
 // RTC memory to store expected wakeup time (persists across deep sleep)
@@ -762,6 +765,14 @@ void power_manager_enter_sleep(void)
         esp_sleep_enable_ext1_wakeup(wakeup_mask, EXT1_WAKEUP_MODE);
     }
 
+#if FORK_FIXES
+    // Close the web server first. Stopping WiFi under a browser's open keep-alive connections
+    // aborts every one of them and httpd logs "error in recv : 113" for each (up to five at a
+    // time, every sleep). Not from the server's own task: httpd_stop() would wait for itself.
+    if (strcmp(pcTaskGetName(NULL), "httpd") != 0) {
+        http_server_stop();
+    }
+#endif
     // Stop WiFi cleanly before deep sleep so the MAC/PHY drains pending
     // state and the modem domain transitions through a normal teardown
     // rather than being yanked by the deep-sleep entry. Ignored if WiFi

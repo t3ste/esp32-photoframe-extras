@@ -10,6 +10,9 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "storage.h"
+#if FORK_FIXES
+#include "sd_read_retry.h"
+#endif
 
 static const char *TAG = "display_flow";
 

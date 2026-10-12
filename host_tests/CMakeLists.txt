@@ -259,6 +259,24 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# fread() that repeats a failed storage read once (the fixes option; the retry logic with a simulated stream)
+add_executable(
+  sd_read_retry_test
+  test_sd_read_retry.cpp
+  ../main/sd_read_retry.c
+)
+
+target_link_libraries(
+  sd_read_retry_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  sd_read_retry_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Stop-word (keyword) recognition: MFCC + DTW template matching, tested on
 # text-to-speech samples (host_tests/data/kws) (voice-stop feature)
 add_executable(
@@ -501,6 +519,7 @@ gtest_discover_tests(history_decimate_test)
 gtest_discover_tests(jpeg_header_test)
 gtest_discover_tests(http_origin_test)
 gtest_discover_tests(config_track_test)
+gtest_discover_tests(sd_read_retry_test)
 gtest_discover_tests(kws_test)
 gtest_discover_tests(headlines_test)
 gtest_discover_tests(todo_test)
