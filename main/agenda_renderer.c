@@ -840,6 +840,20 @@ static bool agenda_is_weather_icon_marker(char c)
     return b >= WEATHER_ICON_MARKER_BASE && b < WEATHER_ICON_MARKER_BASE + WEATHER_ICON_COUNT;
 }
 
+// The calendar week goes on a divider only where it fits next to that day's forecast chip:
+// draw_day_divider() clips the chip to what is left of the label, and "[1" for "[10/20]" is worse
+// than no week. (A narrow grid cell of a portrait panel is the case.)
+static bool week_fits_beside_forecast(int total_w, const char *label, const char *weather_text)
+{
+    int label_w = (int) strlen(label) * IMAGE_PROCESSOR_FONT_WIDTH;
+    if (!weather_text || weather_text[0] == '\0') {
+        return label_w <= total_w;
+    }
+    int icon_gap = agenda_is_weather_icon_marker(weather_text[strlen(weather_text) - 1]) ? 4 : 0;
+    // 7 = the dash and the gap draw_day_divider() keeps between the label and the chip
+    return label_w + 7 + image_processor_measure_text_width(weather_text) + icon_gap <= total_w;
+}
+
 // Draws a day-separator row: a dashed horizontal line with a chip showing
 // the weekday + day number, plus (if `weather_mode` is on and this
 // particular day has one) a second chip with that day's forecast.
@@ -1451,11 +1465,13 @@ static void draw_day_cell(uint8_t *rgb, int width, int height, agenda_rect_t cel
     struct tm day_tm;
     localtime_r(&day, &day_tm);
     char label[16];
-    // The calendar week on today's cell and on every Monday's
-    agenda_day_label(
-        label, sizeof(label), weather_weekday_abbr(day_tm.tm_wday, german), day_tm.tm_mday,
-        config_manager_get_agenda_cal_show_week() && (day_index == 0 || day_tm.tm_wday == 1),
-        agenda_iso_week(day_tm.tm_year, day_tm.tm_mon, day_tm.tm_mday), german);
+    // The calendar week on today's cell and on every Monday's - where it fits (checked below, once
+    // the forecast chip is known)
+    bool week_wanted =
+        config_manager_get_agenda_cal_show_week() && (day_index == 0 || day_tm.tm_wday == 1);
+    agenda_day_label(label, sizeof(label), weather_weekday_abbr(day_tm.tm_wday, german),
+                     day_tm.tm_mday, week_wanted,
+                     agenda_iso_week(day_tm.tm_year, day_tm.tm_mon, day_tm.tm_mday), german);
 
     char weather_buf[WEATHER_DAY_LINE_MAX_LEN] = "";
     const weather_day_t *wday;
@@ -1488,6 +1504,11 @@ static void draw_day_cell(uint8_t *rgb, int width, int height, agenda_rect_t cel
     uint8_t icon_bg_r, icon_bg_g, icon_bg_b;
     agenda_icon_colors(profile, day_marked, head_bg_r, head_bg_g, head_bg_b, &icon_bg_r, &icon_bg_g,
                        &icon_bg_b);
+    if (week_wanted &&
+        !week_fits_beside_forecast(cell.w - 2 * AGENDA_PADDING, label, weather_buf)) {
+        agenda_day_label(label, sizeof(label), weather_weekday_abbr(day_tm.tm_wday, german),
+                         day_tm.tm_mday, false, 0, german);
+    }
     draw_day_divider(rgb, width, height, cell, cell.y, label, weather_mode, weather_right_aligned,
                      weather_buf[0] ? weather_buf : NULL, head_bg_r, head_bg_g, head_bg_b,
                      head_fg_r, head_fg_g, head_fg_b, profile->header_divider_filled, icon_bg_r,
@@ -2018,9 +2039,11 @@ static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rec
         struct tm day_tm;
         localtime_r(&days[di], &day_tm);
         char label[16];
-        // The calendar week on today's divider and on every Monday's
+        // The calendar week on today's divider and on every Monday's - where it fits (checked
+        // below, once the forecast chip is known)
+        bool week_wanted = show_week && (di == 0 || day_tm.tm_wday == 1);
         agenda_day_label(label, sizeof(label), weather_weekday_abbr(day_tm.tm_wday, german),
-                         day_tm.tm_mday, show_week && (di == 0 || day_tm.tm_wday == 1),
+                         day_tm.tm_mday, week_wanted,
                          agenda_iso_week(day_tm.tm_year, day_tm.tm_mon, day_tm.tm_mday), german);
         bool day_marked =
             (list_shift_model != AGENDA_SHIFT_MODEL_NONE) &&
@@ -2052,6 +2075,11 @@ static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rec
         uint8_t icon_bg_r, icon_bg_g, icon_bg_b;
         agenda_icon_colors(profile, day_marked, head_bg_r, head_bg_g, head_bg_b, &icon_bg_r,
                            &icon_bg_g, &icon_bg_b);
+        if (week_wanted &&
+            !week_fits_beside_forecast(rect.w - 2 * AGENDA_PADDING, label, weather_buf)) {
+            agenda_day_label(label, sizeof(label), weather_weekday_abbr(day_tm.tm_wday, german),
+                             day_tm.tm_mday, false, 0, german);
+        }
         draw_day_divider(rgb, width, height, rect, content_top + rows_used * row_h, label,
                          weather_mode, weather_right_aligned, weather_buf[0] ? weather_buf : NULL,
                          head_bg_r, head_bg_g, head_bg_b, head_fg_r, head_fg_g, head_fg_b,
