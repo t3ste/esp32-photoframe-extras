@@ -786,7 +786,7 @@ async function generateAiImage() {
   transform: translateX(-50%);
 }
 /* #if FORK_FIXES */
-/* Preview and controls side by side while both have room (the controls need about 400px: with
+/* Preview and controls side by side while both have room (the controls need about 460px: with
    less they wrapped under the preview before, now they do it by their own width instead of by the
    window's), else the controls go below the preview. */
 .edit-split {
@@ -803,7 +803,7 @@ async function generateAiImage() {
   max-width: 820px;
 }
 .edit-controls {
-  flex: 1 1 400px;
+  flex: 1 1 460px;
   min-width: 0;
 }
 /* #else */
@@ -848,6 +848,11 @@ async function generateAiImage() {
    the controls. While the card is there, the window lets it show. */
 .v-window:has(.wide-edit-card) {
   overflow: visible;
+}
+/* the Tone Curve card keeps the 20 px left margin it has beside the preview in the normal layout: in the
+   controls column it made it narrower than the preset card below it */
+#tone-curve-slot .tone-curve-card {
+  margin-left: 0;
 }
 </style>
 <!-- #endif -->

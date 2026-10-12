@@ -305,27 +305,94 @@ function updateParam(key, value) {
 
 <!-- #if FORK_FIXES -->
 <style>
-/* The columns follow the room the controls have, not the width of the browser window: Vuetify's
-   md breakpoint is a window width, so the narrow column beside the preview (wide edit) got three
-   squeezed columns with the labels running into each other and the preset buttons cut off. */
-.processing-controls .v-row {
+/* The controls are laid out by the room the component has, not by the width of the browser window
+   (Vuetify's md breakpoint is a window width: the narrow column beside the preview in the wide-edit
+   mode got three squeezed columns, labels ran into each other, words broke, the presets were cut off).
+   All the rows of the template are cells of ONE grid, so the columns line up from row to row: two or
+   three columns of at least 220 px, never more than three (one column when there is room for no more);
+   every row of the template starts in the first column. */
+.processing-controls {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(max(220px, calc((100% - 40px) / 3)), 1fr));
+  gap: 14px 20px;
+  align-items: center;
 }
-.processing-controls .v-row > * {
+.processing-controls > .v-row {
+  display: contents;
+}
+.processing-controls > .v-row > * {
   flex: none;
   width: auto;
   max-width: none;
   min-width: 0;
+  margin: 0;
+  padding: 0;
 }
-/* the full-width rows (the preset card) */
-.processing-controls .v-row > .v-col-12:not([class*="v-col-md-"]) {
+.processing-controls > .v-row > :first-child {
+  grid-column: 1;
+}
+/* the preset card takes the whole row, so does the S-curve card */
+.processing-controls > .v-row > .v-col-12:not([class*="v-col-md-"]),
+.processing-controls > .v-card {
   grid-column: 1 / -1;
 }
-/* more presets than fit in one line wrap instead of running out of the card */
+/* "Compress Dynamic Range" and its hint get a row of their own, so the label stays on one line */
+.processing-controls > .v-row > :has(.v-checkbox) {
+  grid-column: 1 / -1;
+  margin-bottom: 10px;
+}
+.processing-controls > .v-card {
+  margin-top: 8px;
+}
+/* the sliders of the S-curve card: its own small grid */
+.processing-controls .v-card-text .v-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 4px 20px;
+  margin: 0;
+}
+.processing-controls .v-card-text .v-row > * {
+  flex: none;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  padding: 0;
+}
+/* the presets: equal buttons in rows of equal length - one in a row in a very narrow card, two, three, and six
+   when the card is very wide - instead of a group that wraps at an arbitrary place */
+.processing-controls .v-card-text {
+  container-type: inline-size;
+}
 .processing-controls .v-btn-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
   height: auto;
-  flex-wrap: wrap;
+  border: none;
+  overflow: visible;
+}
+.processing-controls .v-btn-toggle.v-btn-group > .v-btn {
+  min-height: 40px;
+  min-width: 0;
+  padding: 0 8px;
+  border: thin solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 4px;
+}
+@container (max-width: 379px) {
+  .processing-controls .v-btn-toggle {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container (min-width: 560px) {
+  .processing-controls .v-btn-toggle {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container (min-width: 1100px) {
+  .processing-controls .v-btn-toggle {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 }
 </style>
 <!-- #endif -->
