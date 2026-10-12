@@ -1021,7 +1021,24 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
         }
         config_manager_set_agenda_cal_time_display_mode(time_mode);
     }
-
+    item = cJSON_GetObjectItem(root, "agenda_cal_priority");
+    if (item && cJSON_IsString(item)) {
+        if (!config_manager_set_agenda_cal_priority(cJSON_GetStringValue(item))) {
+            utils_set_config_error(
+                "Calendar priority must name each of the calendars A-E once, e.g. \"ABCDE\"");
+            had_error = true;
+        }
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_order");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_agenda_cal_order(strcmp(cJSON_GetStringValue(item), "time") == 0
+                                                ? AGENDA_CAL_ORDER_TIME
+                                                : AGENDA_CAL_ORDER_PRIORITY);
+    }
+    item = cJSON_GetObjectItem(root, "agenda_cal_show_week");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_agenda_cal_show_week(cJSON_IsTrue(item));
+    }
 #endif
 #if FEATURE_CHIMES
     // Chimes (speaker feedback) - see chime_speaker_mode_t/chime_event_t in

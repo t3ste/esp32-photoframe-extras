@@ -8,6 +8,9 @@
 #include "config.h"
 #include "esp_log.h"
 #include "feature_config.h"
+#if FEATURE_AGENDA
+#include "agenda_order.h"
+#endif
 #if FORK_ANY
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -134,6 +137,13 @@ static bool agenda_cal_weather_enabled = false;
 static bool agenda_cal_weather_right_aligned = false;
 static agenda_multiday_mode_t agenda_cal_multiday_mode = AGENDA_MULTIDAY_REPEAT;
 static agenda_time_display_mode_t agenda_cal_time_display_mode = AGENDA_TIME_DISPLAY_OFF;
+#if FEATURE_AGENDA
+// The Calendar view's priority of the calendars, the order inside a day and the calendar week
+// (agenda_order.h)
+static char agenda_cal_priority[AGENDA_PRIORITY_LEN] = AGENDA_PRIORITY_DEFAULT;
+static agenda_cal_order_t agenda_cal_order = AGENDA_CAL_ORDER_PRIORITY;
+static bool agenda_cal_show_week = true;
+#endif
 static char agenda_cal_name[AGENDA_CAL_NAME_MAX_LEN] = {0};
 static char agenda_cal_name2[AGENDA_CAL_NAME_MAX_LEN] = {0};
 static char agenda_todo_url[AGENDA_TODO_URL_MAX_LEN] = {0};
@@ -1228,6 +1238,28 @@ esp_err_t config_manager_init(void)
                                                ? (agenda_time_display_mode_t) stored_agenda_cal_dur
                                                : AGENDA_TIME_DISPLAY_OFF;
         }
+#if FEATURE_AGENDA
+        {
+            char stored_priority[AGENDA_PRIORITY_LEN + 8] = "";
+            size_t stored_priority_len = sizeof(stored_priority);
+            uint8_t order[AGENDA_CAL_COUNT];
+            if (nvs_get_str(nvs_handle, NVS_AGENDA_CAL_PRIORITY_KEY, stored_priority,
+                            &stored_priority_len) == ESP_OK &&
+                agenda_priority_parse(stored_priority, order)) {
+                agenda_priority_format(order, agenda_cal_priority);
+            }
+            uint8_t stored_order = 0;
+            if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_ORDER_KEY, &stored_order) == ESP_OK) {
+                agenda_cal_order = stored_order == AGENDA_CAL_ORDER_TIME
+                                       ? AGENDA_CAL_ORDER_TIME
+                                       : AGENDA_CAL_ORDER_PRIORITY;
+            }
+            uint8_t stored_week = 1;
+            if (nvs_get_u8(nvs_handle, NVS_AGENDA_CAL_WEEK_KEY, &stored_week) == ESP_OK) {
+                agenda_cal_show_week = (stored_week != 0);
+            }
+        }
+#endif
         size_t agenda_cal_name_len = sizeof(agenda_cal_name);
         nvs_get_str(nvs_handle, NVS_AGENDA_CAL_NAME_KEY, agenda_cal_name, &agenda_cal_name_len);
         size_t agenda_cal_name2_len = sizeof(agenda_cal_name2);
@@ -3356,6 +3388,49 @@ agenda_multiday_mode_t config_manager_get_agenda_cal_multiday_mode(void)
 {
     return agenda_cal_multiday_mode;
 }
+
+#if FEATURE_AGENDA
+bool config_manager_set_agenda_cal_priority(const char *list)
+{
+    uint8_t order[AGENDA_CAL_COUNT];
+    if (!agenda_priority_parse(list, order)) {
+        return false;
+    }
+    agenda_priority_format(order, agenda_cal_priority);
+    agenda_nvs_set_str(NVS_AGENDA_CAL_PRIORITY_KEY, agenda_cal_priority);
+    return true;
+}
+
+const char *config_manager_get_agenda_cal_priority(void)
+{
+    return agenda_cal_priority;
+}
+
+void config_manager_set_agenda_cal_order(agenda_cal_order_t order)
+{
+    if (order != AGENDA_CAL_ORDER_PRIORITY && order != AGENDA_CAL_ORDER_TIME) {
+        order = AGENDA_CAL_ORDER_PRIORITY;
+    }
+    agenda_cal_order = order;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_ORDER_KEY, (uint8_t) order);
+}
+
+agenda_cal_order_t config_manager_get_agenda_cal_order(void)
+{
+    return agenda_cal_order;
+}
+
+void config_manager_set_agenda_cal_show_week(bool enabled)
+{
+    agenda_cal_show_week = enabled;
+    agenda_nvs_set_u8(NVS_AGENDA_CAL_WEEK_KEY, enabled ? 1 : 0);
+}
+
+bool config_manager_get_agenda_cal_show_week(void)
+{
+    return agenda_cal_show_week;
+}
+#endif
 
 void config_manager_set_agenda_cal_time_display_mode(agenda_time_display_mode_t mode)
 {

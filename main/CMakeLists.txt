@@ -54,8 +54,8 @@ if(CONFIG_FORK_CLIMATE_CORE)
     list(APPEND SOURCES "climate.c")
 endif()
 if(CONFIG_FEATURE_AGENDA)
-    list(APPEND SOURCES "agenda_color_profile.c" "agenda_manager.c" "agenda_renderer.c"
-                        "calendar_ics.c" "todo.c" "tls_ca_cb_fix.c")
+    list(APPEND SOURCES "agenda_color_profile.c" "agenda_manager.c" "agenda_order.c"
+                        "agenda_renderer.c" "calendar_ics.c" "todo.c" "tls_ca_cb_fix.c")
 endif()
 if(CONFIG_FEATURE_CHIMES)
     list(APPEND SOURCES "chime.c")

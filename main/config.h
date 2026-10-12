@@ -54,6 +54,14 @@ typedef enum {
     AGENDA_TIME_DISPLAY_RANGE = 2,     // "08:15-09:00 Kaffee trinken"
 } agenda_time_display_mode_t;
 
+// The order of the entries inside one day of the Calendar view - see agenda_order.h and the NVS
+// keys below. Values are stored as-is in NVS, so the numbering must stay stable across firmware
+// versions.
+typedef enum {
+    AGENDA_CAL_ORDER_PRIORITY = 0,  // the calendar's priority first, then the time (default)
+    AGENDA_CAL_ORDER_TIME = 1,      // the time first, then the priority
+} agenda_cal_order_t;
+
 // Calendar-only-fullscreen layout (main/agenda_renderer.c). GRID_A/GRID_B
 // only actually take effect when the Calendar column is shown alone (no
 // ToDo) - agenda_renderer_render() falls back to LIST otherwise. Values are
@@ -785,6 +793,14 @@ typedef enum {
 // How a timed event's time is shown - see agenda_time_display_mode_t above.
 // Off by default (unchanged, existing behavior: just the bare start time).
 #define NVS_AGENDA_CAL_SHOW_DURATION_KEY "agenda_cal_dur"
+// Priority of the calendars A-E ("ABCDE": A highest, E lowest - see agenda_order.h): decides the
+// order of the entries of a day and which of them are given up first when the column runs out of
+// rows. Stored as the five letters; an empty/missing key means the default.
+#define NVS_AGENDA_CAL_PRIORITY_KEY "agenda_cal_prio"
+// Order inside a day - see agenda_cal_order_t above. Default: the priority first.
+#define NVS_AGENDA_CAL_ORDER_KEY "agenda_cal_ord"
+// Show the calendar week ("KW42") on today's day divider and on every Monday's. On by default.
+#define NVS_AGENDA_CAL_WEEK_KEY "agenda_cal_wk"
 // Optional display name shown in the Calendar column header instead of the
 // generic "Calendar A"/"Calendar B" fallback (agenda_renderer.c) - e.g.
 // "Private"/"Work". Not a credential, unlike the URL fields above - shown

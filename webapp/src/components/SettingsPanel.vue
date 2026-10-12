@@ -438,6 +438,21 @@ const agendaCalLayoutModeOptions = [
   { title: "7-Day Grid - Template B (today: double height)", value: "grid_b" },
 ];
 
+const agendaCalOrderOptions = [
+  { title: "Priority first (default)", value: "priority" },
+  { title: "Time first", value: "time" },
+];
+
+// Each of the calendars A-E exactly once, in any case and with any separators
+// ("A,B,C,D,E", "e > d > c > b > a") - the firmware skips everything else
+const agendaCalPriorityRules = [
+  (v) => {
+    const letters = (v || "").toUpperCase().replace(/[^A-E]/g, "");
+    const complete = letters.length === 5 && new Set(letters).size === 5;
+    return complete || "Name each of the calendars A, B, C, D, E once";
+  },
+];
+
 const agendaShiftModelOptions = [
   { title: "Off (default)", value: "none" },
   { title: "2-2-3", value: "2-2-3" },
@@ -2196,9 +2211,10 @@ async function performFactoryReset() {
               Google Calendar "Secret address in iCal format" (Calendar Settings → Integrate
               calendar). Google's own docs warn that only you should know this address - treat it
               like a password, never share it. A second calendar is optional (e.g. work alongside
-              personal) - events from both are merged into one list, sorted by time, and colored by
-              origin: Calendar A is blue, Calendar B is green (shown as a filled background on a
-              light agenda background, plain colored text on a dark one - see Appearance below).
+              personal) - events from both are merged into one list, sorted by priority and time
+              (see "Calendar priority" below), and colored by origin: Calendar A is blue, Calendar B
+              is green (shown as a filled background on a light agenda background, plain colored
+              text on a dark one - see Appearance below).
             </div>
             <v-row dense>
               <v-col cols="12" sm="6">
@@ -2365,39 +2381,86 @@ async function performFactoryReset() {
               column above is off (Calendar shown full-screen), falling back to List otherwise.
               Forecasts (if enabled above) cover all 7 days in grid mode, still 3 in List mode.
             </div>
-            <template v-if="settingsStore.deviceSettings.agendaCalLayoutMode !== 'list'">
-              <v-select
-                v-model="settingsStore.deviceSettings.agendaShiftModel"
-                :items="agendaShiftModelOptions"
-                item-title="title"
-                item-value="value"
-                label="Rotation pattern"
-                variant="outlined"
-                class="mt-2 mb-1"
-                hide-details
-                :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
-              />
-              <div class="text-caption text-medium-emphasis mb-2">
-                Marks every other grid day by an alternating custody-style schedule (e.g. "2-2-3": 2
-                days/2 days/3 days, then which side starts flips the following week) - off by
-                default. Needs a start date below to anchor which day the pattern begins on. Which
-                color the marked days get, and whether it colors the day header or the appointment
-                area, comes from the active Color Profile below (its "mark" color and
-                "markColorsHeader" setting) rather than from a setting here.
-              </div>
-              <v-row v-if="settingsStore.deviceSettings.agendaShiftModel !== 'none'" dense>
-                <v-col cols="6" sm="4">
-                  <v-text-field
-                    v-model="settingsStore.deviceSettings.agendaShiftStart"
-                    label="Start date"
-                    type="date"
-                    variant="outlined"
-                    density="compact"
-                    hide-details
-                  />
-                </v-col>
-              </v-row>
-            </template>
+            <v-text-field
+              v-model="settingsStore.deviceSettings.agendaCalPriority"
+              label="Calendar priority"
+              placeholder="A,B,C,D,E"
+              variant="outlined"
+              density="compact"
+              class="mt-2"
+              :rules="agendaCalPriorityRules"
+              hint="Most important first - A,B,C,D,E (default): A highest, E lowest"
+              persistent-hint
+              :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Name each of the calendars A-E once, from the most to the least important (e.g.
+              "C,A,B,D,E"). The entries of a calendar of higher priority are shown above those of a
+              lower one, and when the column or cell has no room for everything, the entries of the
+              lowest priority are the ones given up (only counted in "+N more") - so a flood of
+              entries from a minor calendar cannot push an important appointment out.
+            </div>
+            <v-select
+              v-model="settingsStore.deviceSettings.agendaCalOrder"
+              :items="agendaCalOrderOptions"
+              item-title="title"
+              item-value="value"
+              label="Order within a day"
+              variant="outlined"
+              class="mt-2 mb-1"
+              hide-details
+              :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Priority first (default): all entries of calendar A, then B, ... - each by time.
+              Time first: strictly by time, the priority only decides between entries that start
+              together. Either way the entries of the lowest priority are given up first when the
+              room runs out.
+            </div>
+            <v-switch
+              v-model="settingsStore.deviceSettings.agendaCalShowWeek"
+              label="Show the calendar week"
+              color="primary"
+              class="mb-1"
+              hide-details
+              :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Adds the ISO calendar week to today's divider/cell and to every Monday's, e.g. "Mo 12.
+              KW42" ("CW42" with the English overlay language).
+            </div>
+            <v-select
+              v-model="settingsStore.deviceSettings.agendaShiftModel"
+              :items="agendaShiftModelOptions"
+              item-title="title"
+              item-value="value"
+              label="Rotation pattern"
+              variant="outlined"
+              class="mt-2 mb-1"
+              hide-details
+              :disabled="!settingsStore.deviceSettings.agendaCalEnabled"
+            />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Marks every other day by an alternating custody-style schedule (e.g. "2-2-3": 2
+              days/2 days/3 days, then which side starts flips the following week) - off by
+              default. Works in the list and in the 7-day grid. Needs a start date below to anchor
+              which day the pattern begins on. Which color the marked days get, and whether it
+              colors the day header or the appointment area, comes from the active Color Profile
+              below (its "mark" color and "markColorsHeader" setting) rather than from a setting
+              here.
+            </div>
+            <v-row v-if="settingsStore.deviceSettings.agendaShiftModel !== 'none'" dense>
+              <v-col cols="6" sm="4">
+                <v-text-field
+                  v-model="settingsStore.deviceSettings.agendaShiftStart"
+                  label="Start date"
+                  type="date"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+            </v-row>
 
             <v-divider class="mb-4 mt-2" />
 

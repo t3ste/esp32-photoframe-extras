@@ -506,6 +506,24 @@ agenda_multiday_mode_t config_manager_get_agenda_cal_multiday_mode(void);
 void config_manager_set_agenda_cal_time_display_mode(agenda_time_display_mode_t mode);
 agenda_time_display_mode_t config_manager_get_agenda_cal_time_display_mode(void);
 
+#if FEATURE_AGENDA
+// Priority of the calendars A-E, five letters from the most to the least important (default
+// "ABCDE") - see agenda_order.h and NVS_AGENDA_CAL_PRIORITY_KEY in config.h. The setter takes any
+// list agenda_priority_parse() accepts and stores it in its canonical form; false (nothing changed)
+// for a list that is not a permutation of A-E.
+bool config_manager_set_agenda_cal_priority(const char *list);
+const char *config_manager_get_agenda_cal_priority(void);
+
+// Order of the entries inside a day - see agenda_cal_order_t/NVS_AGENDA_CAL_ORDER_KEY in config.h.
+void config_manager_set_agenda_cal_order(agenda_cal_order_t order);
+agenda_cal_order_t config_manager_get_agenda_cal_order(void);
+
+// Show the calendar week on the day dividers (default on) - see NVS_AGENDA_CAL_WEEK_KEY in
+// config.h.
+void config_manager_set_agenda_cal_show_week(bool enabled);
+bool config_manager_get_agenda_cal_show_week(void);
+#endif
+
 // Optional display names for the Calendar header - see
 // NVS_AGENDA_CAL_NAME_KEY/_NAME2_KEY in config.h. May return "" (never
 // set/cleared) - agenda_renderer.c falls back to "Calendar A"/"Calendar B"

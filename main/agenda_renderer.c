@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include "agenda_color_profile.h"
+#include "agenda_order.h"
 #include "board_hal.h"
 #include "config_manager.h"
 #include "esp_heap_caps.h"
@@ -1119,6 +1120,8 @@ static int event_day_index(const ics_event_t *ev, time_t day)
 typedef struct {
     const ics_event_t *ev;
     const agenda_event_line_t *line;
+    uint8_t rank;  // the calendar's priority rank (agenda_order.h), 0 = highest
+    uint16_t seq;  // the position before sorting - the sort's last tie-break
 } agenda_tagged_event_t;
 
 // One calendar source's header display name - see draw_calendar_column()'s
@@ -1131,17 +1134,30 @@ typedef struct {
     const char *name;
 } agenda_cal_name_tag_t;
 
-static int compare_tagged_by_start(const void *a, const void *b)
+// Whether the sort below puts the calendar's priority before the time (the default) or after it -
+// set once per render, before the qsort (the render runs on one task at a time).
+static bool s_sort_priority_first = true;
+
+static agenda_sort_key_t tagged_sort_key(const agenda_tagged_event_t *t)
 {
-    const agenda_tagged_event_t *ta = (const agenda_tagged_event_t *) a;
-    const agenda_tagged_event_t *tb = (const agenda_tagged_event_t *) b;
-    if (ta->ev->start < tb->ev->start) {
-        return -1;
-    }
-    if (ta->ev->start > tb->ev->start) {
-        return 1;
-    }
-    return 0;
+    agenda_sort_key_t key;
+    key.start = t->ev->start;
+    key.end = t->ev->end;
+    key.all_day = t->ev->all_day;
+    key.rank = t->rank;
+    key.cal = t->line->calendar_index < 0 ? 0 : (uint8_t) t->line->calendar_index;
+    key.seq = t->seq;
+    return key;
+}
+
+// A total order (agenda_event_compare): the same list always comes out in the same order, whatever
+// qsort does with equal elements - the all-day entries of several calendars all start at midnight
+// and used to come out in an arbitrary order.
+static int compare_tagged(const void *a, const void *b)
+{
+    agenda_sort_key_t ka = tagged_sort_key((const agenda_tagged_event_t *) a);
+    agenda_sort_key_t kb = tagged_sort_key((const agenda_tagged_event_t *) b);
+    return agenda_event_compare(&ka, &kb, s_sort_priority_first);
 }
 
 // Draws the Calendar column: a header bar (title plus a "last updated"
@@ -1429,13 +1445,17 @@ static void draw_day_cell(uint8_t *rgb, int width, int height, agenda_rect_t cel
                           const bool *is_multiday, const int *first_visible_idx, bool skip_repeats,
                           bool show_prefix, const weather_forecast_t *cal_weather,
                           bool weather_mode, bool weather_right_aligned, bool german,
-                          const agenda_color_profile_t *profile, bool day_marked)
+                          const agenda_color_profile_t *profile, bool day_marked,
+                          uint8_t *pick_rank, bool *pick_shown)
 {
     struct tm day_tm;
     localtime_r(&day, &day_tm);
     char label[16];
-    snprintf(label, sizeof(label), "%s %d.", weather_weekday_abbr(day_tm.tm_wday, german),
-             day_tm.tm_mday);
+    // The calendar week on today's cell and on every Monday's
+    agenda_day_label(
+        label, sizeof(label), weather_weekday_abbr(day_tm.tm_wday, german), day_tm.tm_mday,
+        config_manager_get_agenda_cal_show_week() && (day_index == 0 || day_tm.tm_wday == 1),
+        agenda_iso_week(day_tm.tm_year, day_tm.tm_mon, day_tm.tm_mday), german);
 
     char weather_buf[WEATHER_DAY_LINE_MAX_LEN] = "";
     const weather_day_t *wday;
@@ -1515,12 +1535,30 @@ static void draw_day_cell(uint8_t *rgb, int width, int height, agenda_rect_t cel
         budget = 0;
     }
 
+    // When the cell has no room for all of them, the entries of the calendars of lower priority are
+    // given up (only counted in "+N more"); the ones that stay are drawn in the sorted order.
+    int candidates = 0;
+    for (int i = 0; i < tagged_count; i++) {
+        if (!event_touches_day(tagged[i].ev, day)) {
+            continue;
+        }
+        if (skip_repeats && is_multiday[i] && day_index != first_visible_idx[i]) {
+            continue;
+        }
+        pick_rank[candidates++] = tagged[i].rank;
+    }
+    agenda_select_by_rank(pick_rank, candidates, budget, pick_shown);
+
     int rows_used = 0, instances_shown = 0;
+    int candidate = 0;
     for (int i = 0; i < tagged_count && rows_used < budget; i++) {
         if (!event_touches_day(tagged[i].ev, day)) {
             continue;
         }
         if (skip_repeats && is_multiday[i] && day_index != first_visible_idx[i]) {
+            continue;
+        }
+        if (!pick_shown[candidate++]) {
             continue;
         }
         const agenda_event_line_t *line = tagged[i].line;
@@ -1603,10 +1641,14 @@ static void draw_calendar_grid(uint8_t *rgb, int width, int height, agenda_rect_
         heap_caps_malloc(AGENDA_MAX_TAGGED_EVENTS * sizeof(bool), MALLOC_CAP_SPIRAM);
     int *first_visible_idx =
         heap_caps_malloc(AGENDA_MAX_TAGGED_EVENTS * sizeof(int), MALLOC_CAP_SPIRAM);
-    if (!is_multiday || !first_visible_idx) {
+    uint8_t *pick_rank = heap_caps_malloc(AGENDA_MAX_TAGGED_EVENTS, MALLOC_CAP_SPIRAM);
+    bool *pick_shown = heap_caps_malloc(AGENDA_MAX_TAGGED_EVENTS * sizeof(bool), MALLOC_CAP_SPIRAM);
+    if (!is_multiday || !first_visible_idx || !pick_rank || !pick_shown) {
         ESP_LOGW(TAG, "Failed to allocate Calendar grid scratch buffers");
         heap_caps_free(is_multiday);
         heap_caps_free(first_visible_idx);
+        heap_caps_free(pick_rank);
+        heap_caps_free(pick_shown);
         return;
     }
     for (int k = 0; k < tagged_count; k++) {
@@ -1666,11 +1708,14 @@ static void draw_calendar_grid(uint8_t *rgb, int width, int height, agenda_rect_
                           agenda_shift_group_for_day(shift_model, shift_start, days[di]) == 1;
         draw_day_cell(rgb, width, height, cells[di], di, days[di], tagged, tagged_count,
                       is_multiday, first_visible_idx, skip_repeats, show_prefix, cal_weather,
-                      weather_mode, weather_right_aligned, german, profile, day_marked);
+                      weather_mode, weather_right_aligned, german, profile, day_marked, pick_rank,
+                      pick_shown);
     }
 
     heap_caps_free(is_multiday);
     heap_caps_free(first_visible_idx);
+    heap_caps_free(pick_rank);
+    heap_caps_free(pick_shown);
 }
 
 static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rect_t rect,
@@ -1882,10 +1927,9 @@ static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rec
         }
     }
 
-    // Two-pass budgeting, same "reserve a row for +N more" idea as
-    // draw_todo_column() - here a single event can occupy more than one
-    // row total (once per day it touches, unless compacted above), so the
-    // total has to be counted up front rather than just compared against
+    // Two-pass budgeting, same "reserve a row for +N more" idea as draw_todo_column() - here a
+    // single event can occupy more than one row total (once per day it touches, unless compacted
+    // above), so the total has to be counted up front rather than just compared against
     // tagged_count.
     int total_event_instances = 0;
     for (int di = 0; di < day_count; di++) {
@@ -1905,6 +1949,46 @@ static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rec
         budget = 0;
     }
 
+    // When the rows do not suffice, the entries of the calendars of lower priority are the ones
+    // given up (and only counted in "+N more"), wherever in the window they are: every day keeps
+    // its divider (the weather sits there), the remaining rows go to the entries by priority and
+    // then in time. Without room for even the dividers there is nothing to choose, and the plain
+    // top-down cut below applies. One flag per entry instance in drawing order (day by day, then
+    // the sorted order of `tagged`).
+    size_t inst_alloc = (size_t) (total_event_instances > 0 ? total_event_instances : 1);
+    uint8_t *inst_rank = heap_caps_malloc(inst_alloc, MALLOC_CAP_SPIRAM);
+    bool *inst_shown = heap_caps_malloc(inst_alloc * sizeof(bool), MALLOC_CAP_SPIRAM);
+    if (!inst_rank || !inst_shown) {
+        ESP_LOGW(TAG, "Failed to allocate Calendar column scratch buffers");
+        heap_caps_free(inst_rank);
+        heap_caps_free(inst_shown);
+        heap_caps_free(is_multiday);
+        heap_caps_free(first_visible_idx);
+        return;
+    }
+    {
+        int n = 0;
+        for (int di = 0; di < day_count; di++) {
+            for (int k = 0; k < tagged_count; k++) {
+                if (!event_touches_day(tagged[k].ev, days[di])) {
+                    continue;
+                }
+                if (skip_repeats && is_multiday[k] && di != first_visible_idx[k]) {
+                    continue;
+                }
+                inst_rank[n++] = tagged[k].rank;
+            }
+        }
+        int event_capacity = budget - day_count;
+        if (total_rows_needed <= max_rows || event_capacity <= 0) {
+            for (int i = 0; i < total_event_instances; i++) {
+                inst_shown[i] = true;
+            }
+        } else {
+            agenda_select_by_rank(inst_rank, total_event_instances, event_capacity, inst_shown);
+        }
+    }
+
     // Whether the weather annotation feature is on and actually returned
     // data this cycle - decides the day divider's overall layout (see
     // draw_day_divider()'s comment), independent of whether any specific
@@ -1919,27 +2003,25 @@ static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rec
     // to actually follow the user's choice instead of staying German-only
     // regardless of it.
     bool german = (strcmp(config_manager_get_overlay_language(), "de") == 0);
+    bool show_week = config_manager_get_agenda_cal_show_week();
 
-    // List mode has no per-day cell to fill, so BODY marking (the whole-cell
-    // fill grid mode does) has no analog here and stays off regardless of
-    // the profile - but HEADER marking (markColorsHeader) is just a color
-    // swap on an already-existing element, so it's resolved per day exactly
-    // like grid mode does, fixing an earlier bug where a header-marking
-    // profile's mark color only ever showed up in the 7-day grid (Calendar
-    // shown alone) and silently reverted to plain header colors the moment
-    // ToDo was shown alongside it (dual/stacked or side-by-side), even
-    // though both views share the same active profile.
+    // The rotation pattern ("shift model") marks every other stretch of days. Like in the grid, a
+    // marked day's header takes the profile's mark color when markColorsHeader is on, and the block
+    // of that day's entry rows is filled with it when it is off.
     agenda_shift_model_t list_shift_model = config_manager_get_agenda_shift_model();
     const char *list_shift_start = config_manager_get_agenda_shift_start();
 
     int rows_used = 0;
     int instances_shown = 0;
+    int inst_cursor = 0;  // the instance the drawing loop is at, in the order of inst_shown[]
     for (int di = 0; di < day_count && rows_used < budget; di++) {
         struct tm day_tm;
         localtime_r(&days[di], &day_tm);
         char label[16];
-        snprintf(label, sizeof(label), "%s %d.", weather_weekday_abbr(day_tm.tm_wday, german),
-                 day_tm.tm_mday);
+        // The calendar week on today's divider and on every Monday's
+        agenda_day_label(label, sizeof(label), weather_weekday_abbr(day_tm.tm_wday, german),
+                         day_tm.tm_mday, show_week && (di == 0 || day_tm.tm_wday == 1),
+                         agenda_iso_week(day_tm.tm_year, day_tm.tm_mon, day_tm.tm_mday), german);
         bool day_marked =
             (list_shift_model != AGENDA_SHIFT_MODEL_NONE) &&
             agenda_shift_group_for_day(list_shift_model, list_shift_start, days[di]) == 1;
@@ -1977,11 +2059,42 @@ static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rec
                          profile->dayhead_leader_line);
         rows_used++;
 
-        for (int i = 0; i < tagged_count && rows_used < budget; i++) {
+        // This day's entries: the colors of a marked day, and how many rows its entries take (for
+        // the fill)
+        uint8_t body_bg_r, body_bg_g, body_bg_b, body_fg_r, body_fg_g, body_fg_b;
+        agenda_day_body_colors(profile, day_marked, &body_bg_r, &body_bg_g, &body_bg_b, &body_fg_r,
+                               &body_fg_g, &body_fg_b);
+        bool body_marked = day_marked && profile->has_mark && !profile->mark_colors_header;
+        if (body_marked) {
+            int rows_of_day = 0;
+            int cand = inst_cursor;
+            for (int i = 0; i < tagged_count; i++) {
+                if (!event_touches_day(tagged[i].ev, days[di])) {
+                    continue;
+                }
+                if (skip_repeats && is_multiday[i] && di != first_visible_idx[i]) {
+                    continue;
+                }
+                if (inst_shown[cand++] && rows_used + rows_of_day < budget) {
+                    rows_of_day++;
+                }
+            }
+            if (rows_of_day > 0) {
+                image_processor_fill_rect(rgb, width, height, rect.x,
+                                          content_top + rows_used * row_h, rect.w,
+                                          rows_of_day * row_h, body_bg_r, body_bg_g, body_bg_b);
+            }
+        }
+
+        for (int i = 0; i < tagged_count; i++) {
             if (!event_touches_day(tagged[i].ev, days[di])) {
                 continue;
             }
             if (skip_repeats && is_multiday[i] && di != first_visible_idx[i]) {
+                continue;
+            }
+            bool instance_shown = inst_shown[inst_cursor++];
+            if (!instance_shown || rows_used >= budget) {
                 continue;
             }
             const agenda_event_line_t *line = tagged[i].line;
@@ -2004,16 +2117,16 @@ static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rec
                 int y = content_top + rows_used * row_h;
                 int x = rect.x + AGENDA_PADDING;
                 if (prefix_len > 0) {
-                    image_processor_draw_text(rgb, width, height, x, y, prefix, page_fg_r,
-                                              page_fg_g, page_fg_b);
+                    image_processor_draw_text(rgb, width, height, x, y, prefix, body_fg_r,
+                                              body_fg_g, body_fg_b);
                     x += prefix_len * IMAGE_PROCESSOR_FONT_WIDTH;
                 }
                 int visible_len = (int) strlen(wrapped[0]);
                 bool has_chip;
                 uint8_t chip_r, chip_g, chip_b, event_r, event_g, event_b;
-                agenda_event_colors(profile, line->calendar_index, false, page_fg_r, page_fg_g,
-                                    page_fg_b, &has_chip, &chip_r, &chip_g, &chip_b, &event_r,
-                                    &event_g, &event_b);
+                agenda_event_colors(profile, line->calendar_index, body_marked, body_fg_r,
+                                    body_fg_g, body_fg_b, &has_chip, &chip_r, &chip_g, &chip_b,
+                                    &event_r, &event_g, &event_b);
                 if (has_chip) {
                     image_processor_fill_rect(rgb, width, height, x, y,
                                               visible_len * IMAGE_PROCESSOR_FONT_WIDTH,
@@ -2035,6 +2148,8 @@ static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rec
                                   page_fg_g, page_fg_b);
     }
 
+    heap_caps_free(inst_rank);
+    heap_caps_free(inst_shown);
     heap_caps_free(is_multiday);
     heap_caps_free(first_visible_idx);
 }
@@ -2315,9 +2430,24 @@ esp_err_t agenda_renderer_render(const todo_list_t *todo, const ics_event_list_t
                 tagged[tagged_count].line = &lines_e[i];
                 tagged_count++;
             }
+            // Priority of the calendars (Web UI: Agenda > Calendar priority): each entry carries
+            // its calendar's rank, and the sort puts the calendar of higher priority first within a
+            // day (or the time first, setting "order within a day"). The same ranks later decide
+            // which entries are given up when the rows run out.
+            uint8_t priority_order[AGENDA_CAL_COUNT];
+            uint8_t rank_of[AGENDA_CAL_COUNT];
+            if (!agenda_priority_parse(config_manager_get_agenda_cal_priority(), priority_order)) {
+                agenda_priority_parse(AGENDA_PRIORITY_DEFAULT, priority_order);
+            }
+            agenda_priority_ranks(priority_order, rank_of);
+            for (int i = 0; i < tagged_count; i++) {
+                tagged[i].rank = rank_of[tagged[i].line->calendar_index];
+                tagged[i].seq = (uint16_t) i;
+            }
+            s_sort_priority_first =
+                config_manager_get_agenda_cal_order() == AGENDA_CAL_ORDER_PRIORITY;
             if (tagged_count > 1) {
-                qsort(tagged, (size_t) tagged_count, sizeof(agenda_tagged_event_t),
-                      compare_tagged_by_start);
+                qsort(tagged, (size_t) tagged_count, sizeof(agenda_tagged_event_t), compare_tagged);
             }
             // Header shows the actual calendar source name(s) instead of a
             // generic "CALENDAR" label - every source that's actually ACTIVE

@@ -18,7 +18,7 @@ python build.py --board seeedstudio_xiao_ee02 --list-features
 | --- | --- | --- | --- |
 | `telegram` | Telegram bot photo rotation, remote commands, orientation pairing | - | [TELEGRAM.md](TELEGRAM.md) |
 | `overlays` | Weather and headline overlays, captions, low-battery badge | - | [OVERLAYS.md](OVERLAYS.md) |
-| `agenda` | Agenda mode: ToDo and calendars A-E, 7-day grid, colour profiles | - | [CALENDAR_RRULE_SUPPORT.md](CALENDAR_RRULE_SUPPORT.md) |
+| `agenda` | Agenda mode: ToDo and calendars A-E, 7-day grid, colour profiles, calendar priority and week number | - | [CALENDAR_RRULE_SUPPORT.md](CALENDAR_RRULE_SUPPORT.md), [CALENDAR_PRIORITY.md](CALENDAR_PRIORITY.md) |
 | `chimes` | Beep feedback for firmware events | speaker | |
 | `climate` | Temperature/humidity readout, badges and history | temperature/humidity sensor | |
 | `alarmclock` | Bedside alarm clock with schedule and button UI | speaker | [ALARMCLOCK_USER_GUIDE.md](ALARMCLOCK_USER_GUIDE.md) |
