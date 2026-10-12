@@ -310,11 +310,12 @@ function updateParam(key, value) {
    mode got three squeezed columns, labels ran into each other, words broke, the presets were cut off).
    All the rows of the template are cells of ONE grid, so the columns line up from row to row: two or
    three columns of at least 220 px, never more than three (one column when there is room for no more);
-   every row of the template starts in the first column. */
+   every row of the template starts in the first column. The spacing is tight on purpose: the point of
+   the wide-edit mode is to see every parameter beside the picture without scrolling. */
 .processing-controls {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(max(220px, calc((100% - 40px) / 3)), 1fr));
-  gap: 14px 20px;
+  grid-template-columns: repeat(auto-fill, minmax(max(220px, calc((100% - 32px) / 3)), 1fr));
+  gap: 12px 16px;
   align-items: center;
 }
 .processing-controls > .v-row {
@@ -339,16 +340,23 @@ function updateParam(key, value) {
 /* "Compress Dynamic Range" and its hint get a row of their own, so the label stays on one line */
 .processing-controls > .v-row > :has(.v-checkbox) {
   grid-column: 1 / -1;
-  margin-bottom: 10px;
 }
 .processing-controls > .v-card {
-  margin-top: 8px;
+  margin-top: 4px;
+}
+/* no room is kept for hints and messages that are not there (the selects and sliders have none) */
+.processing-controls .v-input__details:not(:has(.v-messages__message)) {
+  display: none;
+}
+.processing-controls .v-checkbox .v-input__details {
+  padding-top: 0;
+  min-height: 0;
 }
 /* the sliders of the S-curve card: its own small grid */
 .processing-controls .v-card-text .v-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 4px 20px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+  gap: 0 24px;
   margin: 0;
 }
 .processing-controls .v-card-text .v-row > * {
@@ -358,40 +366,69 @@ function updateParam(key, value) {
   min-width: 0;
   padding: 0;
 }
-/* the presets: equal buttons in rows of equal length - one in a row in a very narrow card, two, three, and six
-   when the card is very wide - instead of a group that wraps at an arbitrary place */
+/* the cards of the controls: less air (the utility classes of the template are !important); the
+   room between the rows is the grid's gap, which also keeps the floating labels of the selects clear */
+.processing-controls > .v-row > .v-col-12 > .v-card {
+  margin-bottom: 0 !important;
+}
+.processing-controls > .v-row > :has(.v-checkbox) {
+  margin-bottom: 6px;
+}
+.processing-controls .v-card-subtitle {
+  padding-top: 8px !important;
+}
+.processing-controls .v-card-text {
+  padding: 4px 12px 12px;
+}
+/* the presets: one row of buttons that share the room by the length of their labels when the card is wide
+   enough, else equal buttons in rows of equal length (three, two or one per row) - never a group that
+   wraps at an arbitrary place */
 .processing-controls .v-card-text {
   container-type: inline-size;
 }
 .processing-controls .v-btn-toggle {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   height: auto;
   border: none;
   overflow: visible;
 }
 .processing-controls .v-btn-toggle.v-btn-group > .v-btn {
-  min-height: 40px;
+  min-height: 30px;
   min-width: 0;
-  padding: 0 8px;
+  padding: 0 6px;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
   border: thin solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 4px;
 }
-@container (max-width: 379px) {
+@container (max-width: 329px) {
   .processing-controls .v-btn-toggle {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-@container (min-width: 560px) {
+@container (min-width: 480px) {
   .processing-controls .v-btn-toggle {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
-@container (min-width: 1100px) {
+@container (min-width: 510px) {
   .processing-controls .v-btn-toggle {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    display: flex;
+  }
+  .processing-controls .v-btn-toggle.v-btn-group > .v-btn {
+    flex: 1 1 auto;
+  }
+}
+@container (min-width: 700px) {
+  .processing-controls .v-btn-toggle {
+    gap: 8px;
+  }
+  .processing-controls .v-btn-toggle.v-btn-group > .v-btn {
+    flex: 0 0 auto;
+    padding: 0 14px;
   }
 }
 </style>
