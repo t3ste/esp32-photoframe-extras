@@ -1286,9 +1286,10 @@ async function generateAiImage() {
 <!-- #if FORK_FIXES -->
 <style>
 /* The wide-edit card breaks out of the page column (up to 80vw, centered), but the tab's v-window it sits
-   in is as wide as the column (about 1170 px) and has overflow: hidden: from a window width of about
-   1460 px it cut the card off on both sides - up to 196 px each, the left of the preview and the right of
-   the controls. While the card is there, the window lets it show. */
+   in (the tabs are the fork's; upstream's page has none) is as wide as the column (about 1170 px) and has
+   overflow: hidden: from a window width of about 1460 px it cut the card off on both sides - up to 196 px
+   each, the left of the preview and the right of the controls. While the card is there, the window lets it
+   show. */
 .v-window:has(.wide-edit-card) {
   overflow: visible;
 }
