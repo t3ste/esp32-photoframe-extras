@@ -4,9 +4,17 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "config_manager.h"
 #include "tjpgd.h"
+
+// image_processor.c reads through fork_fread() with the fixes option (sd_read_retry.h); on the host
+// there is no SD card driver to fail, so it is plain fread() (the retry logic has its own test).
+size_t fork_fread(void *buf, size_t size, size_t count, FILE *fp)
+{
+    return fread(buf, size, count, fp);
+}
 
 JRESULT jd_prepare(JDEC *jd, unsigned int (*infunc)(JDEC *, uint8_t *, unsigned int), void *pool,
                    size_t sz_pool, void *dev)
