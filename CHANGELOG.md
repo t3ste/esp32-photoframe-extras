@@ -25,6 +25,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   - **Calendar week** (`agenda_cal_show_week`, default on): the ISO week on today's divider/cell and on every Monday's, e.g. `Mo 12. KW42` (`CW42` with the English overlay language). The week arithmetic is pure C (`main/agenda_order.c`) with host tests, including a 60-year walk over the year boundaries.
   - **Rotation pattern in the list layout**: the "2-2-3", "week / week" and "3-4" patterns marked days only in the 7-day grid; the list layout (1-3 days, the default) shows them now too, with the same color profile rules (the mark color on the day header, or a filled block behind the day's entries when the profile's `markColorsHeader` is off). The Web UI shows the setting for both layouts.
 
+### Changed
+
+- **Merged upstream `3e5f3f9`** ("wifi: accept 32-character SSIDs", upstream PR #146): a network whose name has the maximum 32 characters could not be joined - the buffers kept one byte for the terminator, so the name was cut to 31, and the copy into `wifi_config_t.sta.ssid` stopped one byte short as well. The equality baseline of the proofs moved to this commit.
+
 ### Fixed
 
 - **Gallery > Upload Image: the processing parameters were only shown with *Wide edit*, and then they did not fit** (`fixes` option; upstream's layout): Vuetify's `md` breakpoint is a width of the *window*, so the controls column beside the preview got three squeezed columns - labels ran into each other (`Exposure ● 1.00Saturation`), "Compress Dynamic Range" broke in the middle of a word, the preset buttons (Balanced ... Custom) were cut off, and at a window width of about 1100 px the whole column collapsed to a few pixels. The columns follow the width of the component now (`auto-fill`, 220 px minimum), the preset buttons wrap, and with *Wide edit* off a collapsible **Processing parameters** panel under the preview (open by default) gives the same controls, so they can be changed without switching layouts. The same CSS applies to Settings > Processing and the landing page, which use the same component. Checked at window widths of 420, 1100 and 1500 px.
