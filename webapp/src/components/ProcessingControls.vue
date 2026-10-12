@@ -302,3 +302,30 @@ function updateParam(key, value) {
     </v-expand-transition>
   </div>
 </template>
+
+<!-- #if FORK_FIXES -->
+<style>
+/* The columns follow the room the controls have, not the width of the browser window: Vuetify's
+   md breakpoint is a window width, so the narrow column beside the preview (wide edit) got three
+   squeezed columns with the labels running into each other and the preset buttons cut off. */
+.processing-controls .v-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+}
+.processing-controls .v-row > * {
+  flex: none;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+}
+/* the full-width rows (the preset card) */
+.processing-controls .v-row > .v-col-12:not([class*="v-col-md-"]) {
+  grid-column: 1 / -1;
+}
+/* more presets than fit in one line wrap instead of running out of the card */
+.processing-controls .v-btn-toggle {
+  height: auto;
+  flex-wrap: wrap;
+}
+</style>
+<!-- #endif -->

@@ -444,8 +444,18 @@ export const useSettingsStore = defineStore("settings", () => {
     // list) or a 7-day grid template ("grid_a"/"grid_b"). Only takes
     // effect when the ToDo column is off - see agenda_renderer.c.
     agendaCalLayoutMode: "list",
-    // Optional 2-group rotation/"shift" coloring for the 7-day grid - see
-    // agenda_shift_model_t (config.h). "none" (default) = no coloring.
+    // Priority of the calendars A-E, most important first ("ABCDE": A highest).
+    // Decides the order of the entries inside a day and which ones are given
+    // up first when the column runs out of rows (only counted in "+N more").
+    agendaCalPriority: "ABCDE",
+    // Order inside a day: "priority" (default, the calendar's priority first,
+    // then the time) or "time" (the time first, the priority breaks ties).
+    agendaCalOrder: "priority",
+    // The calendar week ("KW42"/"CW42") on today's divider/cell and on every
+    // Monday's.
+    agendaCalShowWeek: true,
+    // Optional 2-group rotation/"shift" coloring for the list and the 7-day
+    // grid - see agenda_shift_model_t (config.h). "none" (default) = no coloring.
     agendaShiftModel: "none",
     // "YYYY-MM-DD", empty = unset (no coloring even if a model is chosen).
     agendaShiftStart: "",
@@ -857,6 +867,9 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.agendaCalMultidayMode = data.agenda_cal_multiday_mode || "repeat";
       deviceSettings.value.agendaCalTimeDisplayMode = data.agenda_cal_time_display_mode || "off";
       deviceSettings.value.agendaCalLayoutMode = data.agenda_cal_layout_mode || "list";
+      deviceSettings.value.agendaCalPriority = data.agenda_cal_priority || "ABCDE";
+      deviceSettings.value.agendaCalOrder = data.agenda_cal_order || "priority";
+      deviceSettings.value.agendaCalShowWeek = data.agenda_cal_show_week !== false;
       deviceSettings.value.agendaShiftModel = data.agenda_shift_model || "none";
       deviceSettings.value.agendaShiftStart = data.agenda_shift_start || "";
       deviceSettings.value.agendaCalUrlConfigured = data.agenda_cal_url_configured === true;
@@ -1199,6 +1212,9 @@ export const useSettingsStore = defineStore("settings", () => {
       agenda_cal_multiday_mode: deviceSettings.value.agendaCalMultidayMode,
       agenda_cal_time_display_mode: deviceSettings.value.agendaCalTimeDisplayMode,
       agenda_cal_layout_mode: deviceSettings.value.agendaCalLayoutMode,
+      agenda_cal_priority: deviceSettings.value.agendaCalPriority,
+      agenda_cal_order: deviceSettings.value.agendaCalOrder,
+      agenda_cal_show_week: deviceSettings.value.agendaCalShowWeek,
       agenda_shift_model: deviceSettings.value.agendaShiftModel,
       agenda_shift_start: deviceSettings.value.agendaShiftStart,
       agenda_cron: deviceSettings.value.agendaCron,

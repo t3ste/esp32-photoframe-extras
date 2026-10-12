@@ -28,6 +28,7 @@ MODULES = {
     "agenda": [
         "agenda_color_profile",
         "agenda_manager",
+        "agenda_order",
         "agenda_renderer",
         "calendar_ics",
         "todo",

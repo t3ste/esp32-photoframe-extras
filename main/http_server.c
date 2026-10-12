@@ -2733,6 +2733,13 @@ static esp_err_t config_handler(httpd_req_t *req)
             break;
         }
         cJSON_AddStringToObject(root, "agenda_cal_time_display_mode", agenda_time_str);
+        cJSON_AddStringToObject(root, "agenda_cal_priority",
+                                config_manager_get_agenda_cal_priority());
+        cJSON_AddStringToObject(
+            root, "agenda_cal_order",
+            config_manager_get_agenda_cal_order() == AGENDA_CAL_ORDER_TIME ? "time" : "priority");
+        cJSON_AddBoolToObject(root, "agenda_cal_show_week",
+                              config_manager_get_agenda_cal_show_week());
         cJSON_AddStringToObject(root, "agenda_cal_name", config_manager_get_agenda_cal_name());
         cJSON_AddStringToObject(root, "agenda_cal_name2", config_manager_get_agenda_cal_name2());
         // Non-secret "is a source actually saved?" flags - the URL fields
