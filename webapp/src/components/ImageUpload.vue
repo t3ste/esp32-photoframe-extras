@@ -12,6 +12,11 @@ function toggleWideEdit() {
   wideEdit.value = !wideEdit.value;
 }
 
+// #if FORK_FIXES
+// The processing parameters under the preview when the wide-edit mode is off (open by default)
+const paramsOpen = ref(true);
+// #endif
+
 // In wide-edit mode the processing controls render next to the preview (as well
 // as in Settings > Processing); both bind the same store, so these mirror the
 // handlers there.
@@ -637,6 +642,29 @@ async function generateAiImage() {
             @preset-change="onPresetChange"
           />
         </div>
+        <!-- #if FORK_FIXES -->
+        <div v-else class="edit-params mt-3">
+          <v-btn
+            variant="text"
+            size="small"
+            :append-icon="paramsOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+            @click="paramsOpen = !paramsOpen"
+          >
+            Processing parameters
+          </v-btn>
+          <v-expand-transition>
+            <div v-show="paramsOpen" class="mt-2">
+              <ProcessingControls
+                :params="settingsStore.params"
+                :preset="settingsStore.preset"
+                @update:params="onParamsUpdate"
+                @update:preset="settingsStore.preset = $event"
+                @preset-change="onPresetChange"
+              />
+            </div>
+          </v-expand-transition>
+        </div>
+        <!-- #endif -->
       </div>
     </v-card-text>
 
@@ -757,6 +785,28 @@ async function generateAiImage() {
   left: 50%;
   transform: translateX(-50%);
 }
+/* #if FORK_FIXES */
+/* Preview and controls side by side while both have room (the controls need about 400px: with
+   less they wrapped under the preview before, now they do it by their own width instead of by the
+   window's), else the controls go below the preview. */
+.edit-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-start;
+}
+.edit-preview {
+  flex: 1 1 520px;
+  min-width: 0;
+}
+.edit-split > .edit-preview {
+  max-width: 820px;
+}
+.edit-controls {
+  flex: 1 1 400px;
+  min-width: 0;
+}
+/* #else */
 .edit-split {
   display: flex;
   gap: 24px;
@@ -787,4 +837,5 @@ async function generateAiImage() {
     max-width: none;
   }
 }
+/* #endif */
 </style>
