@@ -102,6 +102,9 @@
 #if FEATURE_OFFLINE_HOTSPOT
 #include "wifi_manager.h"
 #endif
+#if FORK_FIXES
+#include "sd_read_retry.h"
+#endif
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -395,6 +398,16 @@ static esp_err_t icon_handler(httpd_req_t *req)
     httpd_resp_send(req, (const char *) icon_svg_start, icon_svg_size);
     return ESP_OK;
 }
+
+#if FORK_FIXES
+// Browsers ask for /favicon.ico on their own although the page names its icon (/icon.svg). There is
+// nothing to send, so answer 204 instead of a 404 that puts two warnings into the log every time.
+static esp_err_t favicon_handler(httpd_req_t *req)
+{
+    httpd_resp_set_status(req, "204 No Content");
+    return httpd_resp_send(req, NULL, 0);
+}
+#endif
 
 #if FEATURE_AGENDA
 // The standalone Calendar color-profile visual editor tool (profile-editor.html,
@@ -4970,6 +4983,9 @@ static void register_all_handlers(httpd_handle_t handle)
     register_uri(handle, "/assets/__vite-browser-external.js", HTTP_GET,
                  vite_browser_external_js_handler);
     register_uri(handle, "/icon.svg", HTTP_GET, icon_handler);
+#endif
+#if FORK_FIXES
+    register_uri(handle, "/favicon.ico", HTTP_GET, favicon_handler);
 #endif
 #if FEATURE_AGENDA
     register_uri(handle, "/profile-editor.html", HTTP_GET, profile_editor_handler);

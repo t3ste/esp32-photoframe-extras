@@ -314,9 +314,9 @@ def main():
 
     assets = prepare_shared_assets(args.board)
     # The newest aitjcize/esp32-photoframe commit merged into this repository:
-    # 186ebaf (upstream v2.19.0, after v2.18.0-27, the commit the history is grafted onto).
+    # 3e5f3f9 ("wifi: accept 32-character SSIDs", the first commit after upstream v2.19.0 = 186ebaf).
     # Move it with every upstream merge (docs/MAINTAINING.md section 12).
-    upstream_sha = "186ebaf3b470305824d238c2d2dabf2c5bc59a7a"
+    upstream_sha = "3e5f3f9f83aa2a518bfecb7ec53ae6720463c652"
     ref = args.baseline or upstream_sha
     ensure_reference(reference_tree, work, args.board, ref, args.baseline_args, assets)
 

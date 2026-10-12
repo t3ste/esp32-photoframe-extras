@@ -53,6 +53,9 @@
 #include "storage.h"
 #include "utils.h"
 #include "zlib.h"
+#if FORK_FIXES
+#include "sd_read_retry.h"
+#endif
 
 static const char *TAG = "display_manager";
 #define NVS_LAST_IMAGE_KEY "last_image"

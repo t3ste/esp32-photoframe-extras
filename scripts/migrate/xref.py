@@ -106,6 +106,7 @@ LIBRARY_WRAPPERS = {
     "cJSON_IsArray",
     "cJSON_IsObject",
     "cJSON_IsTrue",
+    "fread",  # sd_read_retry.h: fread() that repeats a failed storage read (the fixes option)
 }
 
 KEYWORDS = set(

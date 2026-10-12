@@ -136,7 +136,7 @@ them: no fetch, pull, checkout, commit, gc or new files there.
   action (section 14).
 - Because history now reaches upstream's true root, `git rev-list --max-parents=0 HEAD` is **not** the baseline.
   The scripts use fixed SHAs: the **graft point** `1347744...` (never moves; `gate.py` uses it) and the
-  **equality baseline**, the newest merged upstream commit (`186ebaf3b470305824d238c2d2dabf2c5bc59a7a` at the
+  **equality baseline**, the newest merged upstream commit (`3e5f3f9f83aa2a518bfecb7ec53ae6720463c652` at the
   time of writing), stored in `scripts/verify_baseline.py` (`upstream_sha`) and `scripts/migrate/alloff_source.py`
   (`BASELINE`, imported by `alloff_web.py`). Move the baseline with each upstream merge (section 12).
 - Branches: `main` (release line), `feature/<name>` for work (merged locally into `main` after the checks,
@@ -449,7 +449,7 @@ The Pages site keeps offering the newest published pre-release until a newer sta
 ## 12. Merging upstream changes
 
 Do it when the maintainer asks, never on your own initiative. Experience from the three merges so far
-(`151e716`, `7ccabe0`, `495e0b6`, `f5e3ec9`, and now `186ebaf` = v2.19.0):
+(`151e716`, `7ccabe0`, `495e0b6`, `f5e3ec9`, `186ebaf` = v2.19.0, and now `3e5f3f9`, a three-line SSID change after it):
 
 1. `git fetch upstream`; `git log refs/heads/main..upstream/main --oneline`; branch `feature/upstream-<date>`;
    `git merge upstream/main` (message file, `[skip ci]` optional for the merge commit).

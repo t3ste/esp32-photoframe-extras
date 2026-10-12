@@ -52,6 +52,9 @@ typedef unsigned int jpg_stream_out_t;
 typedef int jpg_stream_out_t;
 #endif
 #endif
+#if FORK_FIXES
+#include "sd_read_retry.h"
+#endif
 
 static const char *TAG = "image_processor";
 
