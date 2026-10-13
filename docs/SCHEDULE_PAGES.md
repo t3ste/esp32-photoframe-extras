@@ -67,6 +67,7 @@ Further:
 - At most one schedule draws in a minute.
 - A skipped fire does **not** wake the frame, draws nothing, fetches nothing and does not move a rotation counter. The next wake is the next
   fire that is drawn.
+- A deep-sleep wake that lands up to 5 seconds *before* the minute of a schedule counts as that minute (the same tolerance `main.c` gives the photo rotation); a wake earlier than that goes back to sleep for the rest. A wake lands a few seconds off its minute in either direction, and without this tolerance the schedule was not recognised and the wake ran as a photo rotation (`main/wake_minute.h`).
 - The existing rule stays: in the same minute the **alarm** comes first, then the Agenda schedules, then the photo rotation. Beyond that
   the photo rotation also gives way within the minimum time: a rotation shortly before or after an Agenda display is skipped.
 
