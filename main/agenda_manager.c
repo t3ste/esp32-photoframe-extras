@@ -326,7 +326,8 @@ bool agenda_manager_wake_matches_now(void)
         // counts
         sched_view_t view;
         sched_view_build(&view);
-        time_t now = time(NULL);
+        // A wake a few seconds before its minute counts as that minute (see wake_minute.h)
+        time_t now = wake_minute_clock(time(NULL), EARLY_WAKE_TOLERANCE_SEC);
         int k = sched_drawn_at(view.entities, view.agenda_count, now);
         sched_last_winner = k >= 0 ? view.stored_index[k] : -1;
         sched_last_minute = now;
