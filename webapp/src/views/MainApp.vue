@@ -12,6 +12,9 @@ import BatteryHistory from "../components/BatteryHistory.vue";
 // #if FEATURE_CLIMATE
 import ClimateHistory from "../components/ClimateHistory.vue";
 // #endif
+// #if FEATURE_SCHEDULE_PAGES
+import ScheduleTimelineFloat from "../components/ScheduleTimelineFloat.vue";
+// #endif
 
 const appStore = useAppStore();
 const settingsStore = useSettingsStore();
@@ -223,6 +226,11 @@ onUnmounted(() => {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+<!-- #if FEATURE_SCHEDULE_PAGES -->
+    <!-- The timeline of the schedules: floats beside Auto Rotate and Agenda > Schedule while they are edited -->
+    <ScheduleTimelineFloat :active="mainTab === 'settings'" />
+<!-- #endif -->
 
     <v-footer app class="text-center d-flex justify-center">
       <span class="text-body-2 text-grey">
