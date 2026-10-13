@@ -416,6 +416,24 @@ target_include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/../main
 )
 
+# Which minute a timer wake belongs to (a wake a few seconds early still matches its Agenda / Alarm schedule)
+add_executable(
+  wake_minute_test
+  test_wake_minute.cpp
+  ../main/cron.c
+)
+
+target_link_libraries(
+  wake_minute_test
+  GTest::gtest_main
+)
+
+target_include_directories(
+  wake_minute_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+)
+
 # Demo package (examples/waveshare_photopainter_73/, docs/DEMO_PLAN.md): the
 # example calendars and todo.txt run through the firmware's own parsers, not
 # a re-implementation - links calendar_ics.c and todo.c directly, same stubs
@@ -525,6 +543,7 @@ gtest_discover_tests(headlines_test)
 gtest_discover_tests(todo_test)
 gtest_discover_tests(calendar_ics_test)
 gtest_discover_tests(agenda_order_test)
+gtest_discover_tests(wake_minute_test)
 gtest_discover_tests(example_calendars_test)
 
 # On-device image pipeline characterization tests (host build of
