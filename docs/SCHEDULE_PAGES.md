@@ -51,6 +51,37 @@ Settings -> **Agenda** -> Schedule. Under each schedule card:
 A schedule card can hold several fire times; the Web UI gives all of its rules the card's pages and hold. (After saving and reloading, every
 rule shows as a schedule of its own, which is how the frame has always listed them; each keeps the pages and the hold.)
 
+## The timeline
+
+While you edit the schedules, a small window floats at the bottom right of **Settings -> Auto Rotate** and **Settings -> Agenda** (and
+only there). It draws what the frame will do with the settings **as they stand in the editor, saved or not** - every change shows at once -
+by the rules below:
+
+![The timeline window in the day view: the commute example](screens/schedule-timeline-day.png)
+
+- **Display** (the strip on top): what is on the display, hour by hour. Every schedule has a colour (`S1`, `S2`, ... as numbered in the editor, grey:
+  the photo rotation). The **strong part** of a bar is the time the display is kept (the schedule's own hold, or the minimum time between two
+  displays); the **light part** runs until the next draw. The strip starts with what the day before left on the display.
+- **One row per schedule** (day view): every fire of it. A **filled circle** is drawn, a **hollow circle** fires but is held off (in the picture the
+  07:00 Agenda, because the 06:30 page is kept until 07:30). Hover over a bar or a circle for the time, the page and until when.
+- **Day / Week**: the day view has the buttons Mo..Su (today is underlined, a red line marks now); the week view shows the display strip of all
+  seven days, Monday to Sunday.
+
+![The week view](screens/schedule-timeline-week.png)
+
+The window can be **dragged** by its title (a double click puts it back), **minimized** with the arrow (it becomes a small *Timeline* button) and
+remembers its place and view in this browser. On a narrow screen it is a sheet at the bottom that starts minimized.
+
+What it does not show: times are the frame's wall-clock times in a plain week (no daylight saving changes); the alarm clock is not part of it (it
+never draws); a card with several fire times of different minutes is stored as several rules, so it shows as several schedules (`S1`, `S2`, ...),
+each with the card's pages and hold; and the Agenda's schedules only show while the Agenda is on (ToDo, Calendar, a ticked information screen or a
+schedule with a page). While no schedule has a page of its own the window says so: then there is no minimum time and only the same minute is
+resolved.
+
+The decision is the firmware's own: `webapp/src/utils/schedPick.js` is a port of `main/sched_pick.c`, and `schedPick.test.js` compares it with the
+C code on 48 schedule sets over a week (`scripts/gen_sched_fixtures.py` collects the answers into `schedPick.fixtures.json`; run it again when
+`main/sched_pick.c` or `main/cron.c` changes).
+
 ## The rules
 
 Schedule 1 has the highest priority, then 2, and so on. The **photo rotation** (Auto Rotate's own schedule) has the lowest. A fire of

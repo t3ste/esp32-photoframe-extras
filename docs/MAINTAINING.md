@@ -694,6 +694,7 @@ fix; the rest are standing notes, not work items.
 | `sdkconfig.defaults` | Base sdkconfig (note `CONFIG_ESP_TLS_INSECURE`: without a pinned certificate, HTTPS image/ICS fetches do not verify the server) |
 | `scripts/features.py`, `boards.py`, `check_capabilities.py`, `feature_matrix.py` | Feature registry, board tables, checks, compile matrix |
 | `scripts/verify_baseline.py`, `scripts/migrate/` | Equality proofs (`alloff_source.py`, `alloff_web.py`, `xref.py`), the per-feature-set check of the web sources (`web_bindings.py`), the one-off `gate.py` and its `maps/` |
+| `scripts/gen_sched_fixtures.py`, `sched_oracle.c`, `sched_oracle_shim.h` | Builds the firmware's scheduler (`main/cron.c`, `main/sched_pick.c`) into a test driver and writes `webapp/src/utils/schedPick.fixtures.json`, which `schedPick.test.js` compares the Web UI's JavaScript port (`schedPick.js`, the timeline of `docs/SCHEDULE_PAGES.md`) with. Run it again - and `npx prettier --write` on the JSON - whenever `sched_pick.c` or `cron.c` changes |
 | `scripts/generate_manifests.py`, `launch_demo.py` | Web flasher manifests, local demo server |
 | `scripts/test_*.py` | Tooling unit tests (94) |
 | `webapp/` | Vue web UI; `feature-directives.js`, `vite.config.js`, `vite.config.demo.js`, `index-demo.html`, `src/` |
