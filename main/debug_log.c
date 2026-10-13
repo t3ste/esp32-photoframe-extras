@@ -149,13 +149,66 @@ static void rotate_locked(void)
     s_line_count = 0;
 }
 
+#if FORK_FIXES
+// FatFs keeps a disk error in the file object and fails every later call on it. One failed write
+// to the SD card (the driver's bounce buffer cannot be allocated while WiFi, TLS and a web request
+// use the internal heap, see sd_read_retry.h) therefore silenced the log for the rest of the boot,
+// usually in the middle of a line. The file is opened again instead; not more often than every
+// DEBUG_LOG_REOPEN_MS, so a missing card does not keep the writer busy.
+#define DEBUG_LOG_REOPEN_MS 5000
+
+static bool s_reopened_once;
+static TickType_t s_last_reopen_tick;
+
+// Caller must hold s_file_mutex. True when the file is open and its stream is a fresh one.
+static bool reopen_locked(void)
+{
+    TickType_t now = xTaskGetTickCount();
+    if (s_reopened_once && (now - s_last_reopen_tick) < pdMS_TO_TICKS(DEBUG_LOG_REOPEN_MS)) {
+        return false;
+    }
+    s_reopened_once = true;
+    s_last_reopen_tick = now;
+    if (s_fp) {
+        fclose(s_fp);
+        s_fp = NULL;
+    }
+    s_fp = fopen(DEBUG_LOG_PATH, "a");
+    if (!s_fp) {
+        return false;
+    }
+    static const char note[] = "[debug_log: a storage write failed, the file was opened again]\n";
+    if (fwrite(note, 1, sizeof(note) - 1, s_fp) == sizeof(note) - 1) {
+        s_line_count++;
+    }
+    s_lines_since_sync = 0;
+    return true;
+}
+#endif
+
 // Caller must hold s_file_mutex.
 static void write_file_locked(const char *data, size_t len)
 {
+#if FORK_FIXES
+    if (!s_fp && !reopen_locked()) {
+        return;
+    }
+    size_t done = fwrite(data, 1, len, s_fp);
+    if (done != len || ferror(s_fp)) {
+        // write what is missing once more on a fresh stream
+        if (reopen_locked() && done < len) {
+            fwrite(data + done, 1, len - done, s_fp);
+        }
+    }
+    if (!s_fp) {
+        return;
+    }
+#else
     if (!s_fp) {
         return;
     }
     fwrite(data, 1, len, s_fp);
+#endif
     for (size_t i = 0; i < len; i++) {
         if (data[i] == '\n') {
             s_line_count++;
@@ -171,8 +224,14 @@ static void write_file_locked(const char *data, size_t len)
 static void sync_locked(void)
 {
     if (s_fp && s_lines_since_sync > 0) {
+#if FORK_FIXES
+        if (fflush(s_fp) != 0 || fsync(fileno(s_fp)) != 0) {
+            reopen_locked();  // the lines of the failed flush are lost; the log goes on
+        }
+#else
         fflush(s_fp);
         fsync(fileno(s_fp));
+#endif
         s_lines_since_sync = 0;
         s_last_sync_tick = xTaskGetTickCount();
     }

@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "power_manager.h"
+#include "wake_minute.h"
 
 static const char *TAG = "alarm_manager";
 
@@ -52,9 +53,9 @@ bool alarm_manager_wake_matches_now(void)
         return false;
     }
 
-    time_t now;
+    // A wake a few seconds before its minute counts as that minute (see wake_minute.h)
+    time_t now = wake_minute_clock(time(NULL), EARLY_WAKE_TOLERANCE_SEC);
     struct tm timeinfo;
-    time(&now);
     localtime_r(&now, &timeinfo);
 
     for (int i = 0; i < n; i++) {

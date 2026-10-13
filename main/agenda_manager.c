@@ -25,6 +25,7 @@
 #include "esp_timer.h"
 #include "todo.h"
 #include "utils.h"
+#include "wake_minute.h"
 #include "weather.h"
 
 static const char *TAG = "agenda_manager";
@@ -338,9 +339,9 @@ bool agenda_manager_wake_matches_now(void)
         return false;
     }
 
-    time_t now;
+    // A wake a few seconds before its minute counts as that minute (see wake_minute.h)
+    time_t now = wake_minute_clock(time(NULL), EARLY_WAKE_TOLERANCE_SEC);
     struct tm timeinfo;
-    time(&now);
     localtime_r(&now, &timeinfo);
 
     for (int i = 0; i < n; i++) {
