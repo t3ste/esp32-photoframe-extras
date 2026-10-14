@@ -25,6 +25,7 @@ out of the base project and offered here, next to it, as a variant that is merge
 | --- | --- |
 | **Source** | branch `extras` of [t3stier/esp32-photoframe-rebuild](https://github.com/t3stier/esp32-photoframe-rebuild/tree/extras) (next to `main`) - and the same code as `main` of the repository below |
 | **Releases, web flasher, update feed** | [t3ste/esp32-photoframe-extras](https://github.com/t3ste/esp32-photoframe-extras) |
+| **Wiki** (for beginners, for people who want the background, and a catalog of every option) | [t3ste/esp32-photoframe-extras/wiki](https://github.com/t3ste/esp32-photoframe-extras/wiki) |
 
 A frame that runs a build from the extended repository updates itself from **that** repository's releases and keeps the extras.
 
