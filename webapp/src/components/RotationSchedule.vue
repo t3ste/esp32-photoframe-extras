@@ -14,6 +14,9 @@ import {
 // #if FEATURE_SCHEDULE_PAGES
 import * as schedulePages from "../utils/schedulePages";
 // #endif
+// #if FORK_FIXES
+import { describeCardExact } from "../utils/cronText";
+// #endif
 
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
@@ -401,7 +404,11 @@ function rawValid(card) {
             </div>
           </template>
 
+          <!-- #if FORK_FIXES -->
+          <div class="text-caption text-medium-emphasis mt-3">{{ describeCardExact(card) }}</div>
+          <!-- #else -->
           <div class="text-caption text-medium-emphasis mt-3">{{ describeCard(card) }}</div>
+          <!-- #endif -->
 
           <!-- #if FEATURE_SCHEDULE_PAGES -->
           <div v-if="withPages" class="mt-3">

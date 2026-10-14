@@ -1,11 +1,19 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
+// #if FORK_FIXES
+import { repoLinks } from "../utils/repoLinks";
+// #endif
 
 const currentVersion = ref("Loading...");
 const latestVersion = ref("-");
 const otaState = ref("idle");
 const progress = ref(0);
 const errorMessage = ref("");
+// #if FORK_FIXES
+// the repository the frame takes its updates from, as the frame reports it (GET /api/ota/status)
+const repo = ref("");
+const links = computed(() => repoLinks(repo.value));
+// #endif
 // #if FEATURE_OTA_CHANNEL
 const latestPrerelease = ref(false);
 
@@ -84,6 +92,9 @@ async function loadOTAStatus() {
     otaState.value = data.state || "idle";
     progress.value = data.progress_percent || 0;
     errorMessage.value = data.error_message || "";
+    // #if FORK_FIXES
+    repo.value = typeof data.repo === "string" ? data.repo : "";
+    // #endif
     // #if FEATURE_OTA_CHANNEL
     latestPrerelease.value = data.latest_prerelease === true;
     // #endif
@@ -218,6 +229,15 @@ onUnmounted(() => {
       <p class="text-body-2 text-grey mb-4">
         Check for and install firmware updates from GitHub releases.
       </p>
+      <!-- #if FORK_FIXES -->
+      <p v-if="links" class="text-body-2 mb-4">
+        Source and releases:
+        <a :href="links.url" target="_blank" rel="noopener">{{ links.name }}</a>
+        <template v-if="links.wikiUrl">
+          &middot; <a :href="links.wikiUrl" target="_blank" rel="noopener">Wiki</a>
+        </template>
+      </p>
+      <!-- #endif -->
 
       <!-- #if FEATURE_OTA_CHANNEL -->
       <v-row>

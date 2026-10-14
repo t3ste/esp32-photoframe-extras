@@ -37,6 +37,9 @@ import { isRouteKey } from "../utils/routeKey";
 // #if FEATURE_RECIPES
 import { isMealDbKey } from "../utils/recipeKey";
 // #endif
+// #if FORK_FIXES
+import { pickZone, rememberZone } from "../utils/zonePick";
+// #endif
 
 const settingsStore = useSettingsStore();
 const appStore = useAppStore();
@@ -145,12 +148,19 @@ const timezoneError = computed(() =>
 const approximateNote = computed(() => APPROXIMATE_ZONES[selectedZone.value] ?? "");
 
 const selectedZone = computed({
+  // #if FORK_FIXES
+  get: () => pickZone(timezoneRule.value, browserZone),
+  // #else
   get: () => zoneForRule(timezoneRule.value, browserZone),
+  // #endif
   set: (name) => {
     // The two sentinel entries stand for the rule already stored, and
     // clearing the field (null) is not a choice either.
     const rule = ruleForZone(name);
     if (rule !== null) settingsStore.deviceSettings.timezone = rule;
+    // #if FORK_FIXES
+    if (rule !== null) rememberZone(name);
+    // #endif
   },
 });
 
