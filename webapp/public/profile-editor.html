@@ -3,943 +3,1799 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Spectra6 Color Profile Editor (Firmware)</title>
+<title>Color Profile Editor</title>
 <style>
 :root{
-  --page:#fff; --ink:#000;
-  --header-bg:#000; --header-ink:#fff;
-  --top-bg:#000; --top-ink:#fff;
-  --mark:#fff; --mark-ink:#000; --mark-event-ink:#000;
-  --a:#00f; --b:#0f0; --c:#f00; --d:#f00; --e:#f00;
-  --a-bg:#fff; --b-bg:#fff; --c-bg:#fff; --d-bg:#fff; --e-bg:#fff;
+  --bg:#eceff1; --card:#fff; --ink:#1d2327; --muted:#5f6b73; --line:#d5dade; --accent:#0a5ab0; --accent-bg:#e8f1fb;
+  --bad:#b00020; --good:#087a22; --warn:#8a5a00; --warn-bg:#fff4d6; --field:#fff; --stage:#c9ced2;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#15191c; --card:#1f2529; --ink:#e6e9eb; --muted:#9aa5ac; --line:#37414a; --accent:#6db2ff; --accent-bg:#1b2b3b;
+    --bad:#ff7a8d; --good:#5fd47c; --warn:#ffcf70; --warn-bg:#3a3017; --field:#2a3238; --stage:#2c343a;
+  }
 }
 *{box-sizing:border-box}
-body{margin:0;background:#e8e8e8;color:#222;font:14px system-ui,sans-serif}
-main{max-width:1500px;margin:0 auto;padding:16px}
-.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:end;background:#fff;border:1px solid #bbb;border-radius:8px;padding:12px;margin-bottom:16px}
-.field{display:flex;flex-direction:column;gap:4px}
-.field label{font-weight:700;font-size:12px}
-.field input,.field select,.field button{font:inherit;padding:7px;border:1px solid #999;border-radius:5px;background:#fff}
-.switch{display:flex;align-items:center;gap:6px;font-weight:700}
-.hint{font-size:12px;color:#555;flex:1;min-width:260px}
-.workspace{display:grid;grid-template-columns:800px minmax(0,1fr);gap:16px;align-items:start}
-.workspace .preview-wrap{width:800px;flex:0 0 800px}
-.workspace .editor{min-width:0;overflow:hidden}
-.preview-wrap{background:#ccc;padding:10px;border-radius:8px}
-.preview{width:min(100%,800px);aspect-ratio:5/3;background:var(--page);color:var(--ink);display:flex;flex-direction:column;overflow:hidden;font-family:Arial,sans-serif}
-.top{height:12%;flex:none;background:var(--top-bg);color:var(--top-ink);display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:0 1.4%;font-size:clamp(8px,1.65vw,16px);font-weight:700;white-space:nowrap;overflow:hidden}
-.top-left,.top-right{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.days{height:88%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(4,1fr);gap:1.3% 2.4%;padding:1.3% 0}
-.day{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0}
-.day.today{grid-row:span 2}
-.dayhead{flex:0 0 22px;height:22px;min-height:0;background:var(--dayhead-bg, var(--header-bg));color:var(--dayhead-ink, var(--header-ink));display:flex;align-items:center;justify-content:space-between;padding:0 6%;font-weight:700;font-size:clamp(8px,1.3vw,13px);white-space:nowrap;overflow:hidden}
-.dayhead span{overflow:hidden;text-overflow:ellipsis;flex:0 0 auto}
-.dayhead .leader{flex:1 1 auto;min-width:8px;margin:0 6px;align-self:center;border-bottom:2px dashed currentColor;height:0;opacity:.85}
-.daybody{flex:1 1 auto;min-height:0;background:var(--page);color:var(--ink);padding:2% 3%;font-size:clamp(7px,1.15vw,12px);overflow:hidden;display:flex;flex-direction:column}
-.event{display:block;line-height:1.18;margin:1px 0;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto}
-.event.a{color:var(--a);background:var(--a-bg)} .event.b{color:var(--b);background:var(--b-bg)}
-.event.c{color:var(--c);background:var(--c-bg)} .event.d{color:var(--d);background:var(--d-bg)}
-.event.e{color:var(--e);background:var(--e-bg)}
-.more{color:var(--ink);line-height:1.18;white-space:nowrap;flex:0 0 auto;font-weight:700}
-html:not(.header-only-mark) .day.marked .daybody{background:var(--mark)}
-html:not(.header-only-mark) .day.marked .event{background:var(--mark)}
-html.mono:not(.header-only-mark) .day.marked .event{color:var(--mark-event-ink)}
-html:not(.header-only-mark) .day.marked .more{color:var(--mark-ink)}
-.editor{background:#fff;border:1px solid #bbb;border-radius:8px;padding:14px}
-.editor h2{font-size:18px;margin:0 0 10px}
-.editor h3{font-size:14px;border-top:1px solid #ddd;padding-top:10px;margin:14px 0 8px}
-.grid{display:grid;grid-template-columns:1fr;gap:8px}
-.row{display:grid;grid-template-columns:1fr 90px;gap:6px;align-items:center;margin:5px 0;padding:6px;border:1px solid #eee;border-radius:6px}
-.row label{font-size:12px}
-.color{height:30px;width:90px;padding:2px;cursor:pointer}
-.profile-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
-.profile-actions button{padding:7px;border:1px solid #999;border-radius:5px;background:#f6f6f6;cursor:pointer}
-.profile-actions button.danger{border-color:#c33;color:#b00020}
-.profile-actions button.primary{border-color:#0a5ab0;color:#0a5ab0;font-weight:700}
-.profile-actions input[type=file]{display:none}
-.profile-actions select{font:inherit;padding:7px;border:1px solid #999;border-radius:5px;background:#fff}
-.note{font-size:12px;color:#555;line-height:1.35;margin-top:10px}
-.note.status-info{color:#0a5ab0}
-.entries{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.calendar-box{border:1px solid #ddd;border-radius:6px;padding:8px}
-.calendar-title{font-weight:700;margin-bottom:5px}
-.entry{display:grid;grid-template-columns:20px 78px 1fr;gap:5px;align-items:center;margin:4px 0}
-.entry label{font-size:11px}
-.entry input[type=text]{width:100%;padding:5px;border:1px solid #aaa;border-radius:4px}
-.entry input[type=checkbox]{width:16px;height:16px;cursor:pointer}
-.entry.disabled label,.entry.disabled input[type=text]{opacity:.45}
-.status-good{color:#087a22}
-.status-bad{color:#b00020}
-.overview-wrap{overflow-x:auto;margin-top:8px}
-table.overview{width:100%;border-collapse:collapse;font-size:12px;min-width:520px}
-table.overview caption{caption-side:top;text-align:left;font-weight:700;font-size:14px;margin-bottom:6px}
-table.overview th,table.overview td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:middle}
-table.overview thead th{background:#f2f2f2;position:sticky;top:0}
-table.overview tbody tr:nth-child(even){background:#fafafa}
-table.overview .swatch-cell{display:flex;align-items:center;gap:6px;white-space:nowrap}
-table.overview .swatch{width:18px;height:18px;border:1px solid #999;border-radius:3px;flex:0 0 auto}
-table.overview .hexcode{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#444}
-table.overview .muted{color:#999;font-style:italic}
-table.overview .element-name{font-weight:700}
-details.editor{padding:0}
-details.editor > summary{list-style:none;cursor:pointer;padding:14px;margin:0;display:flex;align-items:center;gap:8px;user-select:none}
-details.editor > summary::-webkit-details-marker{display:none}
-details.editor > summary h2{margin:0;font-size:18px}
-details.editor > summary::before{content:"▶";font-size:12px;color:#0a5ab0;flex:0 0 auto;transition:transform .15s ease}
-details.editor[open] > summary::before{transform:rotate(90deg)}
-details.editor > summary:hover{background:#f6f9ff}
-details.editor > *:not(summary){padding:0 14px 14px 14px}
-details.editor > summary{border-radius:8px}
-details.editor[open] > summary{border-bottom:1px solid #eee;border-radius:8px 8px 0 0}
-@media (max-width:950px){.workspace{grid-template-columns:1fr}.workspace .preview-wrap{width:100%;flex:none}.preview{margin:0 auto}.editor{order:2}}
-@media (max-width:650px){main{padding:7px}.grid,.entries{grid-template-columns:1fr}.row{grid-template-columns:1fr 100px}.color{width:100px}}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,sans-serif}
+button,input,select{font:inherit;color:inherit}
+header.page{max-width:1500px;margin:0 auto;padding:14px 16px 0}
+header.page h1{font-size:20px;margin:0}
+header.page p{margin:2px 0 0;color:var(--muted)}
+.app{max-width:1500px;margin:0 auto;padding:12px 16px 24px;display:grid;grid-template-columns:minmax(0,840px) minmax(320px,1fr);gap:16px;align-items:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px}
+.stage{position:sticky;top:8px;padding:10px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:8px}
+.bar label{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+select,input[type=text],input[type=number],input[type=date],input[type=time]{background:var(--field);border:1px solid var(--line);border-radius:5px;padding:5px 7px;min-width:0}
+button{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{border-color:var(--accent);color:var(--accent);font-weight:600}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.45;cursor:default}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{border:0;border-radius:0;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--accent);color:#fff}
+.canvas-wrap{background:var(--stage);border-radius:6px;padding:8px;overflow:auto;max-height:calc(100vh - 210px)}
+canvas#preview{display:block;margin:0 auto;image-rendering:pixelated;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+canvas#preview.fit{max-width:100%;max-height:calc(100vh - 250px)}
+.foot{margin-top:8px;color:var(--muted);font-size:12px}
+.days{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.days .chip{border-radius:14px;padding:3px 10px;font-size:12px}
+.days .chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+.notices{margin:8px 0 0;padding:0;list-style:none;font-size:12px}
+.notices li{background:var(--warn-bg);color:var(--warn);border-radius:5px;padding:4px 8px;margin-top:4px}
+.panel{display:flex;flex-direction:column;gap:12px;min-width:0}
+details.card>summary{list-style:none;cursor:pointer;padding:10px 14px;display:flex;align-items:center;gap:8px;user-select:none;font-weight:700;font-size:15px}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::before{content:"\25B6";font-size:11px;color:var(--accent);transition:transform .12s}
+details.card[open]>summary::before{transform:rotate(90deg)}
+details.card[open]>summary{border-bottom:1px solid var(--line)}
+details.card>summary small{font-weight:400;color:var(--muted);margin-left:auto}
+.body{padding:12px 14px 14px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
+.row>label{font-size:12px;font-weight:600}
+.help{color:var(--muted);font-size:12px;margin:2px 0 6px}
+.note{min-height:18px;font-size:12px;margin-top:6px;color:var(--accent)}
+.note.bad{color:var(--bad)}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left;vertical-align:middle}
+th{font-weight:600;color:var(--muted)}
+td.el{font-weight:600;white-space:nowrap}
+.tw{overflow-x:auto}
+.cc{display:inline-flex;align-items:center;gap:6px}
+.sw{width:30px;height:22px;border:1px solid rgba(0,0,0,.45);border-radius:4px;padding:0;flex:0 0 auto;cursor:pointer}
+.sw.ro{cursor:default}
+.hex{font:11px ui-monospace,Consolas,monospace;color:var(--muted)}
+.eff{font-size:11px;color:var(--accent);margin-top:2px;display:flex;align-items:center;gap:4px}
+.eff .sw{width:14px;height:12px;cursor:default}
+.warn{color:var(--warn);cursor:help}
+.off{opacity:.45}
+.sw-opt{display:flex;gap:8px;align-items:flex-start;margin:7px 0}
+.sw-opt input{margin-top:3px}
+.sw-opt.disabled{opacity:.5}
+.sw-opt b{display:block;font-weight:600}
+.sw-opt span.h{color:var(--muted);font-size:12px}
+.pop{position:fixed;z-index:20;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px;box-shadow:0 6px 24px rgba(0,0,0,.3);width:230px}
+.pop .inks{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.pop .inks button{display:flex;align-items:center;gap:5px;padding:4px 6px;font-size:12px}
+.pop .inks i{width:14px;height:14px;border:1px solid rgba(0,0,0,.45);border-radius:3px;flex:0 0 auto}
+.pop .custom{margin-top:8px;display:flex;align-items:center;gap:6px;font-size:12px}
+.pop .custom input{width:40px;height:26px;padding:0;border:0;background:none}
+.pop .cap{font-size:11px;color:var(--warn);margin-top:4px}
+.ev{display:grid;grid-template-columns:auto auto auto auto 1fr auto;gap:5px;align-items:center;margin:4px 0}
+.ev input[type=text]{width:100%}
+.ev input[type=number]{width:62px}
+.wx{display:grid;grid-template-columns:70px 56px 56px 1fr;gap:5px;align-items:center;margin:3px 0}
+.wx input{width:100%}
+.pair{display:flex;gap:4px;align-items:center}
+@media (max-width:1000px){.app{grid-template-columns:minmax(0,1fr)}.stage{position:static}.canvas-wrap{max-height:none}canvas#preview.fit{max-height:none}}
+@media (max-width:560px){.app{padding:8px}.ev{grid-template-columns:1fr 1fr}.ev input[type=text]{grid-column:1/-1}}
 </style>
 </head>
 <body>
-<main>
-  <div class="toolbar">
-    <div class="field">
-      <label for="profile">Color profile</label>
-      <select id="profile">
-        <option value="Normal">Normal</option>
-        <option value="Inverted">Inverted</option>
-        <option value="Custom">Custom (unnamed)</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="mode">Target display</label>
-      <select id="mode">
-        <option value="color">Spectra6 – color</option>
-        <option value="mono-normal">Monochrome</option>
-        <option value="mono-invert">Monochrome inverted</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="mark">Shift model (highlight color)</label>
-      <select id="mark">
-        <option value="none">No highlight</option>
-        <option value="black">Highlight in black</option>
-        <option value="white">Highlight in white</option>
-        <option value="red">Highlight in red</option>
-        <option value="yellow">Highlight in yellow</option>
-        <option value="blue">Highlight in blue</option>
-        <option value="green">Highlight in green</option>
-      </select>
-    </div>
-    <label class="switch"><input id="headerFollowsEntries" type="checkbox"> Header follows entry color (monochrome)</label>
-    <label class="switch"><input id="headerFollowsEntriesColor" type="checkbox"> Header follows entry color (Spectra6)</label>
-    <label class="switch" title="Only relevant when 'Header follows entry color (Spectra6)' is on and 'Only highlight the header of marked days' is off: the marked day header otherwise keeps the plain raw text color, which can become unreadable for a text/highlight combination such as white on white. With this option black or white is chosen automatically instead - for the marked header only, the rest of the day is unchanged - whichever reads better on the highlight color."><input id="headerFollowsEntriesColorSafeInk" type="checkbox"> Marked header: automatic high-contrast text</label>
-    <label class="switch"><input id="dayheadLeaderLine" type="checkbox"> Dotted line between day and temperature</label>
-    <label class="switch"><input id="markColorsHeader" type="checkbox"> Only highlight the header of marked days</label>
-    <label class="switch" title="Without this option the dashed divider line in the day header shows the page background color between its dashes instead of the header color - it can look like two different colors in one header. Only affects the firmware, not this preview."><input id="headerDividerFilled" type="checkbox"> Day header divider line without gaps (solid color)</label>
-    <div class="field">
-      <label for="iconBg" title="Separate background color for the weather icon of an UNMARKED day, independent of the day header color - prevents an icon (whose color shows the weather and cannot be changed) from disappearing in the same hue as the header. Ignored on monochrome target displays (the icon always gets the color opposite to its day header there). Only affects the firmware, not this preview.">Weather icon background (unmarked)</label>
-      <input type="color" id="iconBg" value="#ffffff">
-    </div>
-    <div class="field">
-      <label for="iconBgMarked" title="Separate background color for the weather icon of a MARKED day (shift model) - independent of the background color above, which then only applies to unmarked days. Defaults to the unmarked color. Ignored on monochrome target displays, as above. Only affects the firmware, not this preview.">Weather icon background (marked)</label>
-      <input type="color" id="iconBgMarked" value="#ffffff">
-    </div>
-    <div class="hint">Color profile editor for the e-paper firmware. Edit colors directly in the state table, mark calendar days and adjust the sample entries.</div>
-  </div>
+<header class="page">
+  <h1>Color Profile Editor</h1>
+  <p>Edit the colors of the Calendar view. The picture is drawn by a copy of the frame's own renderer, so what you see here is what the frame draws, pixel for pixel.</p>
+</header>
 
-  <div class="workspace">
-    <div class="preview-wrap">
-      <div id="preview" class="preview"></div>
+<div class="app">
+  <section class="card stage" aria-label="Preview">
+    <div class="bar">
+      <span class="seg" id="layoutSeg" role="group" aria-label="Layout">
+        <button type="button" data-v="gridA" aria-pressed="true" title="Today across the top, three days on the left, three on the right">Grid A</button>
+        <button type="button" data-v="gridB" aria-pressed="false" title="Today at the top left over two rows, then three days on the left column's rows and four on the right">Grid B</button>
+      </span>
+      <label>Panel <select id="size"></select></label>
+      <label>Zoom <select id="zoom"><option value="fit">Fit</option><option value="1">100 %</option><option value="2">200 %</option></select></label>
+      <button type="button" id="savePng" title="Download the picture as a PNG file">Save picture</button>
     </div>
+    <div class="canvas-wrap"><canvas id="preview" width="800" height="480" aria-label="Preview of the Calendar view"></canvas></div>
+    <div class="days" id="markedDays"></div>
+    <ul class="notices" id="notices"></ul>
+    <div class="foot" id="foot"></div>
+  </section>
 
-    <details class="editor" id="stateTableBox" open>
-      <summary><h2>Color profile: states normal / marked</h2></summary>
-      <div class="hint" style="margin-bottom:8px">
-        The "normal" rows are editable (raw colors, the basis of the color profile). If a switch such as "Header follows entry color" changes the color actually shown for a normal day, "effective: …" with the value that is really visible appears below the color field.
-        The "marked" rows are computed preview values only and therefore cannot be edited directly.
+  <div class="panel">
+    <details class="card" open id="boxProfile">
+      <summary>Profile <small id="frameState"></small></summary>
+      <div class="body">
+        <div class="row">
+          <label for="profile">Profile</label>
+          <select id="profile"></select>
+          <button type="button" id="save">Save as&hellip;</button>
+          <button type="button" id="deleteProfile" class="danger">Delete</button>
+          <button type="button" id="reset" title="Throw away the changes and load the selected profile again">Revert</button>
+        </div>
+        <div class="row">
+          <button type="button" id="exportProfile" class="primary">Export (JSON)</button>
+          <button type="button" id="importProfileBtn" class="primary">Import (JSON)</button>
+          <input type="file" id="importProfileFile" accept="application/json,.json" hidden>
+        </div>
+        <div class="row">
+          <label for="slot">Frame slot</label>
+          <select id="slot"></select>
+          <button type="button" id="loadFromDevice">Load from frame</button>
+          <button type="button" id="sendToDevice" class="primary">Send to frame</button>
+        </div>
+        <div class="help" id="frameHelp">This works when the page is opened from the frame itself. A profile sent to a slot is used once you select that slot under Settings &rarr; Agenda &rarr; Calendar color profile.</div>
+        <div id="profileNote" class="note" role="status" aria-live="polite"></div>
       </div>
-      <div class="overview-wrap">
-        <table class="overview" id="stateTable">
-          <caption>Element colors: "normal" editable (color profile basis), "marked" computed preview</caption>
-          <thead>
-            <tr>
-              <th>Element</th>
-              <th>State</th>
-              <th>Background</th>
-              <th>Text</th>
-            </tr>
-          </thead>
-          <tbody id="stateTableBody"></tbody>
-        </table>
+    </details>
+
+    <details class="card" open id="boxColors">
+      <summary>Colors <small>click a color to change it</small></summary>
+      <div class="body">
+        <div class="row">
+          <label for="mode">Target display</label>
+          <select id="mode">
+            <option value="color">Spectra 6 &ndash; color</option>
+            <option value="mono-normal">Monochrome</option>
+            <option value="mono-invert">Monochrome inverted</option>
+          </select>
+          <label for="mark">Highlight color of the shift model</label>
+          <select id="mark"></select>
+        </div>
+        <div class="help" id="colorsHelp"></div>
+        <div class="tw"><table id="colorTable">
+          <thead><tr><th rowspan="2">Element</th><th colspan="2">Normal day</th><th colspan="2">Marked day</th></tr>
+          <tr><th>Background</th><th>Text</th><th>Background</th><th>Text</th></tr></thead>
+          <tbody id="colorRows"></tbody>
+        </table></div>
+        <div class="help">Marked days are the days the shift model highlights (switch them on under the picture). &ldquo;Shown&rdquo; is what the frame really draws when a switch below changes the color you set. The color of a weather icon itself shows the weather and cannot be changed; the weather icon box is its background.</div>
       </div>
-      <div class="hint" style="margin-top:8px">
-        The "+N more" indicator uses the text color of the day area (normal or marked) and is therefore not listed separately.
+    </details>
+
+    <details class="card" open id="boxOptions">
+      <summary>Header and highlight options</summary>
+      <div class="body" id="options"></div>
+    </details>
+
+    <details class="card" id="boxSample">
+      <summary>Sample content <small>only for this preview, not part of the profile</small></summary>
+      <div class="body">
+        <div class="row"><button type="button" id="matchFrame" title="Read the layout, weather, language and ordering settings from the frame this page is open from">Match my frame's settings</button>
+          <button type="button" id="resetSample">Reset sample content</button></div>
+        <div id="sampleNote" class="note" role="status" aria-live="polite"></div>
+        <div class="row">
+          <label for="date">Date</label><input type="date" id="date"><button type="button" id="today">Today</button>
+          <label for="time">Time</label><input type="time" id="time">
+          <label for="language">Language</label><select id="language"><option value="en">English</option><option value="de">Deutsch</option></select>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" id="showWeek"> Show the week number</label>
+          <label for="timeMode">Times</label>
+          <select id="timeMode"><option value="off">Start time only</option><option value="duration">Start time and duration</option><option value="range">Start and end time</option></select>
+        </div>
+        <div class="row">
+          <label for="multiday">Multi-day events</label>
+          <select id="multiday"><option value="compact">Once, with day counter</option><option value="numbered">Every day, with day counter</option><option value="repeat">Every day, plain</option></select>
+        </div>
+        <div class="row">
+          <label for="order">Order within a day</label>
+          <select id="order"><option value="priority">Calendar priority first</option><option value="time">Time first</option></select>
+          <label for="priority">Priority</label><input type="text" id="priority" size="6" maxlength="5" value="ABCDE" title="The calendars from the most to the least important, e.g. ABCDE or DEBAC">
+        </div>
+        <h4>Weather and climate</h4>
+        <div class="row">
+          <label><input type="checkbox" id="weatherOn"> Forecast in the day headers</label>
+          <label><input type="checkbox" id="weatherRight"> on the right</label>
+          <label for="iconSet">Icons</label>
+          <select id="iconSet"><option value="flaticon">Flaticon</option><option value="metno">MET Norway</option><option value="none">Text only</option></select>
+          <label><input type="checkbox" id="iconColored"> Colored icons</label>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" id="climateOn"> Temperature and humidity in the top bar</label>
+        </div>
+        <div class="row">
+          <label for="tempCat">Temperature</label><select id="tempCat"></select>
+          <label for="humCat">Humidity</label><select id="humCat"></select>
+        </div>
+        <div id="weatherRows"></div>
+        <h4>Calendars</h4>
+        <div id="calRows"></div>
+        <h4>Events <small id="evCount"></small></h4>
+        <div id="events"></div>
+        <div class="row"><button type="button" id="addEvent">Add an event</button></div>
+        <div class="help">The list layout of the Calendar view is not drawn here (grid A and B are). The sample is the same one the pictures in the documentation use.</div>
       </div>
-      <div class="profile-actions">
-        <button id="save">Save profile …</button>
-        <button id="deleteProfile" class="danger">Delete profile</button>
-        <button id="reset">Reset selection</button>
-        <button id="exportProfile" class="primary">Export profile (JSON)</button>
-        <button id="importProfileBtn" class="primary">Import profile (JSON)</button>
-        <input type="file" id="importProfileFile" accept="application/json,.json">
-      </div>
-      <div class="profile-actions">
-        <label for="deviceSlot" style="font-weight:700;font-size:12px">Send to device, slot:</label>
-        <select id="deviceSlot">
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-        </select>
-        <button id="sendToDevice" class="primary">Send to device</button>
-      </div>
-      <div id="profileNote" class="note"></div>
     </details>
   </div>
-
-  <details class="editor" id="dayMarkBox" style="margin-top:16px">
-    <summary><h2>Shift model days</h2></summary>
-    <div class="hint" style="margin-bottom:8px">Selects which days count as "marked" in the preview layout. At least one marked day is needed for the "marked" states to become visible in the table and preview.</div>
-    <div class="grid" id="dayChecks"></div>
-  </details>
-
-  <details class="editor" id="entriesBox" style="margin-top:16px">
-    <summary><h2>Calendars and entries</h2></summary>
-    <div class="hint" style="margin-bottom:8px">Prefilled sample entries per calendar and day. Edit the text or hide/show an entry in the layout with its checkbox.</div>
-    <div class="entries" id="entries"></div>
-  </details>
-</main>
+</div>
 
 <script>
-const P = { black:'#000000', white:'#ffffff', red:'#ff0000', yellow:'#ffff00', blue:'#0000ff', green:'#00ff00' };
-const MARK_VALUES = ['none','black','white','red','yellow','blue','green'];
-const MARK_HEX = { black:'#000000', white:'#ffffff', red:'#ff0000', yellow:'#ffff00', blue:'#0000ff', green:'#00ff00' };
-const MARK_LABEL = { none:'No highlight', black:'Black', white:'White', red:'Red', yellow:'Yellow', blue:'Blue', green:'Green' };
-// Not part of COLOR_KEYS/labels below - the firmware treats "iconBg" as an
-// optional colour (falls back to white if a profile predates this field),
-// unlike the 16 required ones, so it's kept out of the required-field
-// validation applyProfilePayload() runs against COLOR_KEYS.
-const ICON_BG_DEFAULT = '#ffffff';
+// ==== ENGINE BEGIN (written by scripts/sync_profile_editor.py from webapp/src/utils/agendaEngine*.js - do not edit here) ====
+const AgendaEngine = (() => {
+// Generated by scripts/gen_agenda_engine_data.py - do not edit by hand.
+// The firmware's 17x24 text font (95 glyphs, ' ' to '~', 24 rows of 3 bytes, MSB first) and its
+// 24x24 weather icons (17 per icon set), as hex strings.
 
-const builtinProfiles = {
-  Normal: {
-    text:'black', textBg:'white', headerText:'white', headerBg:'black', topText:'white', topBg:'black',
-    a:'blue', b:'green', c:'red', d:'red', e:'red',
-    aBg:'white', bBg:'white', cBg:'white', dBg:'white', eBg:'white'
-  },
-  Inverted: {
-    text:'white', textBg:'black', headerText:'black', headerBg:'white', topText:'black', topBg:'white',
-    a:'yellow', b:'green', c:'red', d:'red', e:'red',
-    aBg:'black', bBg:'black', cBg:'black', dBg:'black', eBg:'black'
+const FONT24_HEX =
+  "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000380000380000380000380000380000380000380000380000380000100000100000000000000000380000380000000000000000000000000000000000000000000000000000000000000000e70000e70000e70000420000420000420000420000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000660000660000660000660000660003ff8003ff8000660000cc0003ff8003ff8000cc0000cc0000cc0000cc0000cc00000000000000000000000000000000000000000000001800001800007b0000ff0001870001870001c00000f800007e00000f0001830001c30001c70001fe0001bc0000180000180000180000180000000000000000000000000000000000000000780000fc0001ce0001860001860001ce0000ff80007e0001ff00007380006180006180007380003f00001e00000000000000000000000000000000000000000000000000000000000000000000003f00007f0000c60000c00000c00000600000700000f9c001dfc0018f0001870000ffc0007dc0000000000000000000000000000000000000000000000000000000000000003800003800003800001000001000001000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000180000380000700000f00000e00000e00001c00001c00001c00001c00001c00001c00000e00000e0000070000070000038000018000000000000000000000000000000000000001800001c00000e00000e00000700000700000380000380000380000380000380000380000700000700000f00000e00001c00001800000000000000000000000000000000000000000180000180000180001db8001ff80007e00003c00003c0000660000660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000180000180000180000180000180003ffc003ffc0001800001800001800001800001800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e00000c00001c0000180000180000300000300000000000000000000000000000000000000000000000000000000000000000000000000001ff8001ff80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003c00003c00003c00000000000000000000000000000000000000000000000180000180000380000300000700000600000600000c00000c0000180000180000300000300000600000600000e00000c00001c000018000018000000000000000000000000000000000000000003c00007e0000c30000c30001818001818001818001818001818001818001818000c30000c300007e00003c0000000000000000000000000000000000000000000000000000000000080000780001f80001d80000180000180000180000180000180000180000180000180000180001ff8001ff80000000000000000000000000000000000000000000000000000000007c0001ff00038300030180030180000180000300000600001c0000380000600000c00001800003ff8003ff80000000000000000000000000000000000000000000000000000000003c0000fe0000c700000300000300000600003c00003e0000070000018000018000018001838001ff0000fc00000000000000000000000000000000000000000000000000000000000e00001e00001e0000360000660000660000c60000c60001860003060003ff8003ff80000600003f80003f8000000000000000000000000000000000000000000000000000000001ff0001ff0001800001800001800001bc0001ff0001c30000018000018000018000018003030003ff0000fc00000000000000000000000000000000000000000000000000000000000f80003f8000700000e00000c00001800001bc0001ff0001c30001818001818001818000c38000ff00003e0000000000000000000000000000000000000000000000000000000001ff8001ff80018180018380000300000300000700000600000600000e00000c00000c00001c00001800001800000000000000000000000000000000000000000000000000000000007e0000ff0001c38001818001818000c300007e00007e0000c30001818001818001818001c38000ff00007e00000000000000000000000000000000000000000000000000000000007c0000ff0001c30001818001818001818000c38000ff80003d80000180000300000700000e0001fc0001f000000000000000000000000000000000000000000000000000000000000000000000000000000000003c00003c00003c00000000000000000000000000000000003c00003c00003c00000000000000000000000000000000000000000000000000000000000000000000000000000000000f00000f00000f00000000000000000000000000000e00001c000018000018000030000020000000000000000000000000000000000000000000000000000000000001c00003c0000f00003c0000f00003c0000f000003c00000f000003c00000f000003c00001c000000000000000000000000000000000000000000000000000000000000000000000000000000000000007ffc007ffc000000000000007ffc007ffc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007000007800001e000007800001e000007800001e0000780001e0000780001e000078000070000000000000000000000000000000000000000000000000000000000000000007c0000fe00018700018300018300000700000e00003c00003800003000000000000000007000007000000000000000000000000000000000000000000000000000000000003e00007f0000e38000c180018780018f80019d80019980019980019980018f8001878001800000c00000e180007f80003e0000000000000000000000000000000000000000000000000001f80001fc00001c0000360000360000630000630000c30000ff8001ff800180c00300c00fc7f00fc7f000000000000000000000000000000000000000000000000000000000000007fe0007ff0001838001818001818001838001ff0001ff800181c00180c00180c00180c007ff8007ff00000000000000000000000000000000000000000000000000000000000000003ec000ffc001c1c00180c00300c00300000300000300000300000300000180c001c1c000ff80003f0000000000000000000000000000000000000000000000000000000000000007fc0007ff000183800181800180c00180c00180c00180c00180c00180c001818001838007ff0007fe0000000000000000000000000000000000000000000000000000000000000007ff8007ff8001818001818001998001980001f80001f80001980001998001818001818007ff8007ff8000000000000000000000000000000000000000000000000000000000000003ffc003ffc000c0c000c0c000ccc000cc0000fc0000fc0000cc0000cc0000c00000c00003fc0003fc00000000000000000000000000000000000000000000000000000000000000003ec000ffc001c1c00180c00300c0030000030000030fe0030fe00300c00380c001c1c000ffc0003f0000000000000000000000000000000000000000000000000000000000000007e7e007e7e001818001818001818001818001ff8001ff8001818001818001818001818007e7e007e7e000000000000000000000000000000000000000000000000000000000000001ff8001ff8000180000180000180000180000180000180000180000180000180000180001ff8001ff80000000000000000000000000000000000000000000000000000000000000007fe0007fe000030000030000030000030000030003030003030003030003030003060003fe0000f80000000000000000000000000000000000000000000000000000000000000007f3e007f3e0018300018600018c0001980001b80001fc0001ce0001870001830001838007f1f007f1f000000000000000000000000000000000000000000000000000000000000007f80007f80000c00000c00000c00000c00000c00000c00000c0c000c0c000c0c000c0c007ffc007ffc00000000000000000000000000000000000000000000000000000000000000f00f00f81f00381c003c3c003c3c00366c00366c0033cc0033cc00318c00300c00300c00fe7f00fe7f0000000000000000000000000000000000000000000000000000000000000078fe0078fe001c18001e18001f18001b18001b980019d80018d80018f8001878001838007f18007f180000000000000000000000000000000000000000000000000000000000000003c0000ff0001c3800181800381c00300c00300c00300c00300c00381c001818001c38000ff00003c0000000000000000000000000000000000000000000000000000000000000003ff0003ff8000c1c000c0c000c0c000c0c000c18000ff8000fe0000c00000c00000c00003fc0003fc00000000000000000000000000000000000000000000000000000000000000003c0000ff0001c3800181800381c00300c00300c00300c00300c00381c001818001c38000ff00007c00007cc000ffc000c38000000000000000000000000000000000000000000007fe0007ff0001838001818001818001838001ff0001fc00018e0001870001830001838007f1e007f0e0000000000000000000000000000000000000000000000000000000000000007d8000ff8001c38001818001818001e00000fc00003f0000078001818001818001c38001ff0001be0000000000000000000000000000000000000000000000000000000000000003ffc003ffc00318c00318c00318c00318c000180000180000180000180000180000180000ff0000ff0000000000000000000000000000000000000000000000000000000000000007e7e007e7e001818001818001818001818001818001818001818001818001818000c30000ff00003c0000000000000000000000000000000000000000000000000000000000000007f7f007f7f00180c000c18000c18000c180006300006300003600003600003600001c00001c000008000000000000000000000000000000000000000000000000000000000000000fe3f80fe3f8030060030060030860019cc0019cc001b6c001b6c001e7c000e38000e38000c18000c18000000000000000000000000000000000000000000000000000000000000007e7e007e7e001818000c300006600003c00001800001800003c0000660000c30001818007e7e007e7e000000000000000000000000000000000000000000000000000000000000007c7e007c7e001818000c300006600006600003c0000180000180000180000180000180000ff0000ff0000000000000000000000000000000000000000000000000000000000000001ff8001ff80018180018300018600018c0000180000300000618000c18001818003018003ff8003ff80000000000000000000000000000000000000000000000000000000001f00001f00001800001800001800001800001800001800001800001800001800001800001800001800001800001800001f00001f0000000000000000000000000001800001800001c00000c00000e000006000006000003000003000001800001800000c00000c0000060000060000070000030000038000018000018000000000000000000000000000000000000000f80000f80000180000180000180000180000180000180000180000180000180000180000180000180000180000180000f80000f800000000000000000000000000000000000800001c00003e0000770000630000c1800180c00100400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffff00ffff0000000003000003800000e0000060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000fc0001fe00000300000300007f0001ff0003830003030003070001ffc000fbc000000000000000000000000000000000000000000000000000000007800007800001800001800001be0001ff8001c1800180c00180c00180c00180c00180c001c18007ff8007be00000000000000000000000000000000000000000000000000000000000000000000000000000000003ec000ffc001c1c00380c00300c00300000300000380c001c1c000ff80003f00000000000000000000000000000000000000000000000000000000000780000780000180000180007d8001ff8001838003018003018003018003018003018001838001ffe0007de0000000000000000000000000000000000000000000000000000000000000000000000000000000007e0001ff800181800300c003ffc003ffc00300000300000180c001ffc0007f00000000000000000000000000000000000000000000000000000000001fc0003fc000600000600003ff8003ff8000600000600000600000600000600000600000600003ff0003ff00000000000000000000000000000000000000000000000000000000000000000000000000000000007de001ffe001838003018003018003018003018003018001838001ff80007d8000018000018000038000ff0000fc0000000000000000000000000007800007800001800001800001be0001ff0001c38001818001818001818001818001818001818007e7e007e7e000000000000000000000000000000000000000000000000000000000180000180000000000000001f80001f80000180000180000180000180000180000180000180003ffc003ffc0000000000000000000000000000000000000000000000000000000000c00000c0000000000000001ff0001ff0000030000030000030000030000030000030000030000030000030000030000030000070001fe0001f80000000000000000000000000003c00003c00000c00000c00000cf8000cf8000cc0000d80000f80000f00000f80000dc0000ce0003c7c003c7c000000000000000000000000000000000000000000000000000000001f80001f80000180000180000180000180000180000180000180000180000180000180000180003ffc003ffc00000000000000000000000000000000000000000000000000000000000000000000000000000000f77800fffc0039cc00318c00318c00318c00318c00318c00318c00fdef00fdef000000000000000000000000000000000000000000000000000000000000000000000000000000007be0007ff0001c38001818001818001818001818001818001818007e7e007e7e0000000000000000000000000000000000000000000000000000000000000000000000000000000003c0000ff0001c3800381c00300c00300c00300c00381c001c38000ff00003c0000000000000000000000000000000000000000000000000000000000000000000000000000000007be0007ff8001c1800180c00180c00180c00180c00180c001c18001ff8001be0001800001800001800007f00007f000000000000000000000000000000000000000000000000000007de001ffe001838003018003018003018003018003018001838001ff80007d80000180000180000180000fe0000fe000000000000000000000000000000000000000000000000003e78003efc0007cc000700000600000600000600000600000600003ff0003ff00000000000000000000000000000000000000000000000000000000000000000000000000000000007f8000ff8001818001818001f80000ff00000f8001818001838001ff0001fe0000000000000000000000000000000000000000000000000000000000c00000c00000c00000c00003ff0003ff0000c00000c00000c00000c00000c00000c00000c1c0007fc0003f0000000000000000000000000000000000000000000000000000000000000000000000000000000007878007878001818001818001818001818001818001818001838000ffe0007de000000000000000000000000000000000000000000000000000000000000000000000000000000007c3e007c3e001818001818000c30000c300006600006600007e00003c00003c000000000000000000000000000000000000000000000000000000000000000000000000000000000783c00783c003118003398003398001ab0001ef0001ef0001c60000c60000c60000000000000000000000000000000000000000000000000000000000000000000000000000000003e7c003e7c000c300006600003c00001800003c0000660000c30003e7c003e7c000000000000000000000000000000000000000000000000000000000000000000000000000000007e1f007e1f00180c000c18000c180006300006300003600003e00001c00000c0000180000180000300003fc0003fc0000000000000000000000000000000000000000000000000001ff8001ff80018300018600000c0000180000300000618000c18001ff8001ff80000000000000000000000000000000000000000000000000000000000e00001e00001800001800001800001800001800001800003800007000003800001800001800001800001800001800001e00000e00000000000000000000000000000000000000001800001800001800001800001800001800001800001800001800001800001800001800001800001800001800001800001800001800000000000000000000000000000000000000007000007800001800001800001800001800001800001800001c00000e00001c0000180000180000180000180000180000780000700000000000000000000000000000000000000000000000000000000000000000000000000000e00001f18003bb80031f00000e000000000000000000000000000000000000000000000000000000000000000000000";
+
+const ICON_HEX = {
+  flaticon: [
+    "00000000000000180000ff0003ffc007ffe00ffff00ffff81ffff81ffff81ffffc1ffffc1ffffc1ffffc1ffff81ffff80ffff80ffff007ffe003ffc000ff80003c00000000000000",
+    "0600000f80001fd8007fff00ffffc0ffffe0fffff07ffff81ffff81ffff81ffffc1ffffc1ffffc1ffffc1ffff81ffff80ffffc0ffffc07fffe03ffff00ffff003ffe000000000000",
+    "0000000000000000600001fc0007fe007ffe00ffff01ffff01ffff0fffff3fffff7ffffe7ffffefffffeffffffffffffffffff7fffff7ffffe3ffffc07fff0000000000000000000",
+    "00000000000000000000000001f80003fc0003fe0007ff003fffc07fffe0fffff0fffff0fffff8fffffc7ffffe3fffff07ffff03ffff03fffe01fffc000000000000000000000000",
+    "000000000000003f0000ff8001ffc001ffe007ffe03fffe07ffff07ffffcfffffefffffeffffffffffff7ffffe7ffffe3ffffc07fff007ffe00d99b00000001ffff8000000000000",
+    "000000000000003f0000ff8001ffc001ffe007ffe03fffe07ffff07ffffcfffffefffffeffffffffffff7ffffe7ffffe3ffffc0ffff00000000318c000000000000000c300000000",
+    "000000003f0000ffc000ffc001ffe00fffe03fffe07ffff87ffffcfffffeffffffffffff7fffff7ffffe3ffffe1ffffc000000000000010180000000000000001818000000000000",
+    "00f00003fc0003fe0007fe003fffc07fffe0fffff0fffff0fffff8fffffc7ffffe7fffff1fffff03ffff03ffff01fffe000a4000000001018000000000100800181c001808000000",
+    "00f00003fc0003fe0007fe003fffc07fffe0fffff0fffff0fffff8fffffc7ffffe7fffff1fffff03ffff03ffff19fffe18064018000001198800180004082004406000c02000c300",
+    "00f00003fc0003fe0007fe003fffc07fffe0fffff0fffff0fffff8fffffc7ffffe7fffff1fffff03ffff03ffff01fffe001240000000006180006000000000000c18000c00000000",
+    "00f00003fc0003fe0007fe003fffc07fffe0fffff0fffff0fffff8fffffc7ffffe7fffff1fffff03ffff03ffff01fffe000240000000031988030800000020004060004020000300",
+    "00f00003fc0003fe0007fe003fffc07fffe0fffff0fffff0fffff8fffffc7ffffe7fffff1fffff03ffff03ffff01fffe000280000000018c60000000000000000000000000000000",
+    "00f00003fc0003fe0007fe003fffc07fffe0fffff0fffff0fffff8fffffc7ffffe7fffff1fffff03ffff03ffff01fffe001280000000018c60000020000000000c00000c00000000",
+    "00f00003fc0003fe0007fe003fffc07fffe0fffff0fffff0fffff8fffffc7ffffe7fffff1fffff03ffff03ffff01fffe001628020810070c3802081000000000c18000c1c0004080",
+    "00000000000000db0000db00047e20063c601618681e18780f18f03f99fc70ff0c003c00003c0070ff0c3f99fc0f18f01e1878161868063c60047e2000df0000db00001000000000",
+    "00f00003fc0003fe0007fe003fffc07fffe0fffff0fffff0fffff8fffffc7ffffe7fffff1fffff03ffff03ffff01fffe003fa0181f80131fdc000f98004f0000de00009cc0001800",
+    "00f00003fc0003fe0007fe003fffc07fffe0fffff0fffff0fffff8fffffc7ffffe7fffff1fffff03ffff03ffff01fffe003fa0181f80131fdc000f98004f0000de00009cc0001800",
+  ],
+  metno: [
+    "00000000000000000000180001998001ff8001ff800ffff00ffff007ffe007ffe01ffff81ffff807ffe007ffe00ffff00ffff001ff8001ff80019980001800000000000000000000",
+    "00000000000000000000200002330003f70003fe001fffe01fffc00fff000ffe783ff9fc3fe7fc0fefff0fdfff1fdfff1feffe03f00003ff00023300002000000000000000000000",
+    "0000000200001b40000fc0007ff0003fc0003f9f807e3fc0387fe023fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff8000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff8000000000000000000000000000000000000000000",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff80000001ffff8000000ffffc00000001ffff8000000",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff80000001ffff8000000ffffc00000001ffff8000000",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff800000000000000020000020000c200008000008000",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff800000000000000c100008100008800001800001000",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff800000000000004090004090008d810008020008020",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff800000000000000010000010000830001c000008000",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff800000000000000c10000c100008b00001800001000",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff800000000000000010000038000810001c000008000",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff800000000000000c10000c380008900001800001800",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff80000000000000c18300c183004810001c380008100",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ffffc3ffffc1ffffc0ffff800000000000000c10000c380008900001800001800",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ff3fc3fe7fc1fc7fc0fd7f80038000018000088c0019080010480000c00000800",
+    "000000000000000000000000000000000000001f80003fc0007fe003fff00ffff01ffffc3ffffc3ff3fc3fe7fc1fc7fc0fd7f80038000018000088c0019080010480000c00000800",
+  ],
+};
+
+// A JavaScript port of the firmware's Agenda renderer for the Calendar's 7-day grid (main/agenda_renderer.c,
+// main/agenda_order.c, and the text and icon drawing of main/image_processor.c): the colour profile editor
+// (webapp/public/profile-editor.html) draws its preview with it, so the preview is the picture the frame draws -
+// same 17x24 bitmap font, same cells, same dashes, same truncation, same colours - not a look-alike.
+//
+// Pure functions, no DOM: renderAgenda(scene) returns { width, height, rgb } (RGB888). agendaEngine.test.js
+// compares the result with the firmware's own renderer (a hash of every picture, see scripts/
+// gen_agenda_engine_hashes.py); scripts/sync_profile_editor.py copies this file and agendaEngineData.js into
+// the editor page between its ENGINE markers, because that page is one standalone file.
+
+
+const FONT_W = 17;
+const FONT_H = 24;
+const PAD = 4; // AGENDA_PADDING
+const ICON_W = 24;
+const ICON_COUNT = 17;
+const MARKER_BASE = 1; // WEATHER_ICON_MARKER_BASE: a text byte 1..17 is an icon
+
+const hexBytes = (hex) => Uint8Array.from(hex.match(/../g) || [], (b) => parseInt(b, 16));
+const FONT = hexBytes(FONT24_HEX);
+const ICONS = {
+  flaticon: ICON_HEX.flaticon.map(hexBytes),
+  metno: ICON_HEX.metno.map(hexBytes),
+};
+
+const NAMED = {
+  black: [0, 0, 0],
+  white: [255, 255, 255],
+  red: [255, 0, 0],
+  yellow: [255, 255, 0],
+  blue: [0, 0, 255],
+  green: [0, 255, 0],
+};
+
+// A colour of a profile: one of the six palette names or "#rrggbb" (agenda_color_profile.c parse_color_value)
+function parseColor(value) {
+  if (typeof value !== "string") return null;
+  if (value[0] === "#") {
+    return /^#[0-9a-fA-F]{6}$/.test(value)
+      ? [
+          parseInt(value.slice(1, 3), 16),
+          parseInt(value.slice(3, 5), 16),
+          parseInt(value.slice(5, 7), 16),
+        ]
+      : null;
   }
-};
-
-// The 16 raw colour values that fully define a firmware colour profile. Every rendered / computed
-// state in the tool is derived exclusively from these plus mode/mark/switch selections.
-const labels = {
-  text:'Day area – text', textBg:'Day area – background',
-  headerText:'Day header – text', headerBg:'Day header – background',
-  topText:'Top header – text', topBg:'Top header – background',
-  a:'Calendar entry A (Private) – text', b:'Calendar entry B (Work) – text',
-  c:'Calendar entry C – text', d:'Calendar entry D – text', e:'Calendar entry E – text',
-  aBg:'Calendar entry A (Private) – background', bBg:'Calendar entry B (Work) – background',
-  cBg:'Calendar entry C – background', dBg:'Calendar entry D – background', eBg:'Calendar entry E – background'
-};
-const COLOR_KEYS = Object.keys(labels);
-
-// Text that goes into markup is escaped; a profile file can hold any text.
-function esc(s){
-  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return NAMED[value] ? NAMED[value].slice() : null;
 }
-// A colour in a profile is one of the six palette names or "#rrggbb" - what the frame accepts, too.
+
+const same = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+const isLight = (c) => c[0] * 299 + c[1] * 587 + c[2] * 114 > 127500;
+const safeText = (bg) => (isLight(bg) ? [0, 0, 0] : [255, 255, 255]);
+
+// ------------------------------------------------------------------------------------------ the profile
+// What agenda_color_profile.c makes of a profile document (type "spectra6-firmware-profile")
+function resolveProfile(doc) {
+  const colors = doc.colors || {};
+  const get = (key, fallback) => parseColor(colors[key]) || fallback;
+  const mode = typeof doc.mode === "string" ? doc.mode : "color";
+  const mark = parseColor(typeof doc.mark === "string" && doc.mark !== "none" ? doc.mark : "");
+  const calKeys = ["a", "b", "c", "d", "e"];
+  const iconBg = get("iconBg", [255, 255, 255]);
+  return {
+    mono: mode.startsWith("mono"),
+    monoInvert: mode === "mono-invert",
+    hasMark: Boolean(mark),
+    mark: mark || [0, 0, 0],
+    markColorsHeader: doc.markColorsHeader === true,
+    headerDividerFilled: doc.headerDividerFilled === true,
+    headerFollowsEntries: doc.headerFollowsEntries === true,
+    headerFollowsEntriesColor: doc.headerFollowsEntriesColor === true,
+    headerFollowsEntriesColorSafeInk: doc.headerFollowsEntriesColorSafeInk === true,
+    dayheadLeaderLine: doc.dayheadLeaderLine === true,
+    text: get("text", [0, 0, 0]),
+    textBg: get("textBg", [255, 255, 255]),
+    headerText: get("headerText", [255, 255, 255]),
+    headerBg: get("headerBg", [0, 0, 0]),
+    topText: get("topText", [255, 255, 255]),
+    topBg: get("topBg", [0, 0, 0]),
+    calInk: calKeys.map((k) => get(k, [0, 0, 0])),
+    calBg: calKeys.map((k) => get(`${k}Bg`, [255, 255, 255])),
+    iconBg,
+    iconBgMarked: parseColor(colors.iconBgMarked) || iconBg,
+  };
+}
+
+// ------------------------------------------------------------------------------------------ colours
+function monoPair(baseInvert, invertArea) {
+  const inv = invertArea ? !baseInvert : baseInvert;
+  return inv ? { bg: [0, 0, 0], fg: [255, 255, 255] } : { bg: [255, 255, 255], fg: [0, 0, 0] };
+}
+
+function topHeaderColors(p) {
+  if (p.mono) return monoPair(p.monoInvert, true);
+  return { bg: p.topBg, fg: p.topText };
+}
+
+function dayHeaderColors(p, dayMarked) {
+  const marked = dayMarked && p.hasMark;
+  const follows = p.mono ? p.headerFollowsEntries : p.headerFollowsEntriesColor;
+  if (p.mono) return monoPair(p.monoInvert, !(follows && !marked));
+  if (p.markColorsHeader && marked) return { bg: p.mark, fg: safeText(p.mark) };
+  if (follows && marked) {
+    return { bg: p.mark, fg: p.headerFollowsEntriesColorSafeInk ? safeText(p.mark) : p.text };
+  }
+  if (follows) return { bg: p.textBg, fg: p.text };
+  return { bg: p.headerBg, fg: p.headerText };
+}
+
+function dayBodyColors(p, dayMarked) {
+  const markedHere = dayMarked && p.hasMark && !p.markColorsHeader;
+  if (p.mono) return monoPair(p.monoInvert, markedHere);
+  if (markedHere) return { bg: p.mark, fg: safeText(p.mark) };
+  return { bg: p.textBg, fg: p.text };
+}
+
+function eventColors(p, calIndex, bodyMarked, bodyInk) {
+  if (p.mono) return { chip: null, ink: bodyInk };
+  const ink = p.calInk[calIndex];
+  if (bodyMarked) return { chip: null, ink };
+  return { chip: p.calBg[calIndex], ink };
+}
+
+function iconBackground(p, marked, headBg) {
+  if (p.mono) return headBg[0] > 127 ? [0, 0, 0] : [255, 255, 255];
+  return marked && p.hasMark ? p.iconBgMarked : p.iconBg;
+}
+
+const toHex = (c) => `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+
+// What the frame draws in each state, for the colour table of the editor: the top bar, the day header, the day
+// area, the weather icon box and the five calendars, on a normal day and on a day the shift model marks. Every
+// entry is { bg, fg } as "#rrggbb"; the same functions draw the picture, so the table cannot disagree with it.
+function stateColors(doc) {
+  const p = resolveProfile(doc);
+  const pair = (c) => ({ bg: toHex(c.bg), fg: toHex(c.fg) });
+  const headNormal = dayHeaderColors(p, false);
+  const headMarked = dayHeaderColors(p, true);
+  const bodyNormal = dayBodyColors(p, false);
+  const bodyMarked = dayBodyColors(p, true);
+  const markedHere = p.hasMark && !p.markColorsHeader; // the day area changes colour on a marked day
+  const calendar = (i, marked) => {
+    const body = marked ? bodyMarked : bodyNormal;
+    const e = eventColors(p, i, marked && markedHere, body.fg);
+    return { bg: toHex(e.chip || body.bg), fg: toHex(e.ink) };
+  };
+  return {
+    mono: p.mono,
+    hasMark: p.hasMark,
+    top: pair(topHeaderColors(p)),
+    head: { normal: pair(headNormal), marked: pair(headMarked) },
+    body: { normal: pair(bodyNormal), marked: pair(bodyMarked) },
+    icon: {
+      normal: toHex(iconBackground(p, false, headNormal.bg)),
+      marked: toHex(iconBackground(p, true, headMarked.bg)),
+    },
+    calendars: [0, 1, 2, 3, 4].map((i) => ({
+      normal: calendar(i, false),
+      marked: calendar(i, true),
+    })),
+  };
+}
+
+// ------------------------------------------------------------------------------------------ drawing
+const isIconMarker = (code) => code >= MARKER_BASE && code < MARKER_BASE + ICON_COUNT;
+const advance = (code) => (isIconMarker(code) ? ICON_W : FONT_W);
+
+function measureText(text) {
+  let w = 0;
+  for (let i = 0; i < text.length; i++) w += advance(text.charCodeAt(i));
+  return w;
+}
+
+class Canvas {
+  constructor(width, height, opts) {
+    this.width = width;
+    this.height = height;
+    this.rgb = new Uint8Array(width * height * 3);
+    this.opts = opts;
+  }
+
+  fillRect(x, y, w, h, c) {
+    const x0 = Math.max(0, x);
+    const y0 = Math.max(0, y);
+    const x1 = Math.min(this.width, x + w);
+    const y1 = Math.min(this.height, y + h);
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) {
+        const i = (py * this.width + px) * 3;
+        this.rgb[i] = c[0];
+        this.rgb[i + 1] = c[1];
+        this.rgb[i + 2] = c[2];
+      }
+    }
+  }
+
+  blit(x, y, bytes, offset, width, height, c) {
+    const perRow = Math.ceil(width / 8);
+    for (let row = 0; row < height; row++) {
+      for (let col = 0; col < width; col++) {
+        if (bytes[offset + row * perRow + (col >> 3)] & (0x80 >> (col & 7))) {
+          const px = x + col;
+          const py = y + row;
+          if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
+            const i = (py * this.width + px) * 3;
+            this.rgb[i] = c[0];
+            this.rgb[i + 1] = c[1];
+            this.rgb[i + 2] = c[2];
+          }
+        }
+      }
+    }
+  }
+
+  glyph(x, y, code, c) {
+    if (code < 32 || code > 0x7e) return;
+    this.blit(x, y, FONT, (code - 32) * FONT_H * 3, FONT_W, FONT_H, c);
+  }
+
+  // image_processor.c draw_weather_icon(): the icon is drawn in the text colour, or - on a colour panel, in
+  // colour mode, with coloured icons on - in the traffic-light colour of its condition, unless that is the colour
+  // of the box it sits on (avoidBg)
+  icon(x, y, id, c, avoidBg) {
+    if (id < 0 || id >= ICON_COUNT) return;
+    const set = ICONS[this.opts.iconSet] || ICONS.flaticon;
+    let color = c;
+    if (!this.opts.monoIcons && this.opts.iconColored && !this.opts.grayscaleBoard) {
+      const hue = ICON_HUES[id];
+      if (hue) {
+        color = hue;
+        if (avoidBg && same(color, avoidBg)) color = c;
+      }
+    }
+    this.blit(x, y, set[id], 0, ICON_W, 24, color);
+  }
+
+  text(x, y, text, c, avoidBg) {
+    let cx = x;
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      if (isIconMarker(code)) {
+        this.icon(cx, y, code - MARKER_BASE, c, avoidBg);
+        cx += ICON_W;
+      } else {
+        this.glyph(cx, y, code, c);
+        cx += FONT_W;
+      }
+    }
+  }
+}
+
+// the traffic-light colour of an icon (weather_icon_color_for_id): 0 clear..16 thunderstorm with hail; null = the
+// colour of the text it stands in
+const YELLOW = [255, 255, 0];
+const RED = [255, 0, 0];
+const BLUE = [0, 0, 255];
+const GREEN = [0, 255, 0];
+const ICON_HUES = [
+  GREEN,
+  GREEN,
+  null,
+  null,
+  YELLOW,
+  RED,
+  BLUE,
+  YELLOW,
+  RED,
+  YELLOW,
+  RED,
+  BLUE,
+  YELLOW,
+  RED,
+  null,
+  YELLOW,
+  RED,
+];
+
+// ------------------------------------------------------------------------------------------ texts
+// WMO weather code -> icon id (weather.c weather_code_to_icon_id)
+const CODE_ICON = {
+  0: 0,
+  1: 1,
+  2: 2,
+  3: 3,
+  45: 4,
+  48: 5,
+  51: 6,
+  61: 6,
+  80: 6,
+  53: 7,
+  63: 7,
+  81: 7,
+  55: 8,
+  65: 8,
+  82: 8,
+  56: 9,
+  66: 9,
+  57: 10,
+  67: 10,
+  71: 11,
+  85: 11,
+  73: 12,
+  75: 13,
+  86: 13,
+  77: 14,
+  95: 15,
+  96: 16,
+  99: 16,
+};
+const CONDITION = {
+  0: ["Sonne", "sunny"],
+  1: ["klar", "clear"],
+  2: ["wolkig", "p.cloudy"],
+  3: ["bedeckt", "cloudy"],
+  45: ["Nebel", "fog"],
+  48: ["Nebel", "fog"],
+  51: ["Niesel", "lgt.drizzle"],
+  53: ["Niesel", "drizzle"],
+  55: ["st.Niesel", "hvy.drizzle"],
+  61: ["Schauer", "lgt.rain"],
+  63: ["Regen", "rain"],
+  65: ["st.Regen", "hvy.rain"],
+  71: ["Schnee", "lgt.snow"],
+  73: ["Schnee", "snow"],
+  75: ["st.Schnee", "hvy.snow"],
+  80: ["Schauer", "lgt.showers"],
+  81: ["Schauer", "showers"],
+  82: ["st.Schauer", "hvy.showers"],
+  95: ["Gew.", "storm"],
+  96: ["Gew.+Hagel", "storm+hail"],
+  99: ["st.Gew.+Hagel", "hvy.storm+hail"],
+};
+const WEEKDAY = {
+  de: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
+  en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+};
+
+const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+const dayOfYear = (y, mon0, mday) => {
+  const before = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+  return before[mon0] + mday + (mon0 > 1 && isLeap(y) ? 1 : 0);
+};
+// 1 = Monday ... 7 = Sunday
+const isoWeekday = (y, mon0, mday) => {
+  const t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+  const yy = mon0 < 2 ? y - 1 : y;
+  const wd =
+    (yy + Math.floor(yy / 4) - Math.floor(yy / 100) + Math.floor(yy / 400) + t[mon0] + mday) % 7;
+  return wd === 0 ? 7 : wd;
+};
+const weeksInYear = (y) => {
+  const jan1 = isoWeekday(y, 0, 1);
+  return jan1 === 4 || (jan1 === 3 && isLeap(y)) ? 53 : 52;
+};
+function isoWeek(y, mon0, mday) {
+  const week = Math.floor((dayOfYear(y, mon0, mday) - isoWeekday(y, mon0, mday) + 10) / 7);
+  if (week < 1) return weeksInYear(y - 1);
+  if (week > weeksInYear(y)) return 1;
+  return week;
+}
+
+function dayLabel(weekday, mday, withWeek, week, german) {
+  if (!withWeek) return `${weekday} ${mday}.`;
+  return `${weekday} ${mday}. ${german ? "KW" : "CW"}${week}`;
+}
+
+// 45m, 1h, 1h30m
+function compactDuration(minutes) {
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes % 60 === 0) return `${minutes / 60}h`;
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+const two = (n) => String(n).padStart(2, "0");
+
+// agenda_renderer.c build_event_line(): "HH:MM " (+ "[duration] " or the range), then the summary
+function eventText(ev, timeMode) {
+  let out = "";
+  if (!ev.allDay) {
+    const startMin = ev.startMin % 1440;
+    const hh = Math.floor(startMin / 60);
+    const mm = startMin % 60;
+    const duration = ev.endMin > ev.startMin ? ev.endMin - ev.startMin : 0;
+    if (timeMode === "range" && duration > 0) {
+      const endMin = ev.endMin % 1440;
+      out += `${two(hh)}:${two(mm)}-${two(Math.floor(endMin / 60))}:${two(endMin % 60)} `;
+    } else {
+      out += `${two(hh)}:${two(mm)} `;
+    }
+    if (timeMode === "duration" && duration > 0) out += `[${compactDuration(duration)}] `;
+  }
+  return (out + ev.summary).slice(0, 255);
+}
+
+// image_processor.c wrap_ascii_text() with one line: whole words, then a "~" where text was cut; the part of the
+// next word that still fits is kept ("10:00 [1h] Fahrradw~")
+function wrapOneLine(text, width) {
+  const charsPerLine = Math.min(95, Math.floor((width - 2 * PAD) / FONT_W)); // OVERLAY_LINE_MAX_CHARS - 1
+  if (charsPerLine < 1 || !text) return "";
+  let current = "";
+  let i = 0;
+  while (i < text.length) {
+    let end = i;
+    while (end < text.length && text[end] !== " ") end++;
+    const word = text.slice(i, end).slice(0, 95);
+    const needed = current.length + (current.length > 0 ? 1 : 0) + word.length;
+    if (needed > charsPerLine && current.length > 0) break; // stays in `rest`: the next line would start here
+    current += (current.length > 0 ? " " : "") + word;
+    i = text[end] === " " ? end + 1 : end;
+  }
+  if (current.length === 0) return "";
+  if (i < text.length) {
+    // truncated: mark it
+    if (current.length + 1 <= charsPerLine) {
+      let avail = charsPerLine - current.length - 1;
+      let line = current;
+      if (line.length > 0 && avail > 0) {
+        line += " ";
+        avail--;
+      }
+      let take = 0;
+      while (take < avail && i + take < text.length && text[i + take] !== " ") take++;
+      line += text.slice(i, i + take);
+      current = line;
+    } else {
+      current = charsPerLine > 1 ? current.slice(0, charsPerLine - 1) : "";
+    }
+    current += "~";
+  }
+  return current;
+}
+
+// ------------------------------------------------------------------------------------------ divider / cell
+// agenda_renderer.c draw_day_divider(): the day's header row of a cell
+function drawDayDivider(
+  cv,
+  rect,
+  y,
+  label,
+  weatherMode,
+  weatherRight,
+  weatherText,
+  fill,
+  ink,
+  filled,
+  iconBg,
+  leader
+) {
+  const totalW = rect.w - 2 * PAD;
+  const lineY = y + FONT_H / 2 - 1;
+  const dashLen = 4;
+  const gapLen = 3;
+  const dashH = 2;
+  if (filled) cv.fillRect(rect.x, y, rect.w, FONT_H + PAD, fill);
+
+  if (!weatherMode) {
+    let labelW = Math.min(label.length * FONT_W, totalW);
+    const labelX = rect.x + PAD + Math.trunc((totalW - labelW) / 2);
+    if (!filled) {
+      for (let x = rect.x + PAD; x + dashLen <= labelX; x += dashLen + gapLen)
+        cv.fillRect(x, lineY, dashLen, dashH, fill);
+      const rightEnd = rect.x + PAD + totalW;
+      for (let x = labelX + labelW; x + dashLen <= rightEnd; x += dashLen + gapLen)
+        cv.fillRect(x, lineY, dashLen, dashH, fill);
+    }
+    if (labelW > 0) {
+      cv.fillRect(labelX - 2, y, labelW + 4, FONT_H, fill);
+      cv.text(labelX, y, label, ink);
+    }
+    return;
+  }
+
+  const labelW = Math.min(label.length * FONT_W, totalW);
+  const labelX = rect.x + PAD;
+  const rightEnd = rect.x + PAD + totalW;
+  const iconGap = 4;
+  let weatherW = 0;
+  let weatherX = rightEnd;
+  let weatherHasIcon = false;
+  let clipped = "";
+  if (weatherText) {
+    const maxW = Math.max(0, totalW - labelW - (dashLen + gapLen));
+    clipped = weatherText.slice(0, 39); // WEATHER_DAY_LINE_MAX_LEN - 1
+    while (clipped.length > 0) {
+      const hasIcon = isIconMarker(clipped.charCodeAt(clipped.length - 1));
+      if (measureText(clipped) + (hasIcon ? iconGap : 0) <= maxW) break;
+      clipped = clipped.slice(0, -1);
+    }
+    weatherHasIcon = clipped.length > 0 && isIconMarker(clipped.charCodeAt(clipped.length - 1));
+    weatherW = measureText(clipped) + (weatherHasIcon ? iconGap : 0);
+    weatherX = weatherRight
+      ? rightEnd - weatherW
+      : rect.x + PAD + Math.trunc((totalW - weatherW) / 2);
+    const minX = labelX + labelW + dashLen;
+    if (weatherW > 0 && weatherX < minX) weatherX = minX;
+  }
+  if (leader) {
+    for (let x = labelX + labelW; x + dashLen <= weatherX; x += dashLen + gapLen)
+      cv.fillRect(x, lineY, dashLen, dashH, ink);
+  }
+  if (!filled) {
+    for (let x = weatherX + weatherW; x + dashLen <= rightEnd; x += dashLen + gapLen)
+      cv.fillRect(x, lineY, dashLen, dashH, fill);
+  }
+  if (labelW > 0) {
+    cv.fillRect(labelX - 2, y, labelW + 4, FONT_H, fill);
+    cv.text(labelX, y, label, ink);
+  }
+  if (weatherW > 0) {
+    if (weatherHasIcon) {
+      const bracket = clipped.slice(0, -1);
+      const bracketW = measureText(bracket);
+      if (bracketW > 0) {
+        cv.fillRect(weatherX - 2, y, bracketW + 4, FONT_H, fill);
+        cv.text(weatherX, y, bracket, ink);
+      }
+      const iconX = weatherX + bracketW + iconGap;
+      cv.fillRect(iconX - 2, y, ICON_W + 4, FONT_H, iconBg);
+      cv.text(iconX, y, clipped[clipped.length - 1], safeText(iconBg), iconBg);
+    } else {
+      cv.fillRect(weatherX - 2, y, weatherW + 4, FONT_H, fill);
+      cv.text(weatherX, y, clipped, ink);
+    }
+  }
+}
+
+// weeks fits beside the forecast chip (week_fits_beside_forecast)
+function weekFits(totalW, label, weatherText) {
+  const labelW = label.length * FONT_W;
+  if (!weatherText) return labelW <= totalW;
+  const gap = isIconMarker(weatherText.charCodeAt(weatherText.length - 1)) ? 4 : 0;
+  return labelW + 7 + measureText(weatherText) + gap <= totalW;
+}
+
+// the forecast chip text of one day: "[11/19]" + icon marker, or "[11/19 storm]" without icons
+function forecastText(day, scene, german) {
+  const w = day.weather;
+  if (!w) return "";
+  const tmin = Math.round(w.min);
+  const tmax = Math.round(w.max);
+  const iconId = scene.iconSet !== "none" ? (CODE_ICON[w.code] ?? -1) : -1;
+  if (iconId >= 0) return `[${tmin}/${tmax}]${String.fromCharCode(MARKER_BASE + iconId)}`;
+  const cond = CONDITION[w.code];
+  return `[${tmin}/${tmax} ${cond ? cond[german ? 0 : 1] : german ? "unbekannt" : "unknown"}]`;
+}
+
+// agenda_order.c: which entries stay when there is no room: by priority rank, then in order
+function selectByRank(ranks, capacity) {
+  const shown = ranks.map(() => false);
+  if (capacity <= 0) return shown;
+  const maxRank = ranks.reduce((m, r) => Math.max(m, r), 0);
+  let kept = 0;
+  for (let rank = 0; rank <= maxRank && kept < capacity; rank++) {
+    for (let i = 0; i < ranks.length && kept < capacity; i++) {
+      if (ranks[i] === rank) {
+        shown[i] = true;
+        kept++;
+      }
+    }
+  }
+  return shown;
+}
+
+function drawDayCell(cv, ctx, cell, dayIndex, day, tagged, firstVisible, marked) {
+  const { profile, scene, german } = ctx;
+  const weekWanted = scene.showWeek && (dayIndex === 0 || day.dow === 1);
+  const weekday = WEEKDAY[german ? "de" : "en"][day.dow];
+  let label = dayLabel(
+    weekday,
+    day.mday,
+    weekWanted,
+    isoWeek(day.year, day.mon0, day.mday),
+    german
+  );
+  const weatherBuf = forecastText(day, scene, german);
+  const head = dayHeaderColors(profile, marked);
+  const iconBg = iconBackground(profile, marked, head.bg);
+  if (weekWanted && !weekFits(cell.w - 2 * PAD, label, weatherBuf))
+    label = dayLabel(weekday, day.mday, false, 0, german);
+  drawDayDivider(
+    cv,
+    cell,
+    cell.y,
+    label,
+    ctx.weatherMode,
+    scene.weatherRight,
+    weatherBuf || null,
+    head.bg,
+    head.fg,
+    profile.headerDividerFilled,
+    iconBg,
+    profile.dayheadLeaderLine
+  );
+
+  const body = dayBodyColors(profile, marked);
+  const bodyMarked = marked && profile.hasMark && !profile.markColorsHeader;
+  const rowH = FONT_H + PAD;
+  const textWidth = cell.w - 2 * PAD;
+  const contentTop = cell.y + FONT_H + PAD;
+  const contentH = cell.h - FONT_H - PAD;
+  const maxRows = contentH > 0 ? Math.trunc((contentH + PAD) / rowH) : 0;
+  if (contentH > 0) cv.fillRect(cell.x, contentTop, cell.w, contentH, body.bg);
+
+  const todays = tagged.filter(
+    (t) =>
+      touchesDay(t.ev, day.index) &&
+      !(ctx.skipRepeats && t.multiday && dayIndex !== firstVisible.get(t))
+  );
+  const total = todays.length;
+  let budget = total > maxRows ? maxRows - 1 : maxRows;
+  if (budget < 0) budget = 0;
+  const shownFlags = selectByRank(
+    todays.map((t) => t.rank),
+    budget
+  );
+
+  let rowsUsed = 0;
+  let shown = 0;
+  for (let i = 0; i < todays.length && rowsUsed < budget; i++) {
+    if (!shownFlags[i]) continue;
+    const t = todays[i];
+    let prefix = "";
+    if (ctx.showPrefix && t.multiday)
+      prefix = `${day.index - Math.floor(t.ev.startMin / 1440) + 1}/${t.totalDays}: `;
+    const avail = Math.max(FONT_W, textWidth - prefix.length * FONT_W);
+    const line = wrapOneLine(t.text, avail);
+    if (line.length > 0) {
+      const y = contentTop + rowsUsed * rowH;
+      let x = cell.x + PAD;
+      if (prefix) {
+        cv.text(x, y, prefix, body.fg);
+        x += prefix.length * FONT_W;
+      }
+      const colors = eventColors(profile, t.ev.cal, bodyMarked, body.fg);
+      if (colors.chip) cv.fillRect(x, y, line.length * FONT_W, FONT_H, colors.chip);
+      cv.text(x, y, line, colors.ink);
+      rowsUsed++;
+      shown++;
+    }
+  }
+  if (shown < total && rowsUsed < maxRows) {
+    cv.text(cell.x + PAD, contentTop + rowsUsed * rowH, `+${total - shown} more`, body.fg);
+  }
+}
+
+const touchesDay = (ev, dayIndex) => {
+  const first = Math.floor(ev.startMin / 1440);
+  const lastInstant = ev.endMin > ev.startMin ? ev.endMin - 1 : ev.startMin;
+  return dayIndex >= first && dayIndex <= Math.floor(lastInstant / 1440);
+};
+
+// ------------------------------------------------------------------------------------------ the picture
+// scene = {
+//   width, height                 panel size (800x480, 480x800, ...)
+//   layout: "gridA" | "gridB"     the 7-day grid template
+//   startDate: "2026-09-30"       today; the grid shows this day and the six after it
+//   nowTime: "08:02"              the clock in the header
+//   profile: {...}                a profile document (the editor's export), see resolveProfile()
+//   marked: [bool x 7]            which of the seven days the shift model marks
+//   calendars: [{ name, show } x 5]   A..E (A and B show their name, C, D, E their letter)
+//   events: [{ cal: 0..4, day: 0..6 (days after today, or earlier), start: "HH:MM" | null (all day), minutes,
+//              days (all-day span), summary }]
+//   weather: [{ min, max, code } | null x 7] | null    the forecast of each day; null: no forecast at all
+//   iconSet: "none" | "flaticon" | "metno", iconColored: bool, weatherRight: bool
+//   language: "en" | "de", showWeek: bool, timeMode: "off" | "duration" | "range"
+//   multiday: "compact" | "repeat" | "numbered", priority: "ABCDE", orderTime: bool
+//   climate: { temp: "26C", tempCat: "good"|"bad"|"super", hum: "49%", humCat } | null
+//   grayscaleBoard: bool
+// }
+function renderAgenda(scene) {
+  const profile = resolveProfile(scene.profile);
+  const german = scene.language === "de";
+  const cv = new Canvas(scene.width, scene.height, {
+    iconSet: scene.iconSet,
+    iconColored: scene.iconColored,
+    monoIcons: profile.mono,
+    grayscaleBoard: Boolean(scene.grayscaleBoard),
+  });
+  const rect = { x: 0, y: 0, w: scene.width, h: scene.height };
+
+  // the page
+  const page = dayBodyColors(profile, false);
+  cv.fillRect(rect.x, rect.y, rect.w, rect.h, page.bg);
+
+  // the header bar
+  const top = topHeaderColors(profile);
+  const headerH = FONT_H + 2 * PAD;
+  cv.fillRect(rect.x, rect.y, rect.w, headerH, top.bg);
+  let hx = rect.x + PAD;
+  const hy = rect.y + PAD;
+  let anyShown = false;
+  scene.calendars.forEach((cal, i) => {
+    if (!cal.show) return;
+    if (anyShown) {
+      cv.text(hx, hy, ",", top.fg);
+      hx += FONT_W;
+    }
+    const name = i < 2 ? cal.name : "CDE"[i - 2];
+    cv.text(hx, hy, name, profile.mono ? top.fg : profile.calInk[i]);
+    hx += name.length * FONT_W;
+    anyShown = true;
+  });
+  const [y0, m0, d0] = scene.startDate.split("-").map(Number);
+  const [nh, nm] = scene.nowTime.split(":").map(Number);
+  const datetime = `${two(d0)}.${two(m0)}.${two(y0 % 100)} ${two(nh)}:${two(nm)}`;
+  const climateEdge = drawHeaderClimate(cv, rect, scene.climate, Boolean(scene.grayscaleBoard));
+  const datetimeX = climateEdge - datetime.length * FONT_W;
+  if (datetimeX >= hx + PAD) cv.text(datetimeX, hy, datetime, top.fg);
+
+  // the seven days
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(Date.UTC(y0, m0 - 1, d0 + i));
+    days.push({
+      index: i,
+      year: date.getUTCFullYear(),
+      mon0: date.getUTCMonth(),
+      mday: date.getUTCDate(),
+      dow: date.getUTCDay(),
+      weather: scene.weather ? scene.weather[i] || null : null,
+    });
+  }
+  const priority = (scene.priority || "ABCDE").toUpperCase();
+  const rankOf = [0, 1, 2, 3, 4].map((c) => {
+    const at = priority.indexOf("ABCDE"[c]);
+    return at < 0 ? 4 : at;
+  });
+  const timeMode = scene.timeMode || "off";
+  let tagged = scene.events.map((e, seq) => {
+    const allDay = e.start == null;
+    const dayStart = e.day * 1440;
+    let startMin;
+    let endMin;
+    if (allDay) {
+      startMin = dayStart;
+      endMin = dayStart + (e.days || 1) * 1440;
+    } else {
+      const [hh, mm] = e.start.split(":").map(Number);
+      startMin = dayStart + hh * 60 + mm;
+      endMin = startMin + e.minutes;
+    }
+    const ev = { cal: e.cal, summary: e.summary, allDay, startMin, endMin };
+    const lastInstant = endMin > startMin ? endMin - 1 : startMin;
+    const totalDays = Math.floor(lastInstant / 1440) - Math.floor(startMin / 1440) + 1;
+    return {
+      ev,
+      seq,
+      rank: rankOf[e.cal],
+      text: eventText(ev, timeMode),
+      multiday: totalDays > 1,
+      totalDays,
+    };
+  });
+  // agenda_event_compare(): by rank then time (or time then rank), all-day first, end, calendar, original order
+  const priorityFirst = !scene.orderTime;
+  tagged = tagged.slice().sort((a, b) => {
+    const cmp = (x, y) => (x > y) - (x < y);
+    let c;
+    if (priorityFirst && (c = cmp(a.rank, b.rank)) !== 0) return c;
+    if ((c = cmp(a.ev.startMin, b.ev.startMin)) !== 0) return c;
+    if (!priorityFirst && (c = cmp(a.rank, b.rank)) !== 0) return c;
+    if ((c = cmp(b.ev.allDay ? 1 : 0, a.ev.allDay ? 1 : 0)) !== 0) return c;
+    if ((c = cmp(a.ev.endMin, b.ev.endMin)) !== 0) return c;
+    if ((c = cmp(a.ev.cal, b.ev.cal)) !== 0) return c;
+    return cmp(a.seq, b.seq);
+  });
+  const multiday = scene.multiday || "compact";
+  const ctx = {
+    profile,
+    scene,
+    german,
+    weatherMode: Boolean(scene.weather),
+    skipRepeats: multiday === "compact",
+    showPrefix: multiday !== "repeat",
+  };
+  const firstVisible = new Map();
+  tagged.forEach((t) => {
+    const di = days.findIndex((d) => touchesDay(t.ev, d.index));
+    firstVisible.set(t, di);
+  });
+
+  // the cells (draw_calendar_grid)
+  const contentTop = rect.y + headerH + PAD;
+  const contentH = rect.h - headerH - PAD;
+  const rowH = Math.trunc(contentH / 4);
+  const colW = Math.trunc(rect.w / 2);
+  const cells = [];
+  if (scene.layout !== "gridB") {
+    cells[0] = { x: rect.x, y: contentTop, w: rect.w, h: rowH };
+    for (let i = 1; i <= 3; i++)
+      cells[i] = { x: rect.x, y: contentTop + i * rowH, w: colW, h: rowH };
+    for (let i = 4; i <= 6; i++)
+      cells[i] = { x: rect.x + colW, y: contentTop + (i - 3) * rowH, w: colW, h: rowH };
+  } else {
+    cells[0] = { x: rect.x, y: contentTop, w: colW, h: rowH * 2 };
+    for (let i = 1; i <= 2; i++)
+      cells[i] = { x: rect.x, y: contentTop + (i + 1) * rowH, w: colW, h: rowH };
+    for (let i = 3; i <= 6; i++)
+      cells[i] = { x: rect.x + colW, y: contentTop + (i - 3) * rowH, w: colW, h: rowH };
+  }
+  days.forEach((day, i) => {
+    drawDayCell(
+      cv,
+      ctx,
+      cells[i],
+      i,
+      day,
+      tagged,
+      firstVisible,
+      Boolean(scene.marked && scene.marked[i])
+    );
+  });
+  return { width: scene.width, height: scene.height, rgb: cv.rgb };
+}
+
+// the climate readout of the header (draw_header_climate): right-aligned chips, the first one is the humidity
+function drawHeaderClimate(cv, rect, climate, grayscale) {
+  let edge = rect.x + rect.w - PAD;
+  if (!climate) return edge;
+  const y = rect.y + PAD;
+  const chip = (text, category) => {
+    const w = text.length * FONT_W + Math.trunc(FONT_W / 2);
+    const x = Math.max(0, edge - w);
+    const bg = grayscale
+      ? [0, 0, 0]
+      : category === "bad"
+        ? [255, 0, 0]
+        : category === "super"
+          ? [0, 255, 0]
+          : [255, 255, 0];
+    cv.fillRect(x, y, w, FONT_H, bg);
+    const fg =
+      !grayscale && category !== "bad" && category !== "super" ? [0, 0, 0] : [255, 255, 255];
+    cv.text(x + Math.trunc(FONT_W / 4), y, text, fg);
+    edge = x - Math.trunc(FONT_W / 2);
+  };
+  if (climate.hum) chip(climate.hum, climate.humCat);
+  if (climate.temp) chip(climate.temp, climate.tempCat);
+  return edge;
+}
+
+return { parseColor, resolveProfile, toHex, stateColors, isoWeek, renderAgenda };
+})();
+// ==== ENGINE END ====
+</script>
+<script>
+"use strict";
+const STORAGE_KEY = 'spectra6-profile-editor';
+const INKS = { black:'#000000', white:'#ffffff', red:'#ff0000', yellow:'#ffff00', blue:'#0000ff', green:'#00ff00' };
+const MARKS = ['none', 'black', 'white', 'red', 'yellow', 'blue', 'green'];
+const MODES = ['color', 'mono-normal', 'mono-invert'];
+const COLOR_KEYS = ['text','textBg','headerText','headerBg','topText','topBg','a','b','c','d','e','aBg','bBg','cBg','dBg','eBg'];
+const OPTIONAL_COLOR_KEYS = ['iconBg', 'iconBgMarked'];
+const SWITCHES = ['headerFollowsEntries','headerFollowsEntriesColor','headerFollowsEntriesColorSafeInk','dayheadLeaderLine','markColorsHeader','headerDividerFilled'];
+const SIZES = [[800,480,'800 \u00d7 480 \u2013 7.3\u2033 PhotoPainter'],[480,800,'480 \u00d7 800 \u2013 portrait'],[960,540,'960 \u00d7 540 \u2013 M5Paper'],[1600,1200,'1600 \u00d7 1200 \u2013 13.3\u2033'],[1200,1600,'1200 \u00d7 1600 \u2013 13.3\u2033 portrait']];
+const CAL_LETTERS = 'ABCDE';
+const SAMPLE_DATE = '2026-09-30';
+const SAMPLE_TIME = '08:02';
+const MAX_EVENTS = 60;
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
-function validColor(v){ return typeof v==='string' && (Object.prototype.hasOwnProperty.call(P, v) || HEX6.test(v)); }
-const MODES = ['color','mono-normal','mono-invert'];
-const OPTIONAL_COLOR_KEYS = ['iconBg','iconBgMarked'];
-// A profile name: text only, no control characters, not too long, and not a name that means
-// something to an object.
+
+function $(sel){ return document.querySelector(sel); }
+// Nodes are built with textContent only: a profile file or a frame can hold any text.
+function h(tag, props, ...kids){
+  const el = document.createElement(tag);
+  for(const [k, v] of Object.entries(props || {})){
+    if(v === false || v == null) continue;
+    if(k === 'class') el.className = v;
+    else if(k === 'text') el.textContent = v;
+    else if(k === 'style') el.style.cssText = v;
+    else if(k.startsWith('on')) el[k] = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  kids.flat().forEach(kid => { if(kid != null) el.append(kid); });
+  return el;
+}
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+function validColor(v){ return typeof v === 'string' && (Object.prototype.hasOwnProperty.call(INKS, v) || HEX6.test(v)); }
+function hexOf(v){ return INKS[v] || v; }
+function isInk(v){ return Object.prototype.hasOwnProperty.call(INKS, v) || Object.values(INKS).includes(String(v).toLowerCase()); }
 function cleanProfileName(name){
-  let n = (typeof name==='string' ? name : '').replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,60);
-  if(['__proto__','constructor','prototype'].includes(n)) n += '_';
+  let n = (typeof name === 'string' ? name : '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60);
+  if(['__proto__', 'constructor', 'prototype'].includes(n)) n += '_';
   return n;
 }
+function clone(x){ return JSON.parse(JSON.stringify(x)); }
 
-const TODAY_ISO = '2026-09-17';
-const days = [
-  {label:'Thu 17.', date:'2026-09-17', low:10, high:19},
-  {label:'Fri 18.', date:'2026-09-18', low:13, high:19},
-  {label:'Sat 19.', date:'2026-09-19', low:12, high:20},
-  {label:'Sun 20.', date:'2026-09-20', low:13, high:20},
-  {label:'Mon 21.', date:'2026-09-21', low:10, high:17},
-  {label:'Tue 22.', date:'2026-09-22', low:9,  high:16},
-  {label:'Wed 23.', date:'2026-09-23', low:4,  high:18}
-];
-
-const layoutPlan = [
-  {date:'2026-09-17', col:1, rowStart:1, rowSpan:2, capacity:10},
-  {date:'2026-09-18', col:1, rowStart:3, rowSpan:1, capacity:4},
-  {date:'2026-09-19', col:1, rowStart:4, rowSpan:1, capacity:4},
-  {date:'2026-09-20', col:2, rowStart:1, rowSpan:1, capacity:4},
-  {date:'2026-09-21', col:2, rowStart:2, rowSpan:1, capacity:4},
-  {date:'2026-09-22', col:2, rowStart:3, rowSpan:1, capacity:4},
-  {date:'2026-09-23', col:2, rowStart:4, rowSpan:1, capacity:4}
-];
-
-const calNames = { a:'Private', b:'Work', c:'C', d:'D', e:'E' };
-
-const sample = {
-  a: [
-    ['2026-09-17','16:30 Football practice'], ['2026-09-17','This is a very long text that does not fit completely'],
-    ['2026-09-18','Street festival 19:00'], ['2026-09-18','Dentist 11:15'],
-    ['2026-09-19','Brass band concert 15:00'], ['2026-09-19','Grocery shopping 17:00'],
-    ['2026-09-20','Brunch with friends 09:30'], ['2026-09-20','Library 15:30'],
-    ['2026-09-21','Doctor appointment 09:30'], ['2026-09-21','Team meeting 13:00'],
-    ['2026-09-22','Swimming lesson 16:30'], ['2026-09-22','Parent call 14:00'],
-    ['2026-09-23','Farmers market 10:00'], ['2026-09-23','Autumn crafts 16:00']
-  ],
-  b: [
-    ['2026-09-17','Customer meeting 08:30'], ['2026-09-17','Team sync 10:00'],
-    ['2026-09-18','Company event'], ['2026-09-18','Project review 19:00'],
-    ['2026-09-19','Birthday party gift'], ['2026-09-19','Pilates 18:00'],
-    ['2026-09-20','Project planning 10:00'], ['2026-09-20','Grocery shopping'],
-    ['2026-09-21','Doctor visit 09:30'], ['2026-09-21','Pay invoices'],
-    ['2026-09-22','Running club 17:30'], ['2026-09-22','Pick up parcel 18:00'],
-    ['2026-09-23','Weekly planning'], ['2026-09-23','Library 11:00']
-  ],
-  c: [
-    ['2026-09-17','Early shift 06:30'], ['2026-09-17','Write handover notes'],
-    ['2026-09-18','Pay invoices'], ['2026-09-18','Order office supplies'],
-    ['2026-09-19','Birthday party'], ['2026-09-19','Buy a gift'],
-    ['2026-09-20','Library 15:30'], ['2026-09-20','Return books'],
-    ['2026-09-21','Team meeting 13:00'], ['2026-09-21','Write minutes'],
-    ['2026-09-22','Pick up parcel 18:00'], ['2026-09-22','Pharmacy'],
-    ['2026-09-23','Laundry and housework'], ['2026-09-23','Shopping list']
-  ],
-  d: [
-    ['2026-09-17','Early shift 06:30'], ['2026-09-17','Shift handover'],
-    ['2026-09-18','Project review 19:00'], ['2026-09-18','Preparation'],
-    ['2026-09-19','Pilates 18:00'], ['2026-09-19','Stretching'],
-    ['2026-09-20','Project planning 10:00'], ['2026-09-20','Check materials'],
-    ['2026-09-21','Grocery shopping'], ['2026-09-21','File receipts'],
-    ['2026-09-22','Running club 17:30'], ['2026-09-22','Shower'],
-    ['2026-09-23','Weekly planning'], ['2026-09-23','Update calendar']
-  ],
-  e: [
-    ['2026-09-17','16:30 Football practice'], ['2026-09-17','Pack the sports bag'],
-    ['2026-09-18','Company event'], ['2026-09-18','Prepare the event'],
-    ['2026-09-19','Autumn equinox'], ['2026-09-19','Autumn walk'],
-    ['2026-09-20','Cinema 20:00'], ['2026-09-20','Check tickets'],
-    ['2026-09-21','Doctor visit 09:30'], ['2026-09-21','Bring documents'],
-    ['2026-09-22','Swimming lesson 16:30'], ['2026-09-22','Water bottle'],
-    ['2026-09-23','Library 11:00'], ['2026-09-23','Return books']
-  ]
+// ---------------------------------------------------------------------------------------- profiles
+const FRAME_DEFAULT = {
+  type:'spectra6-firmware-profile', version:1, name:'Frame default', mode:'color', mark:'yellow',
+  headerFollowsEntries:true, headerFollowsEntriesColor:false, headerFollowsEntriesColorSafeInk:true,
+  dayheadLeaderLine:true, markColorsHeader:false, headerDividerFilled:true,
+  colors:{ text:'black', textBg:'white', headerText:'white', headerBg:'black', topText:'black', topBg:'white',
+    a:'blue', b:'green', c:'red', d:'red', e:'red', aBg:'white', bBg:'white', cBg:'white', dBg:'white', eBg:'white',
+    iconBg:'#000000', iconBgMarked:'#000000' }
+};
+const PRESETS = {
+  'Normal': {
+    type:'spectra6-firmware-profile', version:1, name:'Normal', mode:'color', mark:'none',
+    headerFollowsEntries:false, headerFollowsEntriesColor:false, headerFollowsEntriesColorSafeInk:false,
+    dayheadLeaderLine:false, markColorsHeader:false, headerDividerFilled:false,
+    colors:{ text:'black', textBg:'white', headerText:'white', headerBg:'black', topText:'white', topBg:'black',
+      a:'blue', b:'green', c:'red', d:'red', e:'red', aBg:'white', bBg:'white', cBg:'white', dBg:'white', eBg:'white',
+      iconBg:'#ffffff', iconBgMarked:'#ffffff' }
+  },
+  'Inverted': {
+    type:'spectra6-firmware-profile', version:1, name:'Inverted', mode:'color', mark:'none',
+    headerFollowsEntries:false, headerFollowsEntriesColor:false, headerFollowsEntriesColorSafeInk:false,
+    dayheadLeaderLine:false, markColorsHeader:false, headerDividerFilled:false,
+    colors:{ text:'white', textBg:'black', headerText:'black', headerBg:'white', topText:'black', topBg:'white',
+      a:'yellow', b:'green', c:'red', d:'red', e:'red', aBg:'black', bBg:'black', cBg:'black', dBg:'black', eBg:'black',
+      iconBg:'#ffffff', iconBgMarked:'#ffffff' }
+  },
+  'Frame default': FRAME_DEFAULT
 };
 
-function sampleToEntries(){
-  const out = {};
-  Object.keys(calNames).forEach(k=>{
-    out[k] = {};
-    let counters = {};
-    sample[k].forEach(([date,text])=>{
-      counters[date] = counters[date] || 0;
-      const slot = counters[date];
-      if(slot < 2){
-        out[k][date] = out[k][date] || [];
-        out[k][date][slot] = {text, on: slot===0};
-      }
-      counters[date]++;
-    });
-  });
+// ---------------------------------------------------------------------------------------- sample content
+// [calendar A..E = 0..4, days after today, "HH:MM" (null: all day), minutes (all day: days), title]
+const SAMPLE_EVENTS = [
+  [0,0,'07:30',30,'Breakfast together'], [0,0,'18:30',60,'Cook dinner'], [0,1,'16:00',60,'Piano lesson'],
+  [0,1,'20:00',120,'Movie night'], [0,2,'17:00',45,'Library visit'], [0,3,'09:00',60,'Farmers market'],
+  [0,4,'13:00',120,'Sunday roast lunch'], [0,5,'19:00',60,'Video call with family'], [0,6,'08:30',60,'Morning walk'],
+  [1,0,'09:00',15,'Daily stand-up'], [1,0,'14:00',60,'Project review'], [1,1,'09:00',15,'Daily stand-up'],
+  [1,1,'10:30',90,'Sprint planning'], [1,2,'09:00',15,'Daily stand-up'], [1,2,'15:00',45,'Weekly retro'],
+  [1,5,null,2,'Team offsite'], [2,1,'18:00',90,'Football training'], [2,3,'11:30',90,'Weekend match'],
+  [3,0,'08:00',300,'School'], [3,1,'08:00',300,'School'], [3,2,'08:00',240,'School (short day)'],
+  [3,5,'08:00',300,'School'], [3,6,'08:00',300,'School'], [4,1,'07:00',15,'Recycling bin collection'],
+  [4,2,'17:30',60,'Weekly shopping']
+];
+const SAMPLE_WEATHER = [[11,19,95],[11,16,61],[8,21,45],[11,21,2],[11,22,1],[10,20,3],[7,17,80]];
+const CONDITIONS = [[0,'Sunny'],[1,'Clear'],[2,'Partly cloudy'],[3,'Cloudy'],[45,'Fog'],[51,'Light drizzle'],[53,'Drizzle'],[55,'Heavy drizzle'],
+  [56,'Freezing drizzle'],[57,'Heavy freezing drizzle'],[61,'Light rain'],[63,'Rain'],[65,'Heavy rain'],[66,'Freezing rain'],[67,'Heavy freezing rain'],
+  [71,'Light snow'],[73,'Snow'],[75,'Heavy snow'],[77,'Snow grains'],[80,'Light showers'],[81,'Showers'],[82,'Heavy showers'],
+  [85,'Snow showers'],[86,'Heavy snow showers'],[95,'Thunderstorm'],[96,'Thunderstorm, hail'],[99,'Heavy thunderstorm, hail']];
+const CATEGORIES = [['good','Good (yellow)'],['bad','Bad (red)'],['super','Great (green)']];
+
+function freshScene(){
+  return {
+    layout:'gridA', size:[800, 480], zoom:'fit', date:SAMPLE_DATE, time:SAMPLE_TIME, language:'en',
+    marked:[false, false, false, false, false, false, false],
+    calendars:[{name:'Home', show:true}, {name:'Work', show:true}, {name:'C', show:true}, {name:'D', show:true}, {name:'E', show:true}],
+    events:SAMPLE_EVENTS.map(([cal, day, start, minutes, title]) => ({cal, day, start, minutes, title})),
+    weatherOn:true, weather:SAMPLE_WEATHER.map(([min, max, code]) => ({min, max, code})),
+    iconSet:'flaticon', iconColored:true, weatherRight:false, showWeek:true, timeMode:'duration',
+    multiday:'compact', priority:'ABCDE', orderTime:false,
+    climateOn:false, tempCat:'good', humCat:'good'
+  };
+}
+function freshState(){
+  return Object.assign({ v:2, selected:'Normal', modified:false, customProfiles:{}, scene:freshScene() }, clone(profileFields(PRESETS['Normal'])));
+}
+function profileFields(p){
+  const out = { mode:p.mode, mark:p.mark, colors:{} };
+  SWITCHES.forEach(k => { out[k] = !!p[k]; });
+  [...COLOR_KEYS, 'iconBg'].forEach(k => { out.colors[k] = k in p.colors ? p.colors[k] : '#ffffff'; });
+  out.colors.iconBgMarked = 'iconBgMarked' in p.colors ? p.colors.iconBgMarked : out.colors.iconBg;
   return out;
 }
 
-function fresh(){
-  return {
-    profile:'Normal', mode:'color', mark:'none',
-    colors:{...builtinProfiles.Normal, iconBg: ICON_BG_DEFAULT, iconBgMarked: ICON_BG_DEFAULT},
-    marked:{},
-    entries: sampleToEntries(),
-    customProfiles:{},
-    activeCustomProfile:null,
-    headerFollowsEntries:false,
-    headerFollowsEntriesColor:false,
-    headerFollowsEntriesColorSafeInk:false,
-    dayheadLeaderLine:false,
-    markColorsHeader:false,
-    headerDividerFilled:false
-  };
-}
-
-let state = JSON.parse(localStorage.getItem('spectra6-profile-editor') || 'null') || fresh();
-// State saved by the earlier German version used German names for the two internal profiles.
-const LEGACY_PROFILE_NAMES = { Invertiert:'Inverted', Custom:'Custom' };
-if(LEGACY_PROFILE_NAMES[state.profile]) state.profile = LEGACY_PROFILE_NAMES[state.profile];
-if(!state.entries) state.entries = sampleToEntries();
-if(!state.marked) state.marked = {};
-if(!state.customProfiles) state.customProfiles = {};
-if(typeof state.activeCustomProfile === 'undefined') state.activeCustomProfile = null;
-if(typeof state.headerFollowsEntries !== 'boolean') state.headerFollowsEntries = false;
-// What the browser kept may stem from an earlier import: colours must still be colours.
-(function cleanStoredState(){
-  const base = fresh();
-  if(!state.colors || typeof state.colors!=='object') state.colors = {};
-  [...COLOR_KEYS, ...OPTIONAL_COLOR_KEYS].forEach(k=>{ if(!validColor(state.colors[k])) state.colors[k] = base.colors[k]; });
-  if(!MODES.includes(state.mode)) state.mode = 'color';
-  if(!MARK_VALUES.includes(state.mark)) state.mark = 'none';
-  if(typeof state.customProfiles!=='object' || Array.isArray(state.customProfiles)) state.customProfiles = {};
-})();
-if(typeof state.headerFollowsEntriesColor !== 'boolean') state.headerFollowsEntriesColor = false;
-if(typeof state.headerFollowsEntriesColorSafeInk !== 'boolean') state.headerFollowsEntriesColorSafeInk = false;
-if(typeof state.dayheadLeaderLine !== 'boolean') state.dayheadLeaderLine = false;
-if(typeof state.markColorsHeader !== 'boolean') state.markColorsHeader = false;
-if(typeof state.headerDividerFilled !== 'boolean') state.headerDividerFilled = false;
-if(!MARK_VALUES.includes(state.mark)) state.mark = 'none';
-if(!state.colors) state.colors = {...builtinProfiles.Normal};
-COLOR_KEYS.forEach(k=>{ if(typeof state.colors[k] === 'undefined') state.colors[k] = builtinProfiles.Normal[k]; });
-if(typeof state.colors.iconBg === 'undefined') state.colors.iconBg = ICON_BG_DEFAULT;
-      if(typeof state.colors.iconBgMarked === 'undefined') state.colors.iconBgMarked = ICON_BG_DEFAULT;
-
-Object.keys(calNames).forEach(k=>{
-  state.entries[k] = state.entries[k] || {};
-  days.forEach(d=>{
-    const dayObj = state.entries[k][d.date] = state.entries[k][d.date] || [];
-    [0,1].forEach(j=>{
-      const v = dayObj[j];
-      if(typeof v === 'string'){ dayObj[j] = {text:v, on:j===0}; }
-      else if(!v || typeof v !== 'object' || typeof v.on !== 'boolean'){ dayObj[j] = {text:(v&&v.text)||'', on:j===0}; }
+// What the browser kept may stem from an earlier import or an earlier version of this page: take what is valid.
+function loadState(){
+  const base = freshState();
+  let saved = null;
+  try{ saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch(e){ saved = null; }
+  if(!saved || typeof saved !== 'object') return base;
+  const s = base;
+  if(saved.colors && typeof saved.colors === 'object'){
+    [...COLOR_KEYS, ...OPTIONAL_COLOR_KEYS].forEach(k => { if(validColor(saved.colors[k])) s.colors[k] = saved.colors[k]; });
+  }
+  if(MODES.includes(saved.mode)) s.mode = saved.mode;
+  if(MARKS.includes(saved.mark)) s.mark = saved.mark;
+  SWITCHES.forEach(k => { if(typeof saved[k] === 'boolean') s[k] = saved[k]; });
+  if(saved.customProfiles && typeof saved.customProfiles === 'object' && !Array.isArray(saved.customProfiles)){
+    Object.keys(saved.customProfiles).forEach(name => {
+      const clean = cleanProfileName(name);
+      try{ s.customProfiles[clean] = checkedPayload(saved.customProfiles[name], clean); } catch(e){ /* skip a broken one */ }
     });
-  });
-});
-
-const profileEl = document.querySelector('#profile');
-const modeEl = document.querySelector('#mode');
-const markEl = document.querySelector('#mark');
-const headerFollowsEl = document.querySelector('#headerFollowsEntries');
-const headerFollowsColorEl = document.querySelector('#headerFollowsEntriesColor');
-const headerFollowsColorSafeInkEl = document.querySelector('#headerFollowsEntriesColorSafeInk');
-const leaderLineEl = document.querySelector('#dayheadLeaderLine');
-const markColorsHeaderEl = document.querySelector('#markColorsHeader');
-const headerDividerFilledEl = document.querySelector('#headerDividerFilled');
-const iconBgEl = document.querySelector('#iconBg');
-const iconBgMarkedEl = document.querySelector('#iconBgMarked');
-
-modeEl.value = state.mode;
-markEl.value = state.mark;
-headerFollowsEl.checked = state.headerFollowsEntries;
-headerFollowsColorEl.checked = state.headerFollowsEntriesColor;
-headerFollowsColorSafeInkEl.checked = state.headerFollowsEntriesColorSafeInk;
-leaderLineEl.checked = state.dayheadLeaderLine;
-markColorsHeaderEl.checked = state.markColorsHeader;
-headerDividerFilledEl.checked = state.headerDividerFilled;
-iconBgEl.value = hex(state.colors.iconBg);
-iconBgMarkedEl.value = hex(state.colors.iconBgMarked);
-
-function hex(v){ return P[v] || v; }
-
-function lum(hexColor){
-  let n = parseInt(hexColor.slice(1), 16);
-  let r=(n>>16)&255, g=(n>>8)&255, b=n&255;
-  [r,g,b] = [r,g,b].map(x=>{ x/=255; return x<=0.03928 ? x/12.92 : Math.pow((x+0.055)/1.055, 2.4); });
-  return 0.2126*r + 0.7152*g + 0.0722*b;
-}
-function ratio(a,b){ let x=lum(a), y=lum(b); return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); }
-function contrastInk(bgHex){ return ratio('#000000', bgHex) >= ratio('#ffffff', bgHex) ? '#000000' : '#ffffff'; }
-
-function mono(modeVal){
-  return modeVal==='mono-invert'
-    ? {page:'#000000', ink:'#ffffff', headBg:'#ffffff', headInk:'#000000'}
-    : {page:'#ffffff', ink:'#000000', headBg:'#000000', headInk:'#ffffff'};
-}
-function isMono(){ return state.mode!=='color'; }
-
-function renderProfileOptions(){
-  profileEl.innerHTML='';
-  const addOpt=(value,text)=>{ let o=document.createElement('option'); o.value=value; o.textContent=text; profileEl.append(o); };
-  addOpt('Normal','Normal'); addOpt('Inverted','Inverted');
-  const customNames = Object.keys(state.customProfiles).sort((a,b)=>a.localeCompare(b,'en'));
-  if(customNames.length){
-    let group=document.createElement('optgroup'); group.label='Saved profiles';
-    customNames.forEach(name=>{ let o=document.createElement('option'); o.value='custom:'+name; o.textContent=name; group.append(o); });
-    profileEl.append(group);
   }
-  addOpt('Custom','Custom (unnamed)');
-  if(state.profile==='Custom') profileEl.value='Custom';
-  else if(state.activeCustomProfile && state.customProfiles[state.activeCustomProfile]) profileEl.value='custom:'+state.activeCustomProfile;
-  else if(builtinProfiles[state.profile]) profileEl.value=state.profile;
-  else profileEl.value='Custom';
+  // the earlier version stored 'Custom' plus the name of a saved profile; this one stores the select's value
+  let sel = typeof saved.selected === 'string' ? saved.selected : saved.profile;
+  if(sel === 'Custom' && typeof saved.activeCustomProfile === 'string' && !saved.selected) sel = 'custom:' + saved.activeCustomProfile;
+  if(sel === 'Invertiert') sel = 'Inverted';
+  const known = typeof sel === 'string' && (own(PRESETS, sel) || sel === 'Custom' || (sel.startsWith('custom:') && own(s.customProfiles, sel.slice(7))));
+  s.selected = known ? sel : 'Custom';
+  s.modified = saved.v === 2 ? !!saved.modified : false;
+  if(saved.scene && typeof saved.scene === 'object') mergeScene(s.scene, saved.scene);
+  return s;
 }
-
-// Profile-selector <option> refresh only -- the actual colour inputs now live directly inside
-// the "normal" rows of the state table (see colorPickerCell / renderStateTable), so there is no
-// separate colour-editor grid to rebuild anymore.
-function renderColorEditor(){
-  renderProfileOptions();
-}
-
-let dc=document.querySelector('#dayChecks');
-function renderDayChecks(){
-  dc.innerHTML='';
-  days.forEach(d=>{
-    let l=document.createElement('label'); l.className='switch';
-    let cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!state.marked[d.date];
-    cb.onchange=()=>{ state.marked[d.date]=cb.checked; render(); };
-    l.append(cb, document.createTextNode(d.label));
-    dc.append(l);
-  });
-}
-
-let en=document.querySelector('#entries');
-function renderEntries(){
-  en.innerHTML='';
-  Object.keys(calNames).forEach(k=>{
-    let box2=document.createElement('div'); box2.className='calendar-box';
-    let title=document.createElement('div'); title.className='calendar-title'; title.textContent='Calendar '+k.toUpperCase()+' – '+calNames[k];
-    box2.append(title);
-    days.forEach(d=>{
-      [0,1].forEach(j=>{
-        state.entries[k][d.date] = state.entries[k][d.date] || [];
-        state.entries[k][d.date][j] = state.entries[k][d.date][j] || {text:'', on:j===0};
-        const entry = state.entries[k][d.date][j];
-        let row=document.createElement('div'); row.className='entry'; if(!entry.on) row.classList.add('disabled');
-        let cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!entry.on; cb.title='Show entry in the layout';
-        cb.onchange=()=>{ entry.on=cb.checked; renderEntries(); render(); };
-        let lab=document.createElement('label'); lab.textContent=d.label+' #'+(j+1);
-        let input=document.createElement('input'); input.type='text'; input.value=entry.text;
-        input.oninput=()=>{ entry.text=input.value; render(); };
-        row.append(cb, lab, input);
-        box2.append(row);
-      });
-    });
-    en.append(box2);
-  });
-}
-
-function showNote(msg, kind){
-  let note=document.querySelector('#profileNote');
-  note.textContent=msg; note.className='note status-'+(kind||'info');
-  clearTimeout(showNote.t);
-  showNote.t=setTimeout(()=>{ note.textContent=''; note.className='note'; }, 4000);
-}
-
-function swatchCell(hexValue){
-  if(hexValue === null || typeof hexValue === 'undefined'){
-    return '<span class="muted">–</span>';
+function mergeScene(dst, src){
+  const num = (v, lo, hi, d) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : d);
+  const str = (v, allowed, d) => (allowed.includes(v) ? v : d);
+  dst.layout = str(src.layout, ['gridA', 'gridB'], dst.layout);
+  if(Array.isArray(src.size) && SIZES.some(z => z[0] === src.size[0] && z[1] === src.size[1])) dst.size = [src.size[0], src.size[1]];
+  dst.zoom = str(src.zoom, ['fit', '1', '2'], dst.zoom);
+  if(typeof src.date === 'string' && /^\d{4}-\d\d-\d\d$/.test(src.date)) dst.date = src.date;
+  if(typeof src.time === 'string' && /^\d\d:\d\d$/.test(src.time)) dst.time = src.time;
+  dst.language = str(src.language, ['en', 'de'], dst.language);
+  if(Array.isArray(src.marked) && src.marked.length === 7) dst.marked = src.marked.map(Boolean);
+  if(Array.isArray(src.calendars) && src.calendars.length === 5){
+    dst.calendars = src.calendars.map((c, i) => ({ name:String((c && c.name) || dst.calendars[i].name).slice(0, 12), show:!(c && c.show === false) }));
   }
-  const v = esc(String(hexValue).toUpperCase());
-  return '<span class="swatch-cell"><span class="swatch" style="background:'+v+'"></span><span class="hexcode">'+v+'</span></span>';
-}
-
-function anyDayMarked(){
-  return Object.keys(state.marked).some(date => !!state.marked[date]);
-}
-
-// Computes every base value (page/ink/headBg/headInk/topBg/topInk/calendars/markBg/markInk/markEventInk)
-// from the 16 raw colours + mode + mark, mirroring the preview render exactly.
-function computeBase(){
-  const c = state.colors;
-  const monoV = isMono();
-  const m = monoV ? mono(state.mode) : null;
-  const page = monoV ? m.page : hex(c.textBg);
-  const ink = monoV ? m.ink : hex(c.text);
-  const headBg = monoV ? m.headBg : hex(c.headerBg);
-  const headInk = monoV ? m.headInk : hex(c.headerText);
-  const topBg = monoV ? m.headBg : hex(c.topBg);
-  const topInk = monoV ? m.headInk : hex(c.topText);
-
-  let calResolved = {};
-  Object.keys(calNames).forEach(k=>{
-    calResolved[k] = { ink: monoV ? ink : hex(c[k]), bg: monoV ? page : hex(c[k+'Bg']) };
-  });
-
-  let markBg;
-  if(!monoV){
-    markBg = state.mark==='none' ? page : (MARK_HEX[state.mark] || page);
-  } else {
-    markBg = state.mark!=='none' ? (state.mode==='mono-invert' ? '#ffffff' : '#000000') : page;
+  if(Array.isArray(src.events)){
+    dst.events = src.events.slice(0, MAX_EVENTS).map(e => ({
+      cal:num(e && e.cal, 0, 4, 0), day:num(e && e.day, 0, 6, 0),
+      start:(e && typeof e.start === 'string' && /^\d\d:\d\d$/.test(e.start)) ? e.start : null,
+      minutes:num(e && e.minutes, 1, 99999, 60), title:String((e && e.title) || '').slice(0, 120)
+    }));
   }
-  const markInk = state.mark!=='none' ? contrastInk(markBg) : ink;
-  const markEventInk = monoV && state.mark!=='none' ? contrastInk(markBg) : ink;
-
-  return {monoV, page, ink, headBg, headInk, topBg, topInk, calResolved, markBg, markInk, markEventInk};
-}
-
-// Each "normal" row is EDITABLE via a colour picker bound to its raw colour key (bgKey/textKey) --
-// the picker ALWAYS shows and writes the actual raw colour (rawBg/rawText), so editing never gets
-// confused by a switch temporarily overriding what's displayed elsewhere. Separately, "bg"/"text"
-// carry the fully computed, EFFECTIVE colour (same branching as computeBase()/render()), because
-// "Header follows entry color" can make the day header show the day-area colours instead of its
-// own raw colour, even on an unmarked day. When effective != raw, renderStateTable adds a small
-// "effective: ..." note next to the picker so the switch's impact is never silently invisible.
-function buildStateRows(){
-  const base = computeBase();
-  const c = state.colors;
-  const rows = [];
-
-  // The top header is never affected by any switch or by markColorsHeader/headerFollows, so its
-  // effective value always equals its raw colour, in both "normal" and "marked" state.
-  rows.push({ name:'Top header', stateLabel:'normal', bg: base.topBg, text: base.topInk,
-    rawBg: hex(c.topBg), rawText: hex(c.topText), bgKey:'topBg', textKey:'topText', editable:true });
-  rows.push({ name:'Top header', stateLabel:'marked', bg: base.topBg, text: base.topInk, editable:false });
-
-  // Mirrors render()'s exact if/else-if chain for the day header:
-  //   headerFollowsOn -> BOTH normal and marked days switch away from headerBg/headerText
-  //   markColorsHeader (only on the MARKED day) -> then overrides with the shift-model colour
-  let headNormalBg = base.headBg, headNormalInk = base.headInk;
-  let headMarkedBg = base.headBg, headMarkedInk = base.headInk;
-  const headerFollowsOn = base.monoV ? state.headerFollowsEntries : state.headerFollowsEntriesColor;
-  if(headerFollowsOn){
-    headNormalBg = base.page; headNormalInk = base.ink;
-    headMarkedBg = base.markBg;
-    headMarkedInk = base.monoV ? base.markEventInk
-      : (state.headerFollowsEntriesColorSafeInk ? contrastInk(base.markBg) : base.ink);
+  dst.weatherOn = src.weatherOn !== false;
+  if(Array.isArray(src.weather) && src.weather.length === 7){
+    dst.weather = src.weather.map(w => ({ min:num(w && w.min, -60, 60, 10), max:num(w && w.max, -60, 60, 20), code:num(w && w.code, 0, 99, 0) }));
   }
-  if(state.markColorsHeader){
-    headMarkedBg = base.markBg; headMarkedInk = base.monoV ? base.markEventInk : base.markInk;
-  }
-  rows.push({ name:'Day header', stateLabel:'normal', bg:headNormalBg, text:headNormalInk,
-    rawBg: hex(c.headerBg), rawText: hex(c.headerText), bgKey:'headerBg', textKey:'headerText', editable:true });
-  rows.push({ name:'Day header', stateLabel:'marked', bg:headMarkedBg, text:headMarkedInk, editable:false });
-
-  const bodyMarkApplies = !state.markColorsHeader;
-  rows.push({ name:'Day area', stateLabel:'normal', bg: base.page, text: base.ink,
-    rawBg: hex(c.textBg), rawText: hex(c.text), bgKey:'textBg', textKey:'text', editable:true });
-  rows.push({ name:'Day area', stateLabel:'marked',
-    bg: bodyMarkApplies ? base.markBg : base.page,
-    text: bodyMarkApplies ? (base.monoV ? base.markEventInk : base.ink) : base.ink, editable:false });
-
-  Object.keys(calNames).forEach(k=>{
-    const cal = base.calResolved[k];
-    rows.push({ name:'Calendar entry '+k.toUpperCase()+' ('+calNames[k]+')', stateLabel:'normal',
-      bg: cal.bg, text: cal.ink, rawBg: hex(c[k+'Bg']), rawText: hex(c[k]), bgKey:k+'Bg', textKey:k, editable:true });
-    rows.push({ name:'Calendar entry '+k.toUpperCase()+' ('+calNames[k]+')', stateLabel:'marked',
-      bg: bodyMarkApplies ? base.markBg : cal.bg, text:cal.ink, editable:false });
-  });
-
-  return rows;
+  dst.iconSet = str(src.iconSet, ['flaticon', 'metno', 'none'], dst.iconSet);
+  ['iconColored', 'weatherRight', 'showWeek', 'orderTime', 'climateOn'].forEach(k => { if(typeof src[k] === 'boolean') dst[k] = src[k]; });
+  dst.timeMode = str(src.timeMode, ['off', 'duration', 'range'], dst.timeMode);
+  dst.multiday = str(src.multiday, ['compact', 'repeat', 'numbered'], dst.multiday);
+  if(typeof src.priority === 'string') dst.priority = src.priority.toUpperCase().replace(/[^A-E]/g, '').slice(0, 5) || 'ABCDE';
+  dst.tempCat = str(src.tempCat, CATEGORIES.map(c => c[0]), dst.tempCat);
+  dst.humCat = str(src.humCat, CATEGORIES.map(c => c[0]), dst.humCat);
 }
-
-function colorPickerCell(currentHex, key){
-  let input=document.createElement('input');
-  input.type='color'; input.className='color'; input.style.width='90px';
-  input.value=hex(currentHex);
-  input.oninput=()=>{
-    state.profile='Custom'; state.activeCustomProfile=null;
-    state.colors[key]=input.value;
-    renderProfileOptions(); render();
-  };
-  let wrap=document.createElement('span'); wrap.className='swatch-cell';
-  let code=document.createElement('span'); code.className='hexcode'; code.textContent=hex(currentHex).toUpperCase();
-  wrap.append(input, code);
-  return wrap;
-}
-
-function editableCellWithEffective(rawHex, effectiveHex, key){
-  let container=document.createElement('div');
-  container.append(colorPickerCell(rawHex, key));
-  if(hex(rawHex).toLowerCase() !== hex(effectiveHex).toLowerCase()){
-    let note=document.createElement('div');
-    note.style.fontSize='10px'; note.style.color='#0a5ab0'; note.style.marginTop='2px';
-    note.innerHTML = 'effective: ' + swatchCell(effectiveHex);
-    note.title = 'A switch (e.g. "Header follows entry color") overrides the raw color here -- the preview and the firmware show this value, the raw color in the picker stays visible for editing.';
-    container.append(note);
-  }
-  return container;
-}
-
-function renderStateTable(){
-  const tbody = document.querySelector('#stateTableBody');
-  if(!tbody) return;
-  tbody.innerHTML='';
-  const rows = buildStateRows();
-  const marked = anyDayMarked();
-  rows.forEach(row=>{
-    let tr=document.createElement('tr');
-    if(row.stateLabel==='marked' && !marked) tr.style.opacity='0.5';
-
-    let nameTd=document.createElement('td'); nameTd.className='element-name'; nameTd.textContent=row.name;
-    let stateTd=document.createElement('td');
-    stateTd.innerHTML = row.stateLabel + (row.stateLabel==='marked' && !marked ? ' <span class="muted">(no day marked)</span>' : '');
-
-    let bgTd=document.createElement('td');
-    let textTd=document.createElement('td');
-    if(row.editable){
-      bgTd.append(editableCellWithEffective(row.rawBg, row.bg, row.bgKey));
-      textTd.append(editableCellWithEffective(row.rawText, row.text, row.textKey));
-    } else {
-      bgTd.innerHTML = swatchCell(row.bg);
-      textTd.innerHTML = swatchCell(row.text);
-    }
-
-    tr.append(nameTd, stateTd, bgTd, textTd);
-    tbody.append(tr);
-  });
-}
-
-function render(){
-  const base = computeBase();
-  const r=document.documentElement;
-  r.classList.toggle('mono', base.monoV);
-  r.classList.toggle('header-only-mark', !!state.markColorsHeader);
-
-  r.style.setProperty('--page', base.page);
-  r.style.setProperty('--ink', base.ink);
-  r.style.setProperty('--header-bg', base.headBg);
-  r.style.setProperty('--header-ink', base.headInk);
-  r.style.setProperty('--top-bg', base.topBg);
-  r.style.setProperty('--top-ink', base.topInk);
-  Object.keys(calNames).forEach(k=>{
-    r.style.setProperty('--'+k, base.calResolved[k].ink);
-    r.style.setProperty('--'+k+'-bg', base.calResolved[k].bg);
-  });
-  r.style.setProperty('--mark', base.markBg);
-  r.style.setProperty('--mark-ink', base.markInk);
-  r.style.setProperty('--mark-event-ink', base.markEventInk);
-
-  let p=document.querySelector('#preview'); p.innerHTML='';
-  let top=document.createElement('div'); top.className='top';
-  let left=document.createElement('span'); left.className='top-left';
-  const topCalendarLabels = Object.keys(calNames).map(k=>({key:k, name:calNames[k], color: base.monoV?base.topInk:hex(state.colors[k])}));
-  left.innerHTML = topCalendarLabels.map(o=>'<span style="color:'+esc(o.color)+'">'+esc(o.name)+'</span>').join(' &nbsp; ');
-  let mid=document.createElement('span'); mid.textContent='17.09.2026   09:02';
-  let right=document.createElement('span'); right.className='top-right'; right.textContent='26°C   49%';
-  top.append(left, mid, right);
-
-  let grid=document.createElement('div'); grid.className='days';
-  layoutPlan.forEach(plan=>{
-    const d = days.find(x=>x.date===plan.date);
-    const isToday = plan.date===TODAY_ISO;
-    const isMarked = !!state.marked[plan.date];
-    const markAffectsEntries = isMarked && !state.markColorsHeader;
-    let el=document.createElement('div'); el.className='day'+(isToday?' today':'')+(isMarked?' marked':'');
-    el.style.gridColumn=String(plan.col); el.style.gridRow=plan.rowStart+' / span '+plan.rowSpan;
-
-    let all=[];
-    Object.keys(calNames).forEach(k=>{
-      const dayEntries = state.entries[k]?.[d.date];
-      if(dayEntries){
-        [0,1].forEach(j=>{
-          const entry=dayEntries[j];
-          if(entry && entry.on && typeof entry.text==='string' && entry.text.trim()){
-            all.push({k, text:entry.text.trim(), slot:j});
-          }
-        });
-      }
-    });
-
-    let dayHeadBg=base.headBg, dayHeadInk=base.headInk;
-    const headerFollowsOn = base.monoV ? state.headerFollowsEntries : state.headerFollowsEntriesColor;
-    if(state.markColorsHeader && isMarked){
-      dayHeadBg=base.markBg; dayHeadInk=base.monoV?base.markEventInk:base.markInk;
-      el.style.setProperty('--dayhead-bg', dayHeadBg); el.style.setProperty('--dayhead-ink', dayHeadInk);
-    } else if(headerFollowsOn){
-      if(isMarked){
-        dayHeadBg=base.markBg;
-        dayHeadInk = base.monoV ? base.markEventInk
-          : (state.headerFollowsEntriesColorSafeInk ? contrastInk(base.markBg) : base.ink);
-      } else { dayHeadBg=base.page; dayHeadInk=base.ink; }
-      el.style.setProperty('--dayhead-bg', dayHeadBg); el.style.setProperty('--dayhead-ink', dayHeadInk);
-    }
-
-    let hd=document.createElement('div'); hd.className='dayhead';
-    if(state.dayheadLeaderLine){ hd.innerHTML='<span>'+d.label+'</span><span class="leader"></span><span>'+d.low+'°/'+d.high+'°</span>'; }
-    else { hd.innerHTML='<span>'+d.label+'</span><span>'+d.low+'°/'+d.high+'°</span>'; }
-
-    let body=document.createElement('div'); body.className='daybody';
-    const capacity=plan.capacity;
-    const total=all.length;
-    let visibleCount, hiddenCount;
-    if(total>capacity){ visibleCount=capacity-1; hiddenCount=total-visibleCount; } else { visibleCount=total; hiddenCount=0; }
-
-    all.slice(0, visibleCount).forEach(x=>{
-      let ev=document.createElement('div'); ev.className='event '+x.k; ev.textContent=x.text; body.append(ev);
-    });
-    if(hiddenCount>0){
-      let more=document.createElement('div'); more.className='more'; more.textContent='+'+hiddenCount+' more'; body.append(more);
-    }
-
-    el.append(hd, body); grid.append(el);
-  });
-  p.append(top, grid);
-
-  localStorage.setItem('spectra6-profile-editor', JSON.stringify(state));
-  renderStateTable();
-}
-
-profileEl.onchange=()=>{
-  const v=profileEl.value;
-  if(v==='Custom'){ state.profile='Custom'; state.activeCustomProfile=null; }
-  else if(v.startsWith('custom:')){
-    const name=v.slice(7);
-    if(state.customProfiles[name]){
-      state.profile='Custom'; state.activeCustomProfile=name;
-      const p = state.customProfiles[name];
-      state.colors={...p.colors};
-      if(typeof state.colors.iconBg === 'undefined') state.colors.iconBg = ICON_BG_DEFAULT;
-      if(typeof state.colors.iconBgMarked === 'undefined') state.colors.iconBgMarked = ICON_BG_DEFAULT;
-      if(p.mode) state.mode=p.mode;
-      if(MARK_VALUES.includes(p.mark)) state.mark=p.mark;
-      if(typeof p.headerFollowsEntries==='boolean') state.headerFollowsEntries=p.headerFollowsEntries;
-      if(typeof p.headerFollowsEntriesColor==='boolean') state.headerFollowsEntriesColor=p.headerFollowsEntriesColor;
-      if(typeof p.headerFollowsEntriesColorSafeInk==='boolean') state.headerFollowsEntriesColorSafeInk=p.headerFollowsEntriesColorSafeInk;
-      if(typeof p.dayheadLeaderLine==='boolean') state.dayheadLeaderLine=p.dayheadLeaderLine;
-      if(typeof p.markColorsHeader==='boolean') state.markColorsHeader=p.markColorsHeader;
-      if(typeof p.headerDividerFilled==='boolean') state.headerDividerFilled=p.headerDividerFilled;
-      modeEl.value=state.mode; markEl.value=state.mark;
-      headerFollowsEl.checked=state.headerFollowsEntries; headerFollowsColorEl.checked=state.headerFollowsEntriesColor;
-      headerFollowsColorSafeInkEl.checked=state.headerFollowsEntriesColorSafeInk;
-      leaderLineEl.checked=state.dayheadLeaderLine; markColorsHeaderEl.checked=state.markColorsHeader;
-      headerDividerFilledEl.checked=state.headerDividerFilled; iconBgEl.value=hex(state.colors.iconBg);
-      iconBgMarkedEl.value=hex(state.colors.iconBgMarked);
-    }
-  } else if(builtinProfiles[v]){ state.profile=v; state.activeCustomProfile=null; state.colors={...builtinProfiles[v], iconBg: ICON_BG_DEFAULT, iconBgMarked: ICON_BG_DEFAULT}; iconBgEl.value=hex(ICON_BG_DEFAULT); iconBgMarkedEl.value=hex(ICON_BG_DEFAULT); }
-  renderColorEditor(); render();
-};
-
-modeEl.onchange=()=>{ state.mode=modeEl.value; render(); };
-markEl.onchange=()=>{ state.mark=markEl.value; render(); };
-headerFollowsEl.onchange=()=>{ state.headerFollowsEntries=headerFollowsEl.checked; render(); };
-headerFollowsColorEl.onchange=()=>{ state.headerFollowsEntriesColor=headerFollowsColorEl.checked; render(); };
-headerFollowsColorSafeInkEl.onchange=()=>{ state.headerFollowsEntriesColorSafeInk=headerFollowsColorSafeInkEl.checked; render(); };
-leaderLineEl.onchange=()=>{ state.dayheadLeaderLine=leaderLineEl.checked; render(); };
-markColorsHeaderEl.onchange=()=>{ state.markColorsHeader=markColorsHeaderEl.checked; render(); };
-headerDividerFilledEl.onchange=()=>{ state.headerDividerFilled=headerDividerFilledEl.checked; render(); };
-iconBgEl.oninput=()=>{ state.colors.iconBg=iconBgEl.value; localStorage.setItem('spectra6-profile-editor', JSON.stringify(state)); };
-iconBgMarkedEl.oninput=()=>{ state.colors.iconBgMarked=iconBgMarkedEl.value; localStorage.setItem('spectra6-profile-editor', JSON.stringify(state)); };
-
-// --- SIMPLE FIRMWARE PROFILE SCHEMA ---
-// Exactly: the 16 raw colours + the 4 switches + target display (mode) + shift-model colour (mark).
-// No overrides, no entries/marked-days state -- those are editor conveniences, not part of a colour
-// profile that the firmware needs to reproduce the element/state colour table 1:1.
-function buildProfilePayload(name){
-  return {
-    type:'spectra6-firmware-profile', version:1, name,
-    mode: state.mode,
-    mark: state.mark,
-    headerFollowsEntries: state.headerFollowsEntries,
-    headerFollowsEntriesColor: state.headerFollowsEntriesColor,
-    headerFollowsEntriesColorSafeInk: state.headerFollowsEntriesColorSafeInk,
-    dayheadLeaderLine: state.dayheadLeaderLine,
-    markColorsHeader: state.markColorsHeader,
-    headerDividerFilled: state.headerDividerFilled,
-    colors: {...state.colors}
-  };
-}
-
-function applyProfilePayload(p){
+function checkedPayload(p, name){
   if(!p || typeof p !== 'object' || !p.colors) throw new Error('Invalid format: colors is missing.');
   if(typeof p.colors !== 'object') throw new Error('Invalid format: colors is not an object.');
-  const missing = COLOR_KEYS.filter(k=>!(k in p.colors));
-  if(missing.length) throw new Error('Missing color values: '+missing.join(', '));
-  const wrong = [...COLOR_KEYS, ...OPTIONAL_COLOR_KEYS].filter(k=>k in p.colors && !validColor(p.colors[k]));
-  if(wrong.length) throw new Error('Not a color (a palette name or #rrggbb): '+wrong.join(', '));
+  const missing = COLOR_KEYS.filter(k => !(k in p.colors));
+  if(missing.length) throw new Error('Missing color values: ' + missing.join(', '));
+  const wrong = [...COLOR_KEYS, ...OPTIONAL_COLOR_KEYS].filter(k => k in p.colors && !validColor(p.colors[k]));
+  if(wrong.length) throw new Error('Not a color (a palette name or #rrggbb): ' + wrong.join(', '));
   if(typeof p.mode !== 'undefined' && !MODES.includes(p.mode)) throw new Error('Unknown mode.');
-  state.colors = {};
-  [...COLOR_KEYS, ...OPTIONAL_COLOR_KEYS].forEach(k=>{ state.colors[k] = k in p.colors ? p.colors[k] : ICON_BG_DEFAULT; });
-  state.mode = p.mode || 'color';
-  state.mark = MARK_VALUES.includes(p.mark) ? p.mark : 'none';
-  state.headerFollowsEntries = !!p.headerFollowsEntries;
-  state.headerFollowsEntriesColor = !!p.headerFollowsEntriesColor;
-  state.headerFollowsEntriesColorSafeInk = !!p.headerFollowsEntriesColorSafeInk;
-  state.dayheadLeaderLine = !!p.dayheadLeaderLine;
-  state.markColorsHeader = !!p.markColorsHeader;
-  state.headerDividerFilled = !!p.headerDividerFilled;
-  modeEl.value=state.mode; markEl.value=state.mark;
-  headerFollowsEl.checked=state.headerFollowsEntries; headerFollowsColorEl.checked=state.headerFollowsEntriesColor;
-  headerFollowsColorSafeInkEl.checked=state.headerFollowsEntriesColorSafeInk;
-  leaderLineEl.checked=state.dayheadLeaderLine; markColorsHeaderEl.checked=state.markColorsHeader;
-  headerDividerFilledEl.checked=state.headerDividerFilled; iconBgEl.value=hex(state.colors.iconBg);
-  iconBgMarkedEl.value=hex(state.colors.iconBgMarked);
+  const f = profileFields({ mode:p.mode || 'color', mark:MARKS.includes(p.mark) ? p.mark : 'none', colors:p.colors, ...Object.fromEntries(SWITCHES.map(k => [k, p[k]])) });
+  return Object.assign({ type:'spectra6-firmware-profile', version:1, name:name || cleanProfileName(p.name) }, f);
 }
 
-document.querySelector('#save').onclick=()=>{
-  const suggested=state.activeCustomProfile||'';
-  const name=window.prompt('Name for this color profile', suggested);
-  if(!name) return;
-  const trimmed=cleanProfileName(name); if(!trimmed) return;
-  state.customProfiles[trimmed]=buildProfilePayload(trimmed);
-  state.profile='Custom'; state.activeCustomProfile=trimmed;
-  localStorage.setItem('spectra6-profile-editor', JSON.stringify(state));
-  renderColorEditor(); render();
-  showNote('Profile "'+trimmed+'" was saved and can now be selected in the list.', 'info');
-};
+let state = loadState();
+function persist(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e){ /* private mode: the page still works */ } }
 
-document.querySelector('#deleteProfile').onclick=()=>{
-  if(!state.activeCustomProfile || !state.customProfiles[state.activeCustomProfile]){
-    showNote('No saved profile is selected that could be deleted.', 'bad'); return;
-  }
-  const name=state.activeCustomProfile;
-  delete state.customProfiles[name];
-  state.activeCustomProfile=null; state.profile='Normal'; state.colors={...builtinProfiles.Normal, iconBg: ICON_BG_DEFAULT, iconBgMarked: ICON_BG_DEFAULT};
-  iconBgEl.value=hex(ICON_BG_DEFAULT); iconBgMarkedEl.value=hex(ICON_BG_DEFAULT);
-  localStorage.setItem('spectra6-profile-editor', JSON.stringify(state));
-  renderColorEditor(); render();
-  showNote('Profile "'+name+'" was deleted.', 'info');
-};
+function buildProfilePayload(name){
+  const p = { type:'spectra6-firmware-profile', version:1, name, mode:state.mode, mark:state.mark };
+  SWITCHES.forEach(k => { p[k] = state[k]; });
+  p.colors = Object.assign({}, state.colors);
+  return p;
+}
+function applyPayload(p){
+  const c = checkedPayload(p, '');
+  state.mode = c.mode; state.mark = c.mark;
+  SWITCHES.forEach(k => { state[k] = c[k]; });
+  state.colors = Object.assign({}, c.colors);
+}
+function selectedName(){
+  if(state.selected.startsWith('custom:')) return state.selected.slice(7);
+  return state.selected === 'Custom' ? '' : state.selected;
+}
 
-document.querySelector('#reset').onclick=()=>{
-  state=fresh();
-  modeEl.value=state.mode; markEl.value=state.mark;
-  headerFollowsEl.checked=state.headerFollowsEntries; headerFollowsColorEl.checked=state.headerFollowsEntriesColor;
-  headerFollowsColorSafeInkEl.checked=state.headerFollowsEntriesColorSafeInk;
-  leaderLineEl.checked=state.dayheadLeaderLine; markColorsHeaderEl.checked=state.markColorsHeader;
-  headerDividerFilledEl.checked=state.headerDividerFilled; iconBgEl.value=hex(state.colors.iconBg);
-  iconBgMarkedEl.value=hex(state.colors.iconBgMarked);
-  renderColorEditor(); renderDayChecks(); renderEntries(); render();
-};
-
-document.querySelector('#exportProfile').onclick=()=>{
-  const exportName = state.activeCustomProfile || (state.profile!=='Custom' ? state.profile : 'Custom');
-  const payload = buildProfilePayload(exportName);
-  const blob=new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download='spectra6-firmware-profile-'+exportName.replace(/[^a-z0-9-]/gi,'_')+'.json';
-  document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  showNote('Profile "'+exportName+'" was exported as JSON.', 'info');
-};
-
-document.querySelector('#importProfileBtn').onclick=()=>document.querySelector('#importProfileFile').click();
-document.querySelector('#importProfileFile').onchange=(ev)=>{
-  const file=ev.target.files && ev.target.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=()=>{
-    try{
-      const data=JSON.parse(reader.result);
-      applyProfilePayload(data);
-      const importedName = cleanProfileName(data.name) || cleanProfileName(file.name.replace(/\.json$/i,'')) || 'Imported';
-      state.customProfiles[importedName]=buildProfilePayload(importedName);
-      state.profile='Custom'; state.activeCustomProfile=importedName;
-      localStorage.setItem('spectra6-profile-editor', JSON.stringify(state));
-      renderColorEditor(); render();
-      showNote('Profile "'+importedName+'" was imported and saved.', 'info');
-    } catch(err){ showNote('Import failed: '+err.message, 'bad'); }
-    finally{ ev.target.value=''; }
+// ---------------------------------------------------------------------------------------- the picture
+const canvas = $('#preview');
+const g = canvas.getContext('2d');
+let picture = null;
+function dayName(date, offset){
+  const d = new Date(Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10) + offset));
+  const names = state.scene.language === 'de' ? ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return names[d.getUTCDay()] + ' ' + d.getUTCDate() + '.';
+}
+function buildScene(){
+  const s = state.scene;
+  const week = [0, 1, 2, 3, 4, 5, 6];
+  return {
+    width:s.size[0], height:s.size[1], layout:s.layout, startDate:s.date, nowTime:s.time,
+    profile:buildProfilePayload('preview'), marked:s.marked, calendars:s.calendars,
+    events:s.events.filter(e => e.title.trim()).map(e => (e.start === null
+      ? { cal:e.cal, day:e.day, start:null, days:e.minutes, summary:e.title.trim() }
+      : { cal:e.cal, day:e.day, start:e.start, minutes:e.minutes, summary:e.title.trim() })),
+    weather:s.weatherOn ? week.map(i => s.weather[i]) : null,
+    iconSet:s.iconSet, iconColored:s.iconColored, weatherRight:s.weatherRight, language:s.language,
+    showWeek:s.showWeek, timeMode:s.timeMode, multiday:s.multiday, priority:s.priority, orderTime:s.orderTime,
+    climate:s.climateOn ? { temp:'26C', tempCat:s.tempCat, hum:'49%', humCat:s.humCat } : null
   };
-  reader.onerror=()=>{ showNote('The file could not be read.', 'bad'); ev.target.value=''; };
+}
+// Shrunk to fit, the picture is scaled smoothly; at 100 % and up its pixels stay sharp.
+function smoothWhenShrunk(){ canvas.style.imageRendering = canvas.clientWidth && canvas.clientWidth < canvas.width ? 'auto' : 'pixelated'; }
+window.addEventListener('resize', smoothWhenShrunk);
+function drawPicture(){
+  const scene = buildScene();
+  picture = AgendaEngine.renderAgenda(scene);
+  if(canvas.width !== picture.width) canvas.width = picture.width;
+  if(canvas.height !== picture.height) canvas.height = picture.height;
+  const img = g.createImageData(picture.width, picture.height);
+  for(let i = 0, n = picture.width * picture.height; i < n; i++){
+    img.data[i * 4] = picture.rgb[i * 3];
+    img.data[i * 4 + 1] = picture.rgb[i * 3 + 1];
+    img.data[i * 4 + 2] = picture.rgb[i * 3 + 2];
+    img.data[i * 4 + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const zoom = state.scene.zoom;
+  canvas.classList.toggle('fit', zoom === 'fit');
+  canvas.style.width = zoom === 'fit' ? '' : (picture.width * Number(zoom)) + 'px';
+  smoothWhenShrunk();
+  $('#foot').textContent = picture.width + ' \u00d7 ' + picture.height + ' px, drawn with the frame\u2019s own text font and weather icons.';
+}
+
+// ---------------------------------------------------------------------------------------- colour table
+const ELEMENTS = [
+  { name:'Top bar', bg:'topBg', fg:'topText', shown:s => s.top, marked:null },
+  { name:'Day header', bg:'headerBg', fg:'headerText', shown:s => s.head.normal, marked:s => s.head.marked },
+  { name:'Day area', bg:'textBg', fg:'text', shown:s => s.body.normal, marked:s => s.body.marked },
+  ...[0, 1, 2, 3, 4].map(i => ({ name:'Calendar ' + CAL_LETTERS[i], bg:'abcde'[i] + 'Bg', fg:'abcde'[i], shown:s => s.calendars[i].normal, marked:s => s.calendars[i].marked })),
+  { name:'Weather icon box', bg:'iconBg', fg:null, shown:s => ({ bg:s.icon.normal, fg:null }), marked:s => ({ bg:s.icon.marked, fg:null }), markedKey:'iconBgMarked' }
+];
+let popup = null;
+function closePicker(){ if(popup){ popup.remove(); popup = null; document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', pickerKey, true); } }
+function outside(ev){ if(popup && !popup.contains(ev.target)) closePicker(); }
+function pickerKey(ev){ if(ev.key === 'Escape') closePicker(); }
+function openPicker(anchor, current, onPick){
+  closePicker();
+  const inks = h('div', { class:'inks' }, Object.keys(INKS).map(name => h('button', { type:'button', title:name, onclick:() => { onPick(name); closePicker(); } },
+    h('i', { style:'background:' + INKS[name] }), name)));
+  const custom = h('input', { type:'color', value:HEX6.test(hexOf(current)) ? hexOf(current) : '#ffffff', 'aria-label':'Other color' });
+  custom.oninput = () => onPick(custom.value);
+  popup = h('div', { class:'pop', role:'dialog', 'aria-label':'Choose a color' }, inks,
+    h('div', { class:'custom' }, custom, 'Other color'),
+    h('div', { class:'cap', text:'Only these six inks print solid. Any other color is dithered by the panel.' }));
+  document.body.append(popup);
+  const r = anchor.getBoundingClientRect();
+  popup.style.left = Math.max(8, Math.min(window.innerWidth - 240, r.left)) + 'px';
+  popup.style.top = Math.min(window.innerHeight - popup.offsetHeight - 8, r.bottom + 4) + 'px';
+  setTimeout(() => { document.addEventListener('mousedown', outside, true); document.addEventListener('keydown', pickerKey, true); }, 0);
+}
+function colorControl(key, dim){
+  const value = state.colors[key];
+  const sw = h('button', { type:'button', class:'sw' + (dim ? ' off' : ''), style:'background:' + hexOf(value), title:'Change the color', 'aria-label':'Change ' + key });
+  sw.onclick = () => openPicker(sw, value, v => { state.colors[key] = v; edited(); });
+  const wrap = h('span', { class:'cc' }, sw, h('span', { class:'hex' + (dim ? ' off' : ''), text:INKS[value] ? value : hexOf(value) }));
+  if(!isInk(value)) wrap.append(h('span', { class:'warn', title:'Not one of the six inks: the panel dithers this color.', text:'\u26a0' }));
+  return wrap;
+}
+function shownNote(raw, shown){
+  if(!shown || hexOf(raw).toLowerCase() === shown.toLowerCase()) return null;
+  return h('div', { class:'eff', title:'A switch changes the color you set; the frame draws this one.' }, 'shown ', h('span', { class:'sw', style:'background:' + shown }), h('span', { class:'hex', text:shown }));
+}
+function plain(hex){
+  return hex ? h('span', { class:'cc' }, h('span', { class:'sw ro', style:'background:' + hex }), h('span', { class:'hex', text:hex })) : h('span', { class:'hex', text:'\u2013' });
+}
+function renderColorTable(){
+  const colors = AgendaEngine.stateColors(buildProfilePayload('x'));
+  const mono = colors.mono;
+  const rows = $('#colorRows');
+  rows.replaceChildren();
+  ELEMENTS.forEach(el => {
+    const shown = el.shown(colors);
+    const cells = [h('td', { class:'el', text:el.name })];
+    cells.push(h('td', null, colorControl(el.bg, mono), shownNote(state.colors[el.bg], shown.bg)));
+    cells.push(h('td', null, el.fg ? [colorControl(el.fg, mono), shownNote(state.colors[el.fg], shown.fg)] : plain(null)));
+    if(!el.marked){ cells.push(h('td', { colspan:2, class:'hex', text:'same on a marked day' })); }
+    else {
+      const m = el.marked(colors);
+      cells.push(h('td', null, el.markedKey ? [colorControl(el.markedKey, false), shownNote(state.colors[el.markedKey], m.bg)] : plain(m.bg)));
+      cells.push(h('td', null, plain(m.fg)));
+    }
+    rows.append(h('tr', null, cells));
+  });
+  $('#colorsHelp').textContent = mono
+    ? 'Monochrome panel: the frame draws black and white only. The colors below are kept in the profile but ignored; the \u201cshown\u201d values are what is drawn.'
+    : 'Each color is one of the six inks of the panel (or any #rrggbb, which the panel dithers).';
+  return colors;
+}
+
+// ---------------------------------------------------------------------------------------- options
+const OPTION_TEXT = {
+  headerFollowsEntries:['Header follows the day area (monochrome)', 'The day header is drawn in the colors of the day area instead of inverted. Monochrome panels only.', 'mono'],
+  headerFollowsEntriesColor:['Header follows the day area (Spectra 6)', 'The day header takes the day area colors; on a marked day it takes the highlight color. Color panels only.', 'color'],
+  headerFollowsEntriesColorSafeInk:['Marked header: automatic high-contrast text', 'Black or white text on the highlight color, whichever reads better. Needs the previous switch, and \u201cOnly highlight the header\u201d off.', 'color'],
+  markColorsHeader:['Only highlight the header of marked days', 'Marked days get a highlighted header; the day area keeps its color.', 'both'],
+  dayheadLeaderLine:['Dotted line between day and weather', 'A dotted line fills the space between the day name and the forecast in the day header.', 'both'],
+  headerDividerFilled:['Day header without gaps', 'Fills the whole header bar with its color. Off: dashes on the page background.', 'both']
+};
+function renderOptions(){
+  const box = $('#options');
+  box.replaceChildren();
+  const mono = state.mode !== 'color';
+  SWITCHES.forEach(key => {
+    const [label, help, applies] = OPTION_TEXT[key];
+    let off = (applies === 'mono' && !mono) || (applies === 'color' && mono);
+    if(key === 'headerFollowsEntriesColorSafeInk' && (!state.headerFollowsEntriesColor || state.markColorsHeader)) off = true;
+    const cb = h('input', { type:'checkbox', id:'opt-' + key });
+    cb.checked = !!state[key];
+    cb.onchange = () => { state[key] = cb.checked; edited(); };
+    box.append(h('label', { class:'sw-opt' + (off ? ' disabled' : ''), for:'opt-' + key }, cb,
+      h('span', null, h('b', { text:label }), h('span', { class:'h', text:help + (off ? ' (no effect with the current settings)' : '') }))));
+  });
+}
+
+// ---------------------------------------------------------------------------------------- notices
+function contrastWarnings(colors){
+  const out = [];
+  if(colors.mono) return out;
+  const pairs = [['Top bar', colors.top], ['Day header', colors.head.normal], ['Day header (marked)', colors.head.marked],
+    ['Day area', colors.body.normal], ['Day area (marked)', colors.body.marked]];
+  colors.calendars.forEach((c, i) => { pairs.push(['Calendar ' + CAL_LETTERS[i], c.normal]); pairs.push(['Calendar ' + CAL_LETTERS[i] + ' (marked)', c.marked]); });
+  pairs.forEach(([name, p]) => { if(p.bg === p.fg) out.push(name + ': text and background have the same color, the text cannot be read.'); });
+  Object.entries(state.colors).forEach(([key, v]) => { if(!isInk(v)) out.push('The color of \u201c' + key + '\u201d is not one of the six inks; the panel will dither it.'); });
+  if(!state.scene.marked.some(Boolean) && state.mark !== 'none') out.push('No day is marked: switch days on under the picture to see the highlight.');
+  return out;
+}
+function renderNotices(colors){
+  const list = $('#notices');
+  list.replaceChildren(...contrastWarnings(colors).slice(0, 6).map(t => h('li', { text:t })));
+}
+
+// ---------------------------------------------------------------------------------------- stage
+function renderStage(){
+  const s = state.scene;
+  document.querySelectorAll('#layoutSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.layout)));
+  $('#size').value = s.size[0] + 'x' + s.size[1];
+  $('#zoom').value = s.zoom;
+  const days = $('#markedDays');
+  days.replaceChildren(h('span', { class:'help', style:'margin:0', text:'Marked days (shift model):' }));
+  for(let i = 0; i < 7; i++){
+    const b = h('button', { type:'button', class:'chip', 'aria-pressed':String(!!s.marked[i]), text:dayName(s.date, i), title:'Mark or unmark this day' });
+    b.onclick = () => { s.marked[i] = !s.marked[i]; changed(false); };
+    days.append(b);
+  }
+}
+
+// ---------------------------------------------------------------------------------------- sample content
+function numberInput(value, lo, hi, onchange, label){
+  const i = h('input', { type:'number', min:lo, max:hi, value:String(value), 'aria-label':label });
+  i.onchange = () => { const v = parseInt(i.value, 10); if(Number.isFinite(v)) onchange(Math.min(hi, Math.max(lo, v))); changed(false); };
+  return i;
+}
+function renderSampleLists(){
+  const s = state.scene;
+  const wx = $('#weatherRows');
+  wx.replaceChildren();
+  if(s.weatherOn){
+    for(let i = 0; i < 7; i++){
+      const w = s.weather[i];
+      const sel = h('select', { 'aria-label':'Weather ' + dayName(s.date, i) }, CONDITIONS.map(([code, text]) => h('option', { value:String(code), text })));
+      sel.value = String(w.code);
+      sel.onchange = () => { w.code = Number(sel.value); changed(false); };
+      wx.append(h('div', { class:'wx' }, h('span', { text:dayName(s.date, i) }),
+        numberInput(w.min, -60, 60, v => { w.min = v; }, 'Lowest temperature'), numberInput(w.max, -60, 60, v => { w.max = v; }, 'Highest temperature'), sel));
+    }
+  }
+  const cal = $('#calRows');
+  cal.replaceChildren();
+  s.calendars.forEach((c, i) => {
+    const show = h('input', { type:'checkbox', id:'calshow' + i });
+    show.checked = c.show;
+    show.onchange = () => { c.show = show.checked; changed(false); };
+    const name = h('input', { type:'text', value:c.name, maxlength:'12', size:'12', 'aria-label':'Name of calendar ' + CAL_LETTERS[i], disabled:i > 1 });
+    name.oninput = () => { c.name = name.value; changed(false, false, true); };
+    cal.append(h('div', { class:'row' }, show, h('label', { for:'calshow' + i, text:'Calendar ' + CAL_LETTERS[i] }), name,
+      h('span', { class:'help', style:'margin:0', text:i > 1 ? 'shown as the letter' : 'shown by its name' })));
+  });
+  const ev = $('#events');
+  ev.replaceChildren();
+  $('#evCount').textContent = s.events.length + ' of ' + MAX_EVENTS;
+  s.events.forEach((e, idx) => {
+    const calSel = h('select', { 'aria-label':'Calendar' }, [0, 1, 2, 3, 4].map(i => h('option', { value:String(i), text:CAL_LETTERS[i] })));
+    calSel.value = String(e.cal);
+    calSel.onchange = () => { e.cal = Number(calSel.value); changed(false); };
+    const daySel = h('select', { 'aria-label':'Day' }, [0, 1, 2, 3, 4, 5, 6].map(i => h('option', { value:String(i), text:dayName(s.date, i) })));
+    daySel.value = String(e.day);
+    daySel.onchange = () => { e.day = Number(daySel.value); changed(false); };
+    const allDay = h('input', { type:'checkbox', 'aria-label':'All day' });
+    allDay.checked = e.start === null;
+    allDay.onchange = () => { e.start = allDay.checked ? null : '09:00'; e.minutes = allDay.checked ? 1 : 60; renderSampleLists(); changed(false); };
+    const start = h('input', { type:'time', value:e.start || '09:00', disabled:e.start === null, 'aria-label':'Start' });
+    start.onchange = () => { if(start.value){ e.start = start.value; changed(false); } };
+    const len = numberInput(e.minutes, 1, 99999, v => { e.minutes = v; }, e.start === null ? 'Days' : 'Minutes');
+    len.title = e.start === null ? 'Length in days' : 'Length in minutes';
+    const title = h('input', { type:'text', value:e.title, maxlength:'120', 'aria-label':'Title', placeholder:'Title' });
+    title.oninput = () => { e.title = title.value; changed(false, false, true); };
+    const del = h('button', { type:'button', title:'Remove this event', 'aria-label':'Remove', text:'\u00d7' });
+    del.onclick = () => { s.events.splice(idx, 1); renderSampleLists(); changed(false); };
+    ev.append(h('div', { class:'ev' }, calSel, daySel, h('label', { class:'pair' }, allDay, 'all day'), h('span', { class:'pair' }, start, len, h('span', { class:'help', style:'margin:0', text:e.start === null ? 'days' : 'min' })), title, del));
+  });
+  $('#addEvent').disabled = s.events.length >= MAX_EVENTS;
+}
+function bindSampleControls(){
+  const s = () => state.scene;
+  const bind = (id, key, read, write) => {
+    const el = $(id);
+    el.onchange = () => { s()[key] = read(el); changed(false, key === 'weatherOn' || key === 'date' || key === 'language'); };
+    el.sync = () => write(el, s()[key]);
+  };
+  const val = el => el.value, setVal = (el, v) => { el.value = v; };
+  const chk = el => el.checked, setChk = (el, v) => { el.checked = v; };
+  bind('#date', 'date', el => (/^\d{4}-\d\d-\d\d$/.test(el.value) ? el.value : s().date), setVal);
+  bind('#time', 'time', el => (/^\d\d:\d\d$/.test(el.value) ? el.value : s().time), setVal);
+  bind('#language', 'language', val, setVal);
+  bind('#timeMode', 'timeMode', val, setVal);
+  bind('#multiday', 'multiday', val, setVal);
+  bind('#iconSet', 'iconSet', val, setVal);
+  bind('#tempCat', 'tempCat', val, setVal);
+  bind('#humCat', 'humCat', val, setVal);
+  bind('#showWeek', 'showWeek', chk, setChk);
+  bind('#weatherOn', 'weatherOn', chk, setChk);
+  bind('#weatherRight', 'weatherRight', chk, setChk);
+  bind('#iconColored', 'iconColored', chk, setChk);
+  bind('#climateOn', 'climateOn', chk, setChk);
+  $('#order').onchange = () => { s().orderTime = $('#order').value === 'time'; changed(false); };
+  $('#order').sync = () => { $('#order').value = s().orderTime ? 'time' : 'priority'; };
+  const pri = $('#priority');
+  pri.oninput = () => {
+    const v = pri.value.toUpperCase().replace(/[^A-E]/g, '');
+    if(new Set(v).size === v.length && v.length) { s().priority = v.length < 5 ? v + 'ABCDE'.split('').filter(c => !v.includes(c)).join('') : v; changed(false, false, true); }
+  };
+  pri.sync = () => { pri.value = s().priority; };
+  pri.onchange = () => pri.sync();
+  ['tempCat', 'humCat'].forEach(id => { const el = $('#' + id); el.replaceChildren(...CATEGORIES.map(([v, t]) => h('option', { value:v, text:t }))); });
+}
+function syncSampleControls(){
+  document.querySelectorAll('#boxSample [id]').forEach(el => { if(typeof el.sync === 'function') el.sync(); });
+}
+
+// ---------------------------------------------------------------------------------------- profile bar
+function renderProfileSelect(){
+  const sel = $('#profile');
+  sel.replaceChildren();
+  const label = (name, base) => (state.modified && state.selected === base ? name + ' (modified)' : name);
+  Object.keys(PRESETS).forEach(name => sel.append(h('option', { value:name, text:label(name, name) })));
+  const names = Object.keys(state.customProfiles).sort((a, b) => a.localeCompare(b, 'en'));
+  if(names.length) sel.append(h('optgroup', { label:'Saved profiles' }, names.map(n => h('option', { value:'custom:' + n, text:label(n, 'custom:' + n) }))));
+  if(state.selected === 'Custom') sel.append(h('option', { value:'Custom', text:'Custom (unnamed)' }));
+  sel.value = state.selected;
+  $('#deleteProfile').disabled = !state.selected.startsWith('custom:');
+  $('#mode').value = state.mode;
+  const mark = $('#mark');
+  mark.replaceChildren(...MARKS.map(m => h('option', { value:m, text:m === 'none' ? 'No highlight' : m[0].toUpperCase() + m.slice(1) })));
+  mark.value = state.mark;
+}
+function note(msg, kind, id){
+  const el = $(id || '#profileNote');
+  el.textContent = msg;
+  el.className = 'note' + (kind === 'bad' ? ' bad' : '');
+  clearTimeout(note.t);
+  note.t = setTimeout(() => { el.textContent = ''; el.className = 'note'; }, 6000);
+}
+$('#profile').onchange = () => {
+  const v = $('#profile').value;
+  try{
+    if(v === 'Custom'){ state.selected = 'Custom'; }
+    else if(v.startsWith('custom:') && own(state.customProfiles, v.slice(7))){ applyPayload(state.customProfiles[v.slice(7)]); state.selected = v; }
+    else if(own(PRESETS, v)){ applyPayload(PRESETS[v]); state.selected = v; }
+    state.modified = false;
+  } catch(err){ note('That profile could not be loaded: ' + err.message, 'bad'); }
+  changed(true);
+};
+$('#reset').onclick = () => {
+  const v = state.selected;
+  try{
+    if(v.startsWith('custom:') && own(state.customProfiles, v.slice(7))) applyPayload(state.customProfiles[v.slice(7)]);
+    else { const base = own(PRESETS, v) ? v : 'Normal'; applyPayload(PRESETS[base]); state.selected = base; }
+    state.modified = false;
+  } catch(err){ note(err.message, 'bad'); }
+  changed(true);
+};
+$('#mode').onchange = () => { state.mode = $('#mode').value; edited(); };
+$('#mark').onchange = () => { state.mark = $('#mark').value; edited(); };
+$('#save').onclick = () => {
+  const name = cleanProfileName(window.prompt('Name for this color profile', selectedName()));
+  if(!name) return;
+  state.customProfiles[name] = buildProfilePayload(name);
+  state.selected = 'custom:' + name; state.modified = false;
+  changed(true);
+  note('Profile \u201c' + name + '\u201d was saved and can be selected in the list.');
+};
+$('#deleteProfile').onclick = () => {
+  if(!state.selected.startsWith('custom:')) return;
+  const name = state.selected.slice(7);
+  delete state.customProfiles[name];
+  state.selected = 'Custom'; state.modified = false;
+  changed(true);
+  note('Profile \u201c' + name + '\u201d was deleted. The colors on screen are unchanged.');
+};
+$('#exportProfile').onclick = () => {
+  const name = selectedName() || 'Custom';
+  const blob = new Blob([JSON.stringify(buildProfilePayload(name), null, 2)], { type:'application/json' });
+  const a = h('a', { href:URL.createObjectURL(blob), download:'spectra6-firmware-profile-' + name.replace(/[^a-z0-9-]/gi, '_') + '.json' });
+  document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  note('Profile \u201c' + name + '\u201d was exported as JSON.');
+};
+$('#importProfileBtn').onclick = () => $('#importProfileFile').click();
+$('#importProfileFile').onchange = ev => {
+  const file = ev.target.files && ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{ takeProfile(JSON.parse(reader.result), file.name.replace(/\.json$/i, ''), 'imported'); }
+    catch(err){ note('Import failed: ' + err.message, 'bad'); }
+    finally{ ev.target.value = ''; }
+  };
+  reader.onerror = () => { note('The file could not be read.', 'bad'); ev.target.value = ''; };
   reader.readAsText(file);
 };
+function takeProfile(data, fallbackName, verb){
+  applyPayload(data);
+  const name = cleanProfileName(data.name) || cleanProfileName(fallbackName) || 'Imported';
+  state.customProfiles[name] = buildProfilePayload(name);
+  state.selected = 'custom:' + name; state.modified = false;
+  changed(true);
+  note('Profile \u201c' + name + '\u201d was ' + verb + ' and saved in the list.');
+}
 
-// Sends the current profile straight to the device's own storage (POST
-// /api/agenda/color-profile?slot=N - see agenda_color_profile.h/http_server.c) instead of
-// downloading a JSON file to import by hand. Only works when this page is actually served BY the
-// device itself (same-origin fetch) - opening this file locally (file://) or from an unrelated
-// host has no device to talk to, so a failed request is reported plainly rather than silently
-// swallowed.
-document.querySelector('#sendToDevice').onclick=async()=>{
-  const exportName = state.activeCustomProfile || (state.profile!=='Custom' ? state.profile : 'Custom');
-  const payload = buildProfilePayload(exportName);
-  const slot = document.querySelector('#deviceSlot').value;
+// ---------------------------------------------------------------------------------------- the frame
+// The page is served by the frame, so these are same-origin requests. Opened from a file or another site there is no
+// frame to talk to: that is said plainly and nothing else changes.
+let frameSlots = null;
+async function api(path, options){
+  const res = await fetch(path, options);
+  if(!res.ok) throw new Error((await res.text()).slice(0, 200) || ('HTTP ' + res.status));
+  return res;
+}
+async function refreshSlots(){
+  const sel = $('#slot');
+  const keep = sel.value || '1';
   try{
-    const res = await fetch('/api/agenda/color-profile?slot='+slot, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-    if(!res.ok){ throw new Error((await res.text()) || ('HTTP '+res.status)); }
-    showNote('Profile "'+exportName+'" was saved to slot '+slot+' on the device.', 'info');
-  } catch(err){
-    showNote('Sending to the device failed: '+(err.message||err)+' - was this page loaded from the device itself?', 'bad');
+    const data = await (await api('/api/agenda/color-profile')).json();
+    frameSlots = data;
+    sel.replaceChildren(...data.slots.map(s => h('option', { value:String(s.slot), text:s.slot + ': ' + (typeof s.name === 'string' && s.name ? s.name : '(empty)') + (s.slot === data.active ? ' \u2013 in use' : '') })));
+    $('#frameState').textContent = 'frame connected';
+  } catch(e){
+    frameSlots = null;
+    sel.replaceChildren(...[1, 2, 3].map(n => h('option', { value:String(n), text:'Slot ' + n })));
+    $('#frameState').textContent = 'no frame connected';
   }
+  sel.value = keep;
+  $('#loadFromDevice').disabled = !frameSlots;
+  $('#sendToDevice').disabled = !frameSlots;
+  $('#matchFrame').disabled = !frameSlots;
+}
+$('#sendToDevice').onclick = async () => {
+  const name = selectedName() || 'Custom';
+  const slot = $('#slot').value;
+  try{
+    await api('/api/agenda/color-profile?slot=' + encodeURIComponent(slot), { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(buildProfilePayload(name)) });
+    note('Profile \u201c' + name + '\u201d is in slot ' + slot + ' of the frame.');
+    refreshSlots();
+  } catch(err){ note('Sending to the frame failed: ' + (err.message || err), 'bad'); }
+};
+$('#loadFromDevice').onclick = async () => {
+  const slot = $('#slot').value;
+  try{
+    const data = await (await api('/api/agenda/color-profile?slot=' + encodeURIComponent(slot))).json();
+    takeProfile(data, 'Slot ' + slot, 'loaded from slot ' + slot);
+  } catch(err){ note('Loading from the frame failed: ' + (err.message || err), 'bad'); }
+};
+$('#matchFrame').onclick = async () => {
+  try{
+    const c = await (await api('/api/config')).json();
+    const s = state.scene;
+    const pick = (v, allowed, d) => (allowed.includes(v) ? v : d);
+    let msg = 'The preview now uses the settings of the frame.';
+    if(c.agenda_cal_layout_mode === 'grid_a' || c.agenda_cal_layout_mode === 'grid_b') s.layout = c.agenda_cal_layout_mode === 'grid_b' ? 'gridB' : 'gridA';
+    else if(c.agenda_cal_layout_mode === 'list') msg = 'The frame uses the list layout, which is not drawn here: the preview shows grid ' + (s.layout === 'gridB' ? 'B' : 'A') + '.';
+    if(typeof c.agenda_cal_weather_enabled === 'boolean') s.weatherOn = c.agenda_cal_weather_enabled;
+    if(typeof c.agenda_cal_weather_right_aligned === 'boolean') s.weatherRight = c.agenda_cal_weather_right_aligned;
+    if(typeof c.agenda_cal_show_week === 'boolean') s.showWeek = c.agenda_cal_show_week;
+    s.multiday = pick(c.agenda_cal_multiday_mode === 'repeat_numbered' ? 'numbered' : c.agenda_cal_multiday_mode, ['compact', 'repeat', 'numbered'], s.multiday);
+    s.timeMode = pick(c.agenda_cal_time_display_mode, ['off', 'duration', 'range'], s.timeMode);
+    s.orderTime = c.agenda_cal_order === 'time';
+    if(typeof c.agenda_cal_priority === 'string' && /^[A-E]{5}$/.test(c.agenda_cal_priority.toUpperCase())) s.priority = c.agenda_cal_priority.toUpperCase();
+    s.iconSet = pick(c.weather_icon_set, ['flaticon', 'metno', 'none'], s.iconSet);
+    if(typeof c.weather_icon_colored === 'boolean') s.iconColored = c.weather_icon_colored;
+    s.language = c.overlay_language === 'de' ? 'de' : 'en';
+    if(typeof c.agenda_cal_name === 'string' && c.agenda_cal_name) s.calendars[0].name = c.agenda_cal_name.slice(0, 12);
+    if(typeof c.agenda_cal_name2 === 'string' && c.agenda_cal_name2) s.calendars[1].name = c.agenda_cal_name2.slice(0, 12);
+    ['c', 'd', 'e'].forEach((k, i) => { if(typeof c['agenda_cal_' + k + '_enabled'] === 'boolean') s.calendars[2 + i].show = c['agenda_cal_' + k + '_enabled']; });
+    changed(true, true);
+    note(msg, 'info', '#sampleNote');
+  } catch(err){ note('Reading the settings failed: ' + (err.message || err), 'bad', '#sampleNote'); }
 };
 
-renderColorEditor();
-renderDayChecks();
-renderEntries();
-render();
+// ---------------------------------------------------------------------------------------- wiring
+$('#layoutSeg').onclick = ev => { const b = ev.target.closest('button'); if(b){ state.scene.layout = b.dataset.v; changed(false); } };
+$('#size').replaceChildren(...SIZES.map(z => h('option', { value:z[0] + 'x' + z[1], text:z[2] })));
+$('#size').onchange = () => { const [w, hh] = $('#size').value.split('x').map(Number); state.scene.size = [w, hh]; changed(false); };
+$('#zoom').onchange = () => { state.scene.zoom = $('#zoom').value; changed(false); };
+$('#savePng').onclick = () => canvas.toBlob(blob => {
+  const a = h('a', { href:URL.createObjectURL(blob), download:'calendar-preview.png' });
+  document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+}, 'image/png');
+$('#today').onclick = () => { const d = new Date(); state.scene.date = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); changed(false, true); };
+$('#addEvent').onclick = () => {
+  if(state.scene.events.length >= MAX_EVENTS) return;
+  state.scene.events.push({ cal:0, day:0, start:'09:00', minutes:60, title:'New event' });
+  renderSampleLists(); changed(false);
+};
+$('#resetSample').onclick = () => { state.scene = freshScene(); changed(false, true); note('The sample content is back to the default.', 'info', '#sampleNote'); };
+
+// A colour or switch was edited: the profile is no longer the one that was selected.
+function edited(){
+  if(state.selected !== 'Custom') state.modified = true;
+  changed(true);
+}
+// everything that depends on the profile (full) or only the picture; lists = the sample lists need a rebuild
+let frameRequested = false;
+function changed(full, lists, typing){
+  persist();
+  if(full){ renderProfileSelect(); renderOptions(); }
+  if(!typing){ renderStage(); }
+  if(lists) renderSampleLists();
+  if(full || lists || !typing) syncSampleControls();
+  if(!frameRequested){
+    frameRequested = true;
+    requestAnimationFrame(() => {
+      frameRequested = false;
+      drawPicture();
+      renderNotices(renderColorTable());
+    });
+  }
+}
+
+bindSampleControls();
+renderProfileSelect();
+renderOptions();
+renderStage();
+renderSampleLists();
+syncSampleControls();
+drawPicture();
+renderNotices(renderColorTable());
+refreshSlots();
 </script>
 </body>
 </html>

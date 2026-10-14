@@ -4489,9 +4489,9 @@ async function performFactoryReset() {
                     Open Color Profile Editor
                   </v-btn>
                   <div class="text-caption text-medium-emphasis mb-3">
-                    Opens the editor tool served directly by this device (new tab) - its own "An Gerät
-                    senden" (send to device) button saves straight into a slot below, no manual
-                    export/import round-trip needed.
+                    Opens the editor tool served directly by this device (new tab). It draws the same
+                    picture as this frame, and its "Send to frame" button saves straight into a slot
+                    below, no manual export/import round-trip needed.
                   </div>
                   <v-select
                     v-model="settingsStore.deviceSettings.agendaColorProfileActive"

@@ -53,7 +53,7 @@ needs, and how combinations are validated: [docs/FEATURES.md](docs/FEATURES.md).
 | --- | --- | --- | --- |
 | 🤖 `telegram` | Send photos to the frame straight from a Telegram chat, remote commands, two portraits auto-combined side by side | - | [docs](docs/TELEGRAM.md) |
 | ☀️ `overlays` | On-device weather forecast and news-headline text bar drawn on the photo, low-battery corner badge — no companion server needed | - | [docs](docs/OVERLAYS.md) |
-| 🗓️ `agenda` | ToDo (todo.txt) and up to five ICS calendars (A-E) shown full-screen on their own schedule, 7-day grid layout, colour profiles | - | [docs](docs/CALENDAR_RRULE_SUPPORT.md) |
+| 🗓️ `agenda` | ToDo (todo.txt) and up to five ICS calendars (A-E) shown full-screen on their own schedule, 7-day grid layout, colour profiles with a [live editor](docs/PROFILE_EDITOR.md) | - | [docs](docs/CALENDAR_RRULE_SUPPORT.md) |
 | 🔔 `chimes` | Short beep feedback on the onboard speaker for events like rotation, low battery, or a new Telegram photo, with quiet hours | speaker | |
 | 🌡️ `climate` | Temperature/humidity readout from the onboard sensor, comfort badges, and a history chart | sensor | |
 | ⏰ `alarmclock` | Bedside alarm with a scheduled musical ring and a fully offline physical-button time-setting UI | speaker | [docs](docs/ALARMCLOCK_USER_GUIDE.md) |
