@@ -19,7 +19,7 @@ profile and see the result before the frame draws it.
 The preview is not a look-alike. It is drawn by a copy of the frame's own Agenda renderer - the same 17 x 24 pixel text font, the same weather
 icons, the same cells, dashes, truncation (`~`) and "+3 more" - so it shows what the frame draws, pixel for pixel. Checked three ways:
 
-- The tests draw 56 pictures (grid A and B, marked days, priority, week numbers, weather on the right, the temperature and humidity chips, four profiles, five panel sizes) with the copy and compare
+- The tests draw 88 pictures (grid A and B, marked days, priority, week numbers, weather on the right, the temperature and humidity chips, seven profiles with filled and unfilled header gaps, five panel sizes) with the copy and compare
   each with the picture the real `agenda_renderer.c` draws: identical (`webapp/src/utils/agendaEngine.test.js`).
 - A frame's own picture (`/api/current_image`), compared with the copy using that frame's settings and colour profile: the edges, the header
   bars, the marked days, the text rows and all seven day labels are identical.

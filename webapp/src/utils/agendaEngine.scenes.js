@@ -4,6 +4,10 @@
 // engine and the renderer are fed the same Agenda. agendaEngine.hashes.json holds the SHA-256 of what the real
 // renderer drew for each scene (see scripts/gen_agenda_engine_hashes.py).
 
+import unfilled from "./agendaEngine.profiles/unfilled.json";
+import unfilledFollows from "./agendaEngine.profiles/unfilled-follows.json";
+import unfilledMarkHeader from "./agendaEngine.profiles/unfilled-mark-header.json";
+
 const WEEK = [false, false, false, false, false, false, false];
 
 // [calendar A..E = 0..4, days after today, "HH:MM" (null: all day), minutes (all-day: days), summary]
@@ -184,6 +188,10 @@ export const PROFILES = {
       iconBgMarked: "#0000ff",
     },
   },
+  // the gaps of the header unfilled (the line of dashes shows the page behind it) with the dotted rule between day and forecast
+  unfilled,
+  "unfilled-mark-header": unfilledMarkHeader,
+  "unfilled-follows": unfilledFollows,
 };
 
 // the cases of the harness (its names) and what they change in the base scene; the shift model marks these days
@@ -196,6 +204,10 @@ export const CASES = [
   { harness: "agenda-grid-a-prio-d", changes: { layout: "gridA", priority: "DEBAC" } },
   { harness: "agenda-grid-a-noweek", changes: { layout: "gridA", showWeek: false } },
   { harness: "agenda-grid-a-weather-right", changes: { layout: "gridA", weatherRight: true } },
+  {
+    harness: "agenda-grid-a-marked-weather-right",
+    changes: { layout: "gridA", marked: MARKED_3_4, weatherRight: true },
+  },
   {
     harness: "agenda-grid-a-climate",
     changes: {
