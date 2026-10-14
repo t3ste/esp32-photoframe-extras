@@ -33,6 +33,7 @@ CASES = [
     "agenda-grid-a-prio-d",
     "agenda-grid-a-noweek",
     "agenda-grid-a-weather-right",
+    "agenda-grid-a-climate",
 ]
 PROFILES = ["default", "bw", "y", "b"]
 SIZES = ["800x480", "480x800", "960x540", "1600x1200", "1200x1600"]
