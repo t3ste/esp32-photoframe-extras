@@ -21,7 +21,7 @@ const props = defineProps({
 
 const settingsStore = useSettingsStore();
 const PREFS_KEY = "photoframe.scheduleTimeline";
-const WIDTH = 560;
+const WIDTH = 767;
 
 function loadPrefs() {
   try {

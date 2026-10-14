@@ -44,7 +44,9 @@ const titleOf = (id) => entityOf(id)?.title || id;
 const shorten = (text, room) => (text.length > room ? `${text.slice(0, room - 1)}…` : text);
 
 const hourMarks = computed(() => {
-  const step = chartW.value < 360 ? 6 : 2;
+  // every full hour while the two-digit labels fit (about 16 px each), else every second or sixth
+  const perHour = chartW.value / 24;
+  const step = perHour >= 16 ? 1 : perHour >= 8 ? 2 : 6;
   const marks = [];
   for (let h = 0; h <= 24; h += step) marks.push(h);
   return marks;
