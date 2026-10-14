@@ -898,11 +898,16 @@ static bool week_fits_beside_forecast(int total_w, const char *label, const char
 // agenda_icon_colors()) - never fill_r/g/b, so a same-colored header
 // (including a shift-marked one) can never swallow the icon.
 // `leader_line` (the color profile's "dayheadLeaderLine") draws a decorative
-// dashed rule, in text_r/g/b (ink), between the day label and the weather
-// chip - independent of `divider_filled`, since it's a foreground accent on
-// top of whatever background resulted, not a background gap/fill choice
-// (matches profile-editor.html's own `.leader{border-bottom:2px dashed
-// currentColor}`, which is ink-colored regardless of the day's background).
+// dashed rule between the day label and the weather chip - independent of
+// `divider_filled`, since it's a foreground accent on top of whatever
+// background resulted, not a background gap/fill choice. It is drawn in
+// text_r/g/b (ink), the color of the label it leads away from, unless ink is
+// the color of what the rule is drawn ON - the header's own fill when
+// `divider_filled`, else the page behind the header (`page_r/g/b`, the day
+// list's ambient color): then it would vanish (white text of a black header
+// on a white page, with the gaps unfilled, drew no rule at all - and one
+// only on the days whose header colors happened to differ), so it takes the
+// header fill instead, and a safe black/white if that is the surface too.
 // Only meaningful when `weather_mode` is on, matching the tool's own scope
 // - it has no equivalent for the centered-label (`!weather_mode`) layout.
 static void draw_day_divider(uint8_t *rgb, int width, int height, agenda_rect_t rect, int y,
@@ -910,7 +915,8 @@ static void draw_day_divider(uint8_t *rgb, int width, int height, agenda_rect_t 
                              const char *weather_text, uint8_t fill_r, uint8_t fill_g,
                              uint8_t fill_b, uint8_t text_r, uint8_t text_g, uint8_t text_b,
                              bool divider_filled, uint8_t icon_bg_r, uint8_t icon_bg_g,
-                             uint8_t icon_bg_b, bool leader_line)
+                             uint8_t icon_bg_b, bool leader_line, uint8_t page_r, uint8_t page_g,
+                             uint8_t page_b)
 {
     int total_w = rect.w - 2 * AGENDA_PADDING;
     int line_y = y + IMAGE_PROCESSOR_FONT_HEIGHT / 2 - 1;
@@ -1023,9 +1029,20 @@ static void draw_day_divider(uint8_t *rgb, int width, int height, agenda_rect_t 
     }
 
     if (leader_line) {
+        // ink, unless that is the surface the rule lies on (see the comment above)
+        uint8_t surface_r = divider_filled ? fill_r : page_r;
+        uint8_t surface_g = divider_filled ? fill_g : page_g;
+        uint8_t surface_b = divider_filled ? fill_b : page_b;
+        uint8_t rule_r = text_r, rule_g = text_g, rule_b = text_b;
+        if (agenda_colors_equal(rule_r, rule_g, rule_b, surface_r, surface_g, surface_b)) {
+            rule_r = fill_r;
+            rule_g = fill_g;
+            rule_b = fill_b;
+            agenda_avoid_bg_collision(surface_r, surface_g, surface_b, &rule_r, &rule_g, &rule_b);
+        }
         for (int x = label_x + label_w; x + dash_len <= weather_x; x += dash_len + gap_len) {
-            image_processor_fill_rect(rgb, width, height, x, line_y, dash_len, dash_h, text_r,
-                                      text_g, text_b);
+            image_processor_fill_rect(rgb, width, height, x, line_y, dash_len, dash_h, rule_r,
+                                      rule_g, rule_b);
         }
     }
     if (!divider_filled) {
@@ -1509,10 +1526,13 @@ static void draw_day_cell(uint8_t *rgb, int width, int height, agenda_rect_t cel
         agenda_day_label(label, sizeof(label), weather_weekday_abbr(day_tm.tm_wday, german),
                          day_tm.tm_mday, false, 0, german);
     }
+    uint8_t page_r, page_g, page_b, page_fg_r, page_fg_g, page_fg_b;
+    agenda_day_body_colors(profile, false, &page_r, &page_g, &page_b, &page_fg_r, &page_fg_g,
+                           &page_fg_b);
     draw_day_divider(rgb, width, height, cell, cell.y, label, weather_mode, weather_right_aligned,
                      weather_buf[0] ? weather_buf : NULL, head_bg_r, head_bg_g, head_bg_b,
                      head_fg_r, head_fg_g, head_fg_b, profile->header_divider_filled, icon_bg_r,
-                     icon_bg_g, icon_bg_b, profile->dayhead_leader_line);
+                     icon_bg_g, icon_bg_b, profile->dayhead_leader_line, page_r, page_g, page_b);
 
     uint8_t body_bg_r, body_bg_g, body_bg_b, body_fg_r, body_fg_g, body_fg_b;
     agenda_day_body_colors(profile, day_marked, &body_bg_r, &body_bg_g, &body_bg_b, &body_fg_r,
@@ -2080,11 +2100,14 @@ static void draw_calendar_column(uint8_t *rgb, int width, int height, agenda_rec
             agenda_day_label(label, sizeof(label), weather_weekday_abbr(day_tm.tm_wday, german),
                              day_tm.tm_mday, false, 0, german);
         }
+        uint8_t page_r, page_g, page_b, page_fg_r, page_fg_g, page_fg_b;
+        agenda_day_body_colors(profile, false, &page_r, &page_g, &page_b, &page_fg_r, &page_fg_g,
+                               &page_fg_b);
         draw_day_divider(rgb, width, height, rect, content_top + rows_used * row_h, label,
                          weather_mode, weather_right_aligned, weather_buf[0] ? weather_buf : NULL,
                          head_bg_r, head_bg_g, head_bg_b, head_fg_r, head_fg_g, head_fg_b,
                          profile->header_divider_filled, icon_bg_r, icon_bg_g, icon_bg_b,
-                         profile->dayhead_leader_line);
+                         profile->dayhead_leader_line, page_r, page_g, page_b);
         rows_used++;
 
         // This day's entries: the colors of a marked day, and how many rows its entries take (for

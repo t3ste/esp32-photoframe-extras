@@ -10,6 +10,7 @@ files; this script reads them and writes the hashes of their RGB pixels.
     render_agenda <dir>/default all 800x480           (also 480x800, 960x540, 1600x1200 and 1200x1600)
     render_agenda <dir>/bw all 800x480 examples/waveshare_photopainter_73/color_profiles/color-profile-slot1-BW.json
     ... y: color-profile-slot2_Y.json, b: color-profile-slot3_B.json
+    ... unfilled, unfilled-mark-header, unfilled-follows: webapp/src/utils/agendaEngine.profiles/<name>.json
     python scripts/gen_agenda_engine_hashes.py <dir>
 
 Needs Pillow (pip install pillow). Run it again when agenda_renderer.c, agenda_order.c or the text drawing of
@@ -34,8 +35,17 @@ CASES = [
     "agenda-grid-a-noweek",
     "agenda-grid-a-weather-right",
     "agenda-grid-a-climate",
+    "agenda-grid-a-marked-weather-right",
 ]
-PROFILES = ["default", "bw", "y", "b"]
+PROFILES = [
+    "default",
+    "bw",
+    "y",
+    "b",
+    "unfilled",
+    "unfilled-mark-header",
+    "unfilled-follows",
+]
 SIZES = ["800x480", "480x800", "960x540", "1600x1200", "1200x1600"]
 
 

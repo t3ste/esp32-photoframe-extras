@@ -720,7 +720,8 @@ function drawDayDivider(
   ink,
   filled,
   iconBg,
-  leader
+  leader,
+  page
 ) {
   const totalW = rect.w - 2 * PAD;
   const lineY = y + FONT_H / 2 - 1;
@@ -771,8 +772,15 @@ function drawDayDivider(
     if (weatherW > 0 && weatherX < minX) weatherX = minX;
   }
   if (leader) {
+    // ink, unless that is the surface the rule lies on: the header's fill, or - gaps unfilled - the page behind it
+    const surface = filled ? fill : page;
+    let rule = ink;
+    if (same(rule, surface)) {
+      rule = fill;
+      if (same(rule, surface)) rule = safeText(surface);
+    }
     for (let x = labelX + labelW; x + dashLen <= weatherX; x += dashLen + gapLen)
-      cv.fillRect(x, lineY, dashLen, dashH, ink);
+      cv.fillRect(x, lineY, dashLen, dashH, rule);
   }
   if (!filled) {
     for (let x = weatherX + weatherW; x + dashLen <= rightEnd; x += dashLen + gapLen)
@@ -865,7 +873,8 @@ function drawDayCell(cv, ctx, cell, dayIndex, day, tagged, firstVisible, marked)
     head.fg,
     profile.headerDividerFilled,
     iconBg,
-    profile.dayheadLeaderLine
+    profile.dayheadLeaderLine,
+    dayBodyColors(profile, false).bg
   );
 
   const body = dayBodyColors(profile, marked);
@@ -1445,7 +1454,7 @@ const OPTION_TEXT = {
   headerFollowsEntriesColor:['Header follows the day area (Spectra 6)', 'The day header takes the day area colors; on a marked day it takes the highlight color. Color panels only.', 'color'],
   headerFollowsEntriesColorSafeInk:['Marked header: automatic high-contrast text', 'Black or white text on the highlight color, whichever reads better. Needs the previous switch, and \u201cOnly highlight the header\u201d off.', 'color'],
   markColorsHeader:['Only highlight the header of marked days', 'Marked days get a highlighted header; the day area keeps its color.', 'both'],
-  dayheadLeaderLine:['Dotted line between day and weather', 'A dotted line fills the space between the day name and the forecast in the day header.', 'both'],
+  dayheadLeaderLine:['Dotted line between day and weather', 'A dotted line fills the space between the day name and the forecast in the day header. Drawn in the header’s text color, or in the header color where the text color would vanish into the page behind it (gaps unfilled).', 'both'],
   headerDividerFilled:['Day header without gaps', 'Fills the whole header bar with its color. Off: dashes on the page background.', 'both']
 };
 function renderOptions(){

@@ -445,7 +445,8 @@ function drawDayDivider(
   ink,
   filled,
   iconBg,
-  leader
+  leader,
+  page
 ) {
   const totalW = rect.w - 2 * PAD;
   const lineY = y + FONT_H / 2 - 1;
@@ -496,8 +497,15 @@ function drawDayDivider(
     if (weatherW > 0 && weatherX < minX) weatherX = minX;
   }
   if (leader) {
+    // ink, unless that is the surface the rule lies on: the header's fill, or - gaps unfilled - the page behind it
+    const surface = filled ? fill : page;
+    let rule = ink;
+    if (same(rule, surface)) {
+      rule = fill;
+      if (same(rule, surface)) rule = safeText(surface);
+    }
     for (let x = labelX + labelW; x + dashLen <= weatherX; x += dashLen + gapLen)
-      cv.fillRect(x, lineY, dashLen, dashH, ink);
+      cv.fillRect(x, lineY, dashLen, dashH, rule);
   }
   if (!filled) {
     for (let x = weatherX + weatherW; x + dashLen <= rightEnd; x += dashLen + gapLen)
@@ -590,7 +598,8 @@ function drawDayCell(cv, ctx, cell, dayIndex, day, tagged, firstVisible, marked)
     head.fg,
     profile.headerDividerFilled,
     iconBg,
-    profile.dayheadLeaderLine
+    profile.dayheadLeaderLine,
+    dayBodyColors(profile, false).bg
   );
 
   const body = dayBodyColors(profile, marked);
