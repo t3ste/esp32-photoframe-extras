@@ -17,7 +17,7 @@
 > **Looking for more?** The **extended edition** - this firmware plus webcal and CalDAV calendars, monthly and
 > yearly repeating events, the information pages (weather, chore wheel, exchange rates, markets, fuel prices,
 > recipes), pages per Agenda schedule and an artworks mode - is a repository of its own, with its own releases and
-> web flasher:
+> web flasher, and a [wiki](https://github.com/t3ste/esp32-photoframe-extras/wiki):
 > **[t3ste/esp32-photoframe-extras](https://github.com/t3ste/esp32-photoframe-extras)**. Which repository is for
 > what: [REPOS_AND_BRANCHES.md](https://github.com/t3ste/esp32-photoframe-extras/blob/main/docs/REPOS_AND_BRANCHES.md).
 

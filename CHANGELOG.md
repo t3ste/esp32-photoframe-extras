@@ -17,6 +17,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+## [v219.0.4] - 2026-10-14
+
+The colour profile editor draws the frame's own picture; the Calendar view gets a calendar priority, a fixed order and the week number; three small Web UI fixes (the time zone name, the summary of a schedule rule, a link to the repository in the Updates tab); the dotted rule in the day header is visible on every page; a deep-sleep wake a few seconds before its minute is no longer lost; the debug log survives a failed SD write. On upstream v2.19.0 plus its SSID fix (`3e5f3f9`), as before.
+
 ### Added
 
 - **Calendar priority, a fixed order of the entries and the calendar week in the Calendar view** (`agenda` option; Web UI: Settings > Agenda > Calendar):
@@ -32,7 +36,7 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   palette with a warning for a colour the panel would dither; the six switches explained and greyed out when they have no effect; sample content you can edit (events, weather, language, week numbers, times, order,
   priority); **Load from frame** / **Send to frame** with the names of the three slots and the one in use; **Match my frame's settings**. Profiles export and import as before. The page is still one file (the copy of
   the code is written into it by `scripts/sync_profile_editor.py`, a unit test fails when it is out of date) and grows by 14 KB compressed.
-- **The Updates tab links to the repository the frame updates from** (`fixes` option): `GET /api/ota/status` reports the update feed as `repo` (`owner/name`, built in with `--ota-repo`) and the card *Firmware Update (OTA)* shows it as a link. A repository with a wiki can have a second link (`WIKI_REPOS` in `webapp/src/utils/repoLinks.js`; none is listed yet). The READMEs of the base fork and its mirror point to the extended edition's repository.
+- **The Updates tab links to the repository the frame updates from** (`fixes` option): `GET /api/ota/status` reports the update feed as `repo` (`owner/name`, built in with `--ota-repo`) and the card *Firmware Update (OTA)* shows it as a link. The extended edition's repository has a wiki, which gets a second link (`WIKI_REPOS` in `webapp/src/utils/repoLinks.js`). The READMEs of the base fork and its mirror point to the extended edition's repository.
 
 ### Changed
 
