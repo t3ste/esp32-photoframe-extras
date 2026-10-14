@@ -65,6 +65,31 @@ example files are in [examples/waveshare_photopainter_73/color_profiles/](../exa
 
 <img src="screens/agenda-grid-a-profile.png" width="560" alt="The same 7-day grid in a colour profile with a black page">
 
+### The forecast on the right, and the room climate
+
+**Settings -> Agenda -> Calendar -> Right-align forecast** puts the forecast against the right edge of each day's heading instead of
+centring it (the default, in the pictures above). With a climate sensor (`climate`, **Settings -> Climate -> Show in Agenda header**) the
+room's temperature and humidity sit at the right of the top bar, as small badges rated Bad (red), Good (yellow) or Super (green) for the
+room type chosen there.
+
+<img src="screens/agenda-grid-a-weather-right.png" width="560" alt="The 7-day grid with the forecast right-aligned in every day heading">
+
+<img src="screens/agenda-grid-a-climate.png" width="560" alt="The same grid with the temperature and humidity badges in the top bar">
+
+## Overlays on a photo
+
+With `overlays` the frame draws information **on a photo** just before it shows it (**Settings -> Overlays**; Storage and Telegram
+rotation, not URL mode - [OVERLAYS.md](OVERLAYS.md)): a weather and headline bar across the top, a caption bar at the bottom, a small
+low-battery badge top left, and - with `climate` - two climate badges top right. The pictures are the real overlay drawing on a sample
+photo that is dithered to the panel's six inks; the texts are made up.
+
+| Variant | Picture |
+| --- | --- |
+| Weather line and two headlines in one bar | <img src="screens/overlay-weather-headlines.png" width="400" alt="A photo with a weather line and two headlines across the top"> |
+| The low-battery badge (below the threshold, default 16 %) | <img src="screens/overlay-battery-badge.png" width="400" alt="A photo with a red BATT 18% badge in the top-left corner"> |
+| The climate badges (yellow: good, green: super; red: bad) | <img src="screens/overlay-climate-good.png" width="400" alt="A photo with a temperature and a humidity badge in the top-right corner"> |
+| A caption, for example the capture date | <img src="screens/overlay-caption.png" width="400" alt="A photo with a caption bar at the bottom"> |
+
 ## Information pages
 
 With `info-screens` (and the page's own option), other full-screen pages take turns with the Agenda on its schedule - see
@@ -121,6 +146,8 @@ build-host/render_screens out                              # every case in five 
 | `info-fuel-route.png` | `fuel-route-en` |
 
 The program knows more cases than are shown here (German variants, empty and error pages).
+
+**The overlay pictures** (`overlay-*.png`) are the real `image_processor_add_overlay_to_file()` run on a PC by a small program that is not part of this repository, on `.img/taipei101.jpg` scaled to 800 x 480 and dithered to the six inks.
 
 **The Agenda pictures** (`agenda-*.png`) and **the artworks picture** (`artworks-caption.png`: a public-domain painting, letterboxed, with
 the real caption drawing) come from small programs that are not part of this repository. The Agenda pictures are the real `agenda_renderer.c` and colour-profile loader, run on a PC with made-up sources (a week of
