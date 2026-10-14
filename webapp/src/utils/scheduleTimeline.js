@@ -147,3 +147,26 @@ export function stripOf(day, entities) {
   });
   return segments;
 }
+
+// The schedules fire on the frame's wall clock, in the frame's time zone, which need not be the browser's. GET /api/time answers
+// the frame's local time as "2026-10-14 11:34:12"; the offset between that and the browser's clock lets the "now" marker follow the
+// frame, and a browser in another zone (or with a clock that is off) cannot move it.
+const WALL_TIME = /^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)(?::(\d\d))?/;
+
+// frame wall clock minus the browser's instant, in ms, as the "wall clock read as UTC" scale of wallNow(); null when the text is not a time
+export function wallOffsetMs(timeText, browserNowMs) {
+  const m = WALL_TIME.exec(String(timeText ?? ""));
+  if (!m) return null;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0)) - browserNowMs;
+}
+
+// the same offset for the browser's own wall clock: what is used until the frame has answered
+export function browserWallOffsetMs(browserNowMs) {
+  return -new Date(browserNowMs).getTimezoneOffset() * 60000;
+}
+
+// the day (0 = Monday) and the minute of the day on the frame's wall clock
+export function wallNow(offsetMs, browserNowMs) {
+  const d = new Date(browserNowMs + offsetMs);
+  return { dayIndex: (d.getUTCDay() + 6) % 7, minute: d.getUTCHours() * 60 + d.getUTCMinutes() };
+}

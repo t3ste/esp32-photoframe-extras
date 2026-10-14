@@ -64,7 +64,7 @@ by the rules below:
   displays); the **light part** runs until the next draw. The strip starts with what the day before left on the display.
 - **One row per schedule** (day view): every fire of it. A **filled circle** is drawn, a **hollow circle** fires but is held off (in the picture the
   07:00 Agenda, because the 06:30 page is kept until 07:30). Hover over a bar or a circle for the time, the page and until when.
-- **Day / Week**: the day view has the buttons Mo..Su (today is underlined, a red line marks now); the week view shows the display strip of all
+- **Day / Week**: the day view has the buttons Mo..Su (today is underlined, a red line marks now - on the **frame's own clock**, in its time zone, read with `GET /api/time`; a browser in another zone does not move it, and without an answer the browser's clock stands in); the week view shows the display strip of all
   seven days, Monday to Sunday.
 
 ![The week view](screens/schedule-timeline-week.png)

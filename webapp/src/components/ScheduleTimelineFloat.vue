@@ -5,7 +5,13 @@
 // The window can be dragged and minimized; its place and view are remembered in this browser.
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useSettingsStore } from "../stores";
-import { colorOf, computeWeek } from "../utils/scheduleTimeline";
+import {
+  browserWallOffsetMs,
+  colorOf,
+  computeWeek,
+  wallNow,
+  wallOffsetMs,
+} from "../utils/scheduleTimeline";
 import ScheduleTimeline from "./ScheduleTimeline.vue";
 
 const props = defineProps({
@@ -63,21 +69,48 @@ const input = computed(() => {
 });
 const week = computed(() => computeWeek(input.value));
 
-// today and now, in the browser's clock (the frame's clock may differ by its time zone)
-const todayIndex = ref((new Date().getDay() + 6) % 7);
-const nowMinute = ref(new Date().getHours() * 60 + new Date().getMinutes());
+// today and now on the frame's wall clock - its schedules fire in its time zone, which need not be the browser's. Until the frame
+// has answered (GET /api/time) or when it does not, the browser's own clock stands in.
+const clockOffset = ref(browserWallOffsetMs(Date.now()));
+const todayIndex = ref(0);
+const nowMinute = ref(0);
+function tick() {
+  const w = wallNow(clockOffset.value, Date.now());
+  todayIndex.value = w.dayIndex;
+  nowMinute.value = w.minute;
+}
+async function syncClock() {
+  try {
+    const response = await fetch("/api/time");
+    if (!response.ok) return;
+    const data = await response.json();
+    // a frame whose clock was never set answers with 1970
+    if (!(data.timestamp > 1e9)) return;
+    const offset = wallOffsetMs(data.time, Date.now());
+    if (offset !== null) {
+      const was = todayIndex.value;
+      clockOffset.value = offset;
+      tick();
+      // the day view that showed the browser's today shows the frame's today
+      if (day.value === was) day.value = todayIndex.value;
+    }
+  } catch {
+    // no frame to ask (the demo, a lost connection): the browser's clock stays
+  }
+}
+tick();
 const day = ref(todayIndex.value);
 let clock = null;
+let clockSync = null;
 onMounted(() => {
-  clock = setInterval(() => {
-    const d = new Date();
-    todayIndex.value = (d.getDay() + 6) % 7;
-    nowMinute.value = d.getHours() * 60 + d.getMinutes();
-  }, 30000);
+  clock = setInterval(tick, 30000);
+  clockSync = setInterval(syncClock, 10 * 60000);
+  syncClock();
   window.addEventListener("resize", onResize);
 });
 onBeforeUnmount(() => {
   clearInterval(clock);
+  clearInterval(clockSync);
   window.removeEventListener("resize", onResize);
 });
 
