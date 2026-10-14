@@ -4,8 +4,8 @@
 > ([t3stier/esp32-photoframe-rebuild](https://github.com/t3stier/esp32-photoframe-rebuild), branch `main`) plus webcal, CalDAV,
 > batch upload, duplicate detection, the information pages (weather, exchange rates, fuel prices, markets, ...) and an artworks
 > mode, switched on with `--with extras`. It is a hobby-scale variant, **tested on one board only** - see
-> [docs/EXTENDED_EDITION.md](docs/EXTENDED_EDITION.md). Releases and the web flasher:
-> [t3ste/esp32-photoframe-extras](https://github.com/t3ste/esp32-photoframe-extras).
+> [docs/EXTENDED_EDITION.md](docs/EXTENDED_EDITION.md). Releases, the web flasher and the wiki:
+> [t3ste/esp32-photoframe-extras](https://github.com/t3ste/esp32-photoframe-extras) ([wiki](https://github.com/t3ste/esp32-photoframe-extras/wiki)).
 > **Building it yourself? Set `--ota-repo t3ste/esp32-photoframe-extras` or switch the automatic update check off** (Settings ->
 > Power): a frame built from source asks the *base* project for updates by default, and installing one replaces this build with the
 > base firmware, which has none of the extras.

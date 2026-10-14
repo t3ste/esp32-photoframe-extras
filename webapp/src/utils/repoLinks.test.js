@@ -19,9 +19,14 @@ describe("repoLinks", () => {
     expect(repoLinks("t3ste/esp32-photoframe-rebuild", wikis).wikiUrl).toBeNull();
   });
 
-  it("lists no wiki until one is published", () => {
-    expect(WIKI_REPOS).toEqual([]);
-    expect(repoLinks("t3ste/esp32-photoframe-extras").wikiUrl).toBeNull();
+  it("lists the wiki of the extended edition and no other", () => {
+    expect(WIKI_REPOS).toEqual(["t3ste/esp32-photoframe-extras"]);
+    expect(repoLinks("t3ste/esp32-photoframe-extras").wikiUrl).toBe(
+      "https://github.com/t3ste/esp32-photoframe-extras/wiki"
+    );
+    // the base fork and its mirror have none
+    expect(repoLinks("t3stier/esp32-photoframe-rebuild").wikiUrl).toBeNull();
+    expect(repoLinks("t3ste/esp32-photoframe-rebuild").wikiUrl).toBeNull();
   });
 
   it("takes only what looks like owner/name", () => {
