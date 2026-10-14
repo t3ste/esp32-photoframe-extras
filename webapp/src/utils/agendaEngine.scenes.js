@@ -195,6 +195,7 @@ export const CASES = [
   { harness: "agenda-grid-a-marked", changes: { layout: "gridA", marked: MARKED_3_4 } },
   { harness: "agenda-grid-a-prio-d", changes: { layout: "gridA", priority: "DEBAC" } },
   { harness: "agenda-grid-a-noweek", changes: { layout: "gridA", showWeek: false } },
+  { harness: "agenda-grid-a-weather-right", changes: { layout: "gridA", weatherRight: true } },
 ];
 
 export const SIZES = [
