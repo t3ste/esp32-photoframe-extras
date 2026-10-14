@@ -11,6 +11,9 @@ import {
   isValidCron,
   DAY_LABELS,
 } from "../utils/cron";
+// #if FORK_FIXES
+import { describeCardExact } from "../utils/cronText";
+// #endif
 
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
@@ -299,7 +302,11 @@ function rawValid(card) {
             </div>
           </template>
 
+          <!-- #if FORK_FIXES -->
+          <div class="text-caption text-medium-emphasis mt-3">{{ describeCardExact(card) }}</div>
+          <!-- #else -->
           <div class="text-caption text-medium-emphasis mt-3">{{ describeCard(card) }}</div>
+          <!-- #endif -->
 
           <v-btn variant="text" size="x-small" class="mt-1 px-0" @click="toggleAdvanced(card)">
             {{ card.raw !== null ? "Use builder" : "Advanced (cron)" }}

@@ -3499,6 +3499,10 @@ static esp_err_t ota_status_handler(httpd_req_t *req)
 #if FEATURE_OTA_CHANNEL
     cJSON_AddBoolToObject(response, "latest_prerelease", status.latest_prerelease);
 #endif
+#if FORK_FIXES
+    // The repository the update feed is read from: the Web UI links to it from the Updates tab.
+    cJSON_AddStringToObject(response, "repo", CONFIG_FORK_OTA_REPO);
+#endif
 
     if (status.error_message[0] != '\0') {
         cJSON_AddStringToObject(response, "error_message", status.error_message);

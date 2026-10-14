@@ -545,6 +545,9 @@ Get OTA update status.
 }
 ```
 
+With the `fixes` option the answer also carries `"repo": "owner/name"`, the GitHub repository the update feed is read from (built in with
+`--ota-repo`); the Web UI links to it from the Updates tab.
+
 ### `POST /api/ota/check`
 
 Check for firmware updates.
