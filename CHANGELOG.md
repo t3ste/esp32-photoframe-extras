@@ -24,6 +24,14 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   - **Order within a day** (`agenda_cal_order`: `priority`, the default, or `time`): the priority first and then the time, or strictly by time with the priority only breaking ties. The order is a total one now: the all-day entries of several calendars all start at midnight, `qsort` put them in an arbitrary order and a different one from one refresh to the next; ties are decided by the end, the calendar and the position in the feed.
   - **Calendar week** (`agenda_cal_show_week`, default on): the ISO week on today's divider/cell and on every Monday's, e.g. `Mo 12. KW42` (`CW42` with the English overlay language). The week arithmetic is pure C (`main/agenda_order.c`) with host tests, including a 60-year walk over the year boundaries.
   - **Rotation pattern in the list layout**: the "2-2-3", "week / week" and "3-4" patterns marked days only in the 7-day grid; the list layout (1-3 days, the default) shows them now too, with the same color profile rules (the mark color on the day header, or a filled block behind the day's entries when the profile's `markColorsHeader` is off). The Web UI shows the setting for both layouts.
+- **The colour profile editor draws the frame's own picture** (`agenda` option; `profile-editor.html`, guide: `docs/PROFILE_EDITOR.md`): the preview was a hand-made look-alike of the Calendar view
+  (other fonts, other cell sizes, no weather icons, dividers or truncation); it is drawn now by a JavaScript copy of the firmware's renderer (`webapp/src/utils/agendaEngine.js`: the 17 x 24 text font, the
+  weather icons, grid A and B, the divider dashes, the priority order, `~` and "+N more", the colours of marked days), pixel for pixel. 40 pictures (five panel sizes from 480 x 800 to 1600 x 1200, four profiles) are compared with the
+  pictures of the real `agenda_renderer.c` in `agendaEngine.test.js`, and a frame's own picture matched the copy in its edges, header bars, marked days, text rows and all day labels. The page is built around it: grid A / B,
+  panel size, zoom and a PNG of the picture; marked days under the picture; a colour table that shows what the frame really draws when a switch changes a colour (the same code as the picture); the six inks as a
+  palette with a warning for a colour the panel would dither; the six switches explained and greyed out when they have no effect; sample content you can edit (events, weather, language, week numbers, times, order,
+  priority); **Load from frame** / **Send to frame** with the names of the three slots and the one in use; **Match my frame's settings**. Profiles export and import as before. The page is still one file (the copy of
+  the code is written into it by `scripts/sync_profile_editor.py`, a unit test fails when it is out of date) and grows by 14 KB compressed.
 
 ### Changed
 
