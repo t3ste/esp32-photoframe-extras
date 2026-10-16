@@ -7,10 +7,10 @@ credentials) apply here unchanged. This page only adds what is specific to the e
 
 ## 1. What it is and why it exists
 
-The base project (`main`) is upstream's firmware plus 16 opt-in features. The extended line adds **19 more** opt-in features
+The base project (`main`) is upstream's firmware plus 16 opt-in features. The extended line adds **20 more** opt-in features
 (`webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `agenda-rrule`, `upload-dedup`, `glyphs`, `info-screens`,
 `chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`, `route-time`, `artworks`,
-`schedule-pages`, `recipes`; bundle name **`extras`**) and one PC helper
+`schedule-pages`, `recipes`, `text-outline`; bundle name **`extras`**) and one PC helper
 (`scripts/fetch_art.py`). Decision of the maintainer (2026-09-30): these are **not merged into `main`** - the audience and target
 hardware are small, the change is large, and only one board (Waveshare PhotoPainter 7.3") exists for testing. The line is published
 next to `main` instead and kept in step with it.

@@ -41,6 +41,7 @@ python build.py --board waveshare_photopainter_73 --with extras
 | `agenda-rrule` | All of RFC 5545's recurrence rules in the Agenda calendars - monthly and yearly repeats, "the second Monday", "the last Friday", BYDAY lists, BYSETPOS - through libical; adds about 96 KB of flash | `agenda` | [CALENDAR_RRULE_ENGINE.md](CALENDAR_RRULE_ENGINE.md) |
 | `caldav-todo` | CalDAV task lists (`caldavs://...` as the ToDo address): the open to-dos with priority and due date in the ToDo column | `caldav` | [CALDAV_TODO.md](CALDAV_TODO.md) |
 | `glyphs` | Real glyphs for ä ö ü Ä Ö Ü ß ° € in the text the frame draws (overlays, Agenda, Telegram captions) instead of ae/oe/ue/ss | - | [GLYPHS.md](GLYPHS.md) |
+| `text-outline` | Overlay and caption text without a bar: white text with a black border or black text with a white border, 1 or 2 pixels wide, weather icons with the same border | `overlays` | [TEXT_OUTLINE.md](TEXT_OUTLINE.md) |
 | `info-screens` | Full-screen information pages that take turns with the Agenda on its schedule (the base for the pages below) | `agenda`, `glyphs` | [INFO_SCREENS.md](INFO_SCREENS.md) |
 | `chore-wheel` | Chore wheel page: who does which chore this week - a donut wheel and one card per chore, the chores go round the members by calendar week | `info-screens` | [CHORE_WHEEL.md](CHORE_WHEEL.md) |
 | `weather-screen` | Weather page: today as a big icon and temperature, and the next four days as rows | `info-screens`, `overlays` | [WEATHER_SCREEN.md](WEATHER_SCREEN.md) |
@@ -63,7 +64,7 @@ for the name, the build only ever sees its members - so a build with `extras` is
 
 | Bundle | Members |
 | --- | --- |
-| `extras` | everything added after the first fork release: `webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `agenda-rrule`, `upload-dedup`, `glyphs`, `info-screens`, `chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`, `route-time`, `artworks`, `schedule-pages`, `recipes` |
+| `extras` | everything added after the first fork release: `webcal`, `multi-upload`, `source-auth`, `caldav`, `caldav-todo`, `agenda-rrule`, `upload-dedup`, `glyphs`, `info-screens`, `chore-wheel`, `weather-screen`, `fact-of-the-day`, `finance-snapshot`, `fuel-prices`, `market-quotes`, `route-time`, `artworks`, `schedule-pages`, `recipes`, `text-outline` |
 
 What the members need is added as usual (`extras` pulls in `agenda` and `overlays`). `--without fuel-prices` takes a member out again, and
 `--without extras` takes all of them out of `--all-features`. A member that the board cannot build is skipped with a notice instead of stopping the

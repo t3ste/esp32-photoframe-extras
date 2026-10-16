@@ -376,6 +376,19 @@ menu "Photoframe optional features"
             through libical's recurrence iterator, instead of daily and weekly
             repeats only. Adds about 100 KB of flash. Needs the Agenda feature.
 
+    config FEATURE_TEXT_OUTLINE
+        bool "Overlay and caption text with a border instead of a bar"
+        default n
+        depends on FEATURE_OVERLAYS
+        select FORK_IMAGE_PIPELINE
+        help
+            The weather and headline overlays and the captions are drawn as a
+            black or white bar across the picture. With this option the Web
+            UI can also choose the text alone, without a bar: white text with a
+            black border or black text with a white border, the border one or
+            two pixels wide. Weather icons get the same border. The default is
+            still the bar. Needs the overlays option.
+
     config FEATURE_MULTI_UPLOAD
         bool "Upload several images at once"
         default n

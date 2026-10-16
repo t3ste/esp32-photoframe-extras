@@ -17,6 +17,17 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
 ## [Unreleased]
 
+### Added
+
+- **Option `text-outline`: overlay and caption text without a bar, with a 1 or 2 pixel border** (extended line only; needs `overlays`; part of `extras`).
+  The weather and headline overlays and the captions were always a black (or inverted, white) bar across the picture. With the option **Settings -> Overlays -> Text style**
+  offers the text alone: white text with a black border or black text with a white border, the border 1 or 2 pixels wide (2 by default; 2 reads better on a busy photo).
+  The letters stand where they stand on the bar; weather icons get the same border in the border's colour. The weather and headline lines follow the style at once, the
+  Telegram and capture-date captions only when *Also apply color inversion and text style to ... captions* is ticked (as with the inversion); the battery and climate badges,
+  the error banner and the artworks caption keep their look, and the default is still the bar. API: `overlay_text_style` (`bar`, `white`, `black`) and `overlay_text_border`
+  (1, 2). `text_outline.c` holds the pure helpers, `image_processor.c` draws the border text with the same lines as the bar. 17 host tests (the real drawing, both widths,
+  both styles, icons, the overlay and caption path through a PNG file, the plain functions unchanged). [docs/TEXT_OUTLINE.md](docs/TEXT_OUTLINE.md)
+
 ## [v219.0.4] - 2026-10-14
 
 The colour profile editor draws the frame's own picture; the Calendar view gets a calendar priority, a fixed order and the week number; three small Web UI fixes (the time zone name, the summary of a schedule rule, a link to the repository in the Updates tab); the dotted rule in the day header is visible on every page; a deep-sleep wake a few seconds before its minute is no longer lost; the debug log survives a failed SD write. The extended edition adds a live timeline of the schedules (with the "now" line on the frame's own clock) and pictures of the overlays, the forecast on the right and the climate chips. On upstream v2.19.0 plus its SSID fix (`3e5f3f9`), as before.

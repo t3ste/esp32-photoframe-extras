@@ -62,6 +62,7 @@ MODULES = {
     "market-quotes": ["market_quotes", "market_service", "screen_markets"],
     "artworks": ["art_select", "art_caption", "art_sources", "art_store", "art_flow"],
     "schedule-pages": ["sched_pick"],
+    "text-outline": ["text_outline"],
     "recipes": [
         "recipe_text",
         "recipe_source",
@@ -94,6 +95,7 @@ SELECTS = {
         "error-banner",
         "facecrop",
         "glyphs",
+        "text-outline",
     ],
     "FORK_AUDIO_HAL": ["chimes", "alarmclock"],
 }

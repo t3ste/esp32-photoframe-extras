@@ -329,6 +329,26 @@ esp_err_t image_processor_add_overlay_to_file(char *path, const char *const *lin
                                               bool draw_climate_hum, const char *climate_hum_text,
                                               climate_category_t climate_hum_category);
 
+#if FEATURE_TEXT_OUTLINE
+/**
+ * @brief image_processor_draw_caption() in the look the user chose for captions (text-outline
+ * option): the bar, or - when "also apply to captions" is on and the overlays use a text style -
+ * the text alone with a black or white border, in the same place. The Telegram and EXIF captions
+ * use this; the error banner's messages keep image_processor_draw_caption() and so keep the bar.
+ */
+void image_processor_draw_caption_look(uint8_t *rgb_buffer, int width, int height,
+                                       const char *caption, bool invert_colors);
+
+/** @brief image_processor_add_caption_to_file() in the look of image_processor_draw_caption_look().
+ */
+esp_err_t image_processor_add_caption_look_to_file(const char *png_path, const char *caption,
+                                                   bool invert_colors);
+#else
+// Without the option the look of a caption is always the bar
+#define image_processor_draw_caption_look image_processor_draw_caption
+#define image_processor_add_caption_look_to_file image_processor_add_caption_to_file
+#endif
+
 #if FEATURE_ARTWORKS
 /**
  * @brief Draws a small caption without a bar (artworks mode): one line of white text with a

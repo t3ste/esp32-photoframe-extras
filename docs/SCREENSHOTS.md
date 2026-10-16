@@ -89,6 +89,10 @@ photo that is dithered to the panel's six inks; the texts are made up.
 | The low-battery badge (below the threshold, default 16 %) | <img src="screens/overlay-battery-badge.png" width="400" alt="A photo with a red BATT 18% badge in the top-left corner"> |
 | The climate badges (yellow: good, green: super; red: bad) | <img src="screens/overlay-climate-good.png" width="400" alt="A photo with a temperature and a humidity badge in the top-right corner"> |
 | A caption, for example the capture date | <img src="screens/overlay-caption.png" width="400" alt="A photo with a caption bar at the bottom"> |
+| With `text-outline`: white text with a black border instead of the bar (2 pixels), the caption the same ([TEXT_OUTLINE.md](TEXT_OUTLINE.md)) | <img src="screens/overlay-text-white-2px.png" width="400" alt="A photo with a weather line and two headlines in white text with a black border, no bar"> |
+| ... or black text with a white border | <img src="screens/overlay-text-black-2px.png" width="400" alt="The same photo with black text and a white border"> |
+| ... the weather icons get the border too | <img src="screens/overlay-text-white-2px-icons.png" width="400" alt="A weather line with icons, each with a black border"> |
+| ... the four borders (1 and 2 pixels) enlarged | <img src="screens/overlay-text-borders.png" width="400" alt="White and black text with a one and a two pixel border, enlarged"> |
 
 ## Information pages
 

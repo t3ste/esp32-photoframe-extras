@@ -263,6 +263,13 @@ FEATURES = (
         "its picture, in landscape and portrait, optionally with a QR code of its address",
     ),
     Feature(
+        "text-outline",
+        "FEATURE_TEXT_OUTLINE",
+        (),
+        ("overlays",),
+        "Overlay and caption text without a bar: white or black text with a 1 or 2 px border",
+    ),
+    Feature(
         "multi-upload",
         "FEATURE_MULTI_UPLOAD",
         (),
@@ -310,11 +317,12 @@ BUNDLES = (
             "artworks",
             "schedule-pages",
             "recipes",
+            "text-outline",
         ),
         "Everything added after the first fork release: webcal, CalDAV calendars and to-dos, "
         "the full recurrence rules of the Agenda calendars, "
         "multi-upload, duplicate detection, glyphs, the information pages, the travel time on the fuel "
-        "page, the artworks mode, the pages per schedule and the recipe page",
+        "page, the artworks mode, the pages per schedule, the recipe page and the text border of the overlays",
     ),
 )
 

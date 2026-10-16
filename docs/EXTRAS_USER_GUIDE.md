@@ -31,6 +31,7 @@ something does not show up. Each section ends with a link to the detailed page f
 | ... the travel time there and back to work, red when a jam makes it longer | `route-time` | the fuel page | a free TomTom or HERE key |
 | ... a cooking recipe with its picture (Chefkoch, TheMealDB) | `recipes` | the same box | nothing; the filters are optional |
 | A schedule that always shows one page (the fuel prices at 06:30, the Agenda hourly) | `schedule-pages` | Settings -> Agenda -> Schedule | nothing |
+| Overlay text without a bar: white or black letters with a border | `text-outline` | Settings -> Overlays -> Text style | nothing |
 | A painting, drawing or print from a museum at each rotation | `artworks` | Settings -> Auto Rotate -> mode *Artworks* | nothing; a Smithsonian key is optional |
 | Art albums for your frame | `scripts/fetch_art.py` (a PC helper) | on your computer | Python and Node.js |
 
@@ -177,6 +178,8 @@ is one member of the rotation. A picture of each page: [SCREENSHOTS.md](SCREENSH
 3. **Keep the interval at 3 minutes or more** - a colour panel should not be refreshed more often than its maker allows
    (Waveshare: not more than every 3 minutes). With six pages and `*/3 * *` each page is on the panel for 3 minutes out of 18.
 4. **Save Settings.** The next run of the schedule draws the first page.
+
+**Overlay text without a bar** (with `text-outline`): under **Settings -> Overlays -> Text style** choose white text with a black border or black text with a white border instead of the bar, 1 or 2 pixels wide (2 reads better on a busy photo). The weather and headline lines follow at once; the captions (Telegram, capture date) follow when you tick *Also apply color inversion and text style to ... captions*. Weather icons get the same border; the battery and climate badges and the error banner keep their look. All details: [TEXT_OUTLINE.md](TEXT_OUTLINE.md).
 
 **A schedule that always draws the same page** (with `schedule-pages`): under each schedule card tick the pages it should draw. A schedule at
 06:30 can then always show the fuel prices while the hourly one shows the Agenda. When two schedules overlap, the one with the smaller number wins

@@ -90,6 +90,7 @@ set(FORK_FEATURE_DEFS
   CONFIG_FEATURE_ARTWORKS
   CONFIG_FEATURE_SCHEDULE_PAGES
   CONFIG_FEATURE_RECIPES
+  CONFIG_FEATURE_TEXT_OUTLINE
   CONFIG_FEATURE_UPLOAD_DEDUP
   CONFIG_FEATURE_MULTI_UPLOAD
   CONFIG_FEATURE_FACECROP
@@ -1410,6 +1411,7 @@ add_executable(
   epdgz_decode_test
   test_epdgz_decode.cpp
   ../main/image_processor.c
+  ../main/text_outline.c
   ../main/glyph_extras.c
   ../main/jpeg_header.c
   stubs/esp_stubs.c
@@ -1452,6 +1454,7 @@ foreach(test_name image_pipeline display_flow)
   set(fork_sources
     test_${test_name}.cpp
     ../main/image_processor.c
+    ../main/text_outline.c
     ../main/glyph_extras.c
     ../main/jpeg_header.c
     stubs/esp_stubs.c
@@ -1500,6 +1503,7 @@ add_executable(
   art_caption_draw_test
   test_art_caption_draw.cpp
   ../main/image_processor.c
+  ../main/text_outline.c
   ../main/glyph_extras.c
   ../main/jpeg_header.c
   stubs/esp_stubs.c
@@ -1541,6 +1545,7 @@ add_executable(
   glyph_text_test
   test_glyph_text.cpp
   ../main/image_processor.c
+  ../main/text_outline.c
   ../main/glyph_extras.c
   ../main/jpeg_header.c
   ../main/screen_canvas.c
@@ -1575,3 +1580,45 @@ target_link_libraries(
 )
 
 gtest_discover_tests(glyph_text_test)
+
+# The overlay and caption text without a bar (text-outline feature): the pure helpers of text_outline.c
+# and the real image_processor.c drawing the border text, in the caption's and the overlay's look
+add_executable(
+  text_outline_test
+  test_text_outline.cpp
+  ../main/image_processor.c
+  ../main/text_outline.c
+  ../main/glyph_extras.c
+  ../main/jpeg_header.c
+  stubs/esp_stubs.c
+  stubs/fake_display_manager.c
+  stubs/fake_config_manager.c
+  stubs/fake_processing_settings.c
+  stubs/fork_stubs.c
+  ../components/epaper_src/Fonts/font24.c
+)
+
+target_compile_definitions(
+  text_outline_test
+  PRIVATE
+  ${FORK_FEATURE_DEFS}
+)
+
+target_include_directories(
+  text_outline_test
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/stubs
+  ${CMAKE_CURRENT_SOURCE_DIR}/../main
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src
+  ${CMAKE_CURRENT_SOURCE_DIR}/../components/epaper_src/Fonts
+)
+
+target_link_libraries(
+  text_outline_test
+  GTest::gtest_main
+  PNG::PNG
+  m
+)
+
+gtest_discover_tests(text_outline_test)

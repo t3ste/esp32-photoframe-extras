@@ -36,9 +36,25 @@ JRESULT jd_decomp(JDEC *jd, int (*outfunc)(JDEC *, void *, JRECT *), uint8_t sca
     return JDR_INP;
 }
 
+// The settings the text-outline tests change (the defaults are the bar and "captions do not
+// follow")
+bool test_caption_invert_colors_enabled = false;
+int test_overlay_text_style = 0;
+int test_overlay_text_border = 2;
+
 bool config_manager_get_caption_invert_colors_enabled(void)
 {
-    return false;
+    return test_caption_invert_colors_enabled;
+}
+
+int config_manager_get_overlay_text_style(void)
+{
+    return test_overlay_text_style;
+}
+
+int config_manager_get_overlay_text_border(void)
+{
+    return test_overlay_text_border;
 }
 
 const char *config_manager_get_weather_icon_set(void)

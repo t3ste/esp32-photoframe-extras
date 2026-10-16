@@ -642,6 +642,13 @@ typedef enum {
 // look of every Telegram caption too. Off by default (fixed black
 // bar/white text, as before this setting existed).
 #define NVS_CAPTION_INVERT_COLORS_KEY "cap_invert_col"
+#if FEATURE_TEXT_OUTLINE
+// text-outline feature: how the overlay lines and the captions are drawn (text_outline.h) - the
+// style (0 = the bar, the default; 1 = white text with a black border; 2 = black text with a white
+// border) and the width of the border in pixels (1 or 2, default 2)
+#define NVS_OVERLAY_TEXT_STYLE_KEY "ovl_txt_style"
+#define NVS_OVERLAY_TEXT_BORDER_KEY "ovl_txt_bord"
+#endif
 
 // Falls back to the photo's own EXIF "DateTimeOriginal" (capture date) as a
 // caption, for a Telegram photo received with no caption text. Off by

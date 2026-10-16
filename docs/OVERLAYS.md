@@ -18,6 +18,8 @@ Both share two appearance settings (Web UI only):
 - **Colors**: black bar/white text (default) or inverted (white bar/black text). A separate
   checkbox extends this to Telegram photo captions too (off by default — captions keep their
   fixed look unless explicitly opted in).
+- **Text style** (build option `text-outline`): instead of a bar, the text alone - white with a black border or black with a white
+  border, 1 or 2 pixels wide - see [TEXT_OUTLINE.md](TEXT_OUTLINE.md).
 - **Language**: English (default) or German — selects both the weekday abbreviations
   (`Mon..Sun` / `Mo..So`) and the weather condition wording.
 

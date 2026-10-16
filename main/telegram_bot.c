@@ -990,8 +990,8 @@ static esp_err_t process_and_display_telegram_image(const char *path, const char
 
     if (format == IMAGE_FORMAT_PNG && image_processor_is_processed(path)) {
         if (effective_caption && effective_caption[0] != '\0') {
-            image_processor_add_caption_to_file(path, effective_caption,
-                                                telegram_caption_invert_colors());
+            image_processor_add_caption_look_to_file(path, effective_caption,
+                                                     telegram_caption_invert_colors());
         }
         const char *shown = overlay_manager_apply(path);
         esp_err_t show_err = display_manager_show_image(shown);
@@ -1012,8 +1012,8 @@ static esp_err_t process_and_display_telegram_image(const char *path, const char
     }
 
     if (effective_caption && effective_caption[0] != '\0') {
-        image_processor_add_caption_to_file(CURRENT_PNG_PATH, effective_caption,
-                                            telegram_caption_invert_colors());
+        image_processor_add_caption_look_to_file(CURRENT_PNG_PATH, effective_caption,
+                                                 telegram_caption_invert_colors());
     }
 
     const char *shown = overlay_manager_apply(CURRENT_PNG_PATH);
@@ -1511,8 +1511,8 @@ static esp_err_t compose_pair_and_save(const char *path_a, const char *caption_a
                           : (caption_a && caption_a[0]) ? caption_a
                                                         : NULL;
     if (overlay) {
-        image_processor_draw_caption(result.rgb_data, result.width, result.height, overlay,
-                                     telegram_caption_invert_colors());
+        image_processor_draw_caption_look(result.rgb_data, result.width, result.height, overlay,
+                                          telegram_caption_invert_colors());
     }
 
     // Same telegram_image_format setting (Web UI: Settings -> Telegram ->

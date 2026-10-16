@@ -145,6 +145,13 @@ export const useSettingsStore = defineStore("settings", () => {
     overlayEpdgzEnabled: false,
     overlayLanguage: "en",
     captionInvertColorsEnabled: false,
+// #if FEATURE_TEXT_OUTLINE
+    // The text of the overlays and captions without a bar (docs/TEXT_OUTLINE.md): the style
+    // ("bar", "white" = white text with a black border, "black" = black text with a white border)
+    // and the width of the border in pixels (1 or 2)
+    overlayTextStyle: "bar",
+    overlayTextBorder: 2,
+// #endif
     weatherMultilineEnabled: false,
     weatherIconSet: "none",
     weatherIconColored: false,
@@ -678,6 +685,14 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.overlayEpdgzEnabled = data.overlay_epdgz_enabled === true;
       deviceSettings.value.overlayLanguage = data.overlay_language || "en";
       deviceSettings.value.captionInvertColorsEnabled = data.caption_invert_colors_enabled === true;
+// #if FEATURE_TEXT_OUTLINE
+      deviceSettings.value.overlayTextStyle = ["bar", "white", "black"].includes(
+        data.overlay_text_style
+      )
+        ? data.overlay_text_style
+        : "bar";
+      deviceSettings.value.overlayTextBorder = data.overlay_text_border === 1 ? 1 : 2;
+// #endif
       deviceSettings.value.weatherMultilineEnabled = data.weather_multiline_enabled === true;
       deviceSettings.value.weatherIconSet = data.weather_icon_set || "none";
       deviceSettings.value.weatherIconColored = data.weather_icon_colored === true;
@@ -1033,6 +1048,10 @@ export const useSettingsStore = defineStore("settings", () => {
       overlay_epdgz_enabled: deviceSettings.value.overlayEpdgzEnabled,
       overlay_language: deviceSettings.value.overlayLanguage,
       caption_invert_colors_enabled: deviceSettings.value.captionInvertColorsEnabled,
+// #if FEATURE_TEXT_OUTLINE
+      overlay_text_style: deviceSettings.value.overlayTextStyle,
+      overlay_text_border: deviceSettings.value.overlayTextBorder,
+// #endif
       weather_multiline_enabled: deviceSettings.value.weatherMultilineEnabled,
       weather_icon_set: deviceSettings.value.weatherIconSet,
       weather_icon_colored: deviceSettings.value.weatherIconColored,

@@ -364,6 +364,16 @@ const char *config_manager_get_overlay_language(void);
 // default (captions keep the fixed black-bar/white-text look).
 void config_manager_set_caption_invert_colors_enabled(bool enabled);
 bool config_manager_get_caption_invert_colors_enabled(void);
+#if FEATURE_TEXT_OUTLINE
+// How the overlay lines and the captions are drawn (text_outline.h): the style as a number
+// (TEXT_STYLE_BAR, the default, TEXT_STYLE_WHITE, TEXT_STYLE_BLACK; anything else becomes the bar)
+// and the width of the border in pixels (clamped to 1..2, default 2). The captions follow the
+// style only while config_manager_get_caption_invert_colors_enabled() is on, like the colours.
+void config_manager_set_overlay_text_style(int style);
+int config_manager_get_overlay_text_style(void);
+void config_manager_set_overlay_text_border(int px);
+int config_manager_get_overlay_text_border(void);
+#endif
 // Telegram-only (see NVS_SHOW_EXIF_DATETIME_KEY in config.h for why). Off by
 // default.
 void config_manager_set_show_exif_datetime_enabled(bool enabled);

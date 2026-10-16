@@ -48,6 +48,9 @@
 #if FEATURE_RECIPES
 #include "recipe_source.h"
 #endif
+#if FEATURE_TEXT_OUTLINE
+#include "text_outline.h"
+#endif
 #include "cron.h"
 #include "debug_log.h"
 #include "display_flow.h"
@@ -915,6 +918,21 @@ esp_err_t apply_config_from_json(cJSON *root, bool from_remote)
     if (item && cJSON_IsBool(item)) {
         config_manager_set_caption_invert_colors_enabled(cJSON_IsTrue(item));
     }
+#if FEATURE_TEXT_OUTLINE
+    // the text style of the overlays and captions: a name of text_outline.h ("bar", "white",
+    // "black"; any other name is ignored like the other settings) and the border width
+    item = cJSON_GetObjectItem(root, "overlay_text_style");
+    if (item && cJSON_IsString(item)) {
+        int style = text_style_from_name(cJSON_GetStringValue(item));
+        if (style >= 0) {
+            config_manager_set_overlay_text_style(style);
+        }
+    }
+    item = cJSON_GetObjectItem(root, "overlay_text_border");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_overlay_text_border(item->valueint);
+    }
+#endif
     item = cJSON_GetObjectItem(root, "weather_multiline_enabled");
     if (item && cJSON_IsBool(item)) {
         config_manager_set_weather_multiline_enabled(cJSON_IsTrue(item));

@@ -56,6 +56,9 @@
 #include "route_service.h"
 #include "route_time.h"
 #endif
+#if FEATURE_TEXT_OUTLINE
+#include "text_outline.h"
+#endif
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
@@ -2557,6 +2560,13 @@ static esp_err_t config_handler(httpd_req_t *req)
                                 config_manager_get_headlines_wrap_lines());
         cJSON_AddBoolToObject(root, "caption_invert_colors_enabled",
                               config_manager_get_caption_invert_colors_enabled());
+#if FEATURE_TEXT_OUTLINE
+        cJSON_AddStringToObject(
+            root, "overlay_text_style",
+            text_style_name((text_style_t) config_manager_get_overlay_text_style()));
+        cJSON_AddNumberToObject(root, "overlay_text_border",
+                                config_manager_get_overlay_text_border());
+#endif
         cJSON_AddBoolToObject(root, "weather_multiline_enabled",
                               config_manager_get_weather_multiline_enabled());
         cJSON_AddStringToObject(root, "weather_icon_set", config_manager_get_weather_icon_set());

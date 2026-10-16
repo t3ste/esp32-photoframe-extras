@@ -26,6 +26,7 @@
 #if FEATURE_GLYPHS
 #include "glyph_extras.h"
 #endif
+#include "text_outline.h"
 #endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -3985,6 +3986,118 @@ static void render_text_bar(uint8_t *rgb_buffer, int width, int height,
     }
 }
 
+#if FEATURE_TEXT_OUTLINE
+// The shape of a weather icon in one colour - what the border of an icon is. The same table
+// lookup as draw_weather_icon(), without its colour rules (a traffic-light hue or the
+// agenda's mono mode); the border is always plain black or white.
+static void draw_weather_icon_shape(uint8_t *rgb, int width, int height, int x, int y, int icon_id,
+                                    rgb_t color)
+{
+    if (icon_id < 0 || icon_id >= WEATHER_ICON_COUNT) {
+        return;
+    }
+    const char *icon_set = config_manager_get_weather_icon_set();
+    const uint8_t *const *table =
+        (strcmp(icon_set, "metno") == 0) ? weather_icon_table_metno : weather_icon_table_flaticon;
+    const uint8_t *bitmap = table[icon_id];
+    uint32_t bytes_per_row = WEATHER_ICON_WIDTH / 8 + (WEATHER_ICON_WIDTH % 8 ? 1 : 0);
+    for (int row = 0; row < WEATHER_ICON_HEIGHT; row++) {
+        const uint8_t *ptr = &bitmap[row * bytes_per_row];
+        for (int col = 0; col < WEATHER_ICON_WIDTH; col++) {
+            int px = x + col, py = y + row;
+            if ((ptr[col / 8] & (0x80 >> (col % 8))) && px >= 0 && px < width && py >= 0 &&
+                py < height) {
+                int idx = (py * width + px) * 3;
+                rgb[idx] = color.r;
+                rgb[idx + 1] = color.g;
+                rgb[idx + 2] = color.b;
+            }
+        }
+    }
+}
+
+// One line of letters and weather icons at (x, y). `border` draws the icons as plain shapes in
+// `color`; the ink pass draws them as the bar does (their own hue when colored icons are on).
+static void draw_line_pass(uint8_t *rgb_buffer, int width, int height, int x, int y,
+                           const char *line, rgb_t color, bool border)
+{
+    for (const char *p = line; *p != '\0'; p++) {
+        if (is_weather_icon_marker(*p)) {
+            int icon_id = (unsigned char) *p - WEATHER_ICON_MARKER_BASE;
+            if (border) {
+                draw_weather_icon_shape(rgb_buffer, width, height, x, y, icon_id, color);
+            } else {
+                draw_weather_icon(rgb_buffer, width, height, x, y, icon_id, color, NULL);
+            }
+            x += WEATHER_ICON_WIDTH;
+            continue;
+        }
+        draw_glyph(rgb_buffer, width, height, x, y, *p, color);
+        x += Font24.Width;
+    }
+}
+
+// render_text_bar() without the bar (build option text-outline): the same lines in the same
+// places, each letter and icon drawn first in the border colour at every offset of the border
+// and then in the ink colour. The borders of all lines come first, so the border of one letter
+// never covers the ink of its neighbour. Only the exact black and white of the display palette
+// are used, so the picture stays a valid "processed" one.
+static void render_text_outlined(uint8_t *rgb_buffer, int width, int height,
+                                 char lines[][CAPTION_LINE_MAX_CHARS], int line_count,
+                                 bool anchor_top, int usable_width, const text_look_t *look)
+{
+    int block_height = line_count * (Font24.Height + CAPTION_LINE_PADDING) + CAPTION_LINE_PADDING;
+    if (block_height > height) {
+        block_height = height;
+    }
+    int block_top = anchor_top ? 0 : (height - block_height);
+
+    bool ink_white = text_style_ink_white(look->style);
+    rgb_t ink = ink_white ? palette[1] : palette[0];
+    rgb_t border = ink_white ? palette[0] : palette[1];
+    int8_t offsets[TEXT_BORDER_MAX_OFFSETS][2];
+    int offset_count = text_border_offsets(look->border_px, offsets, TEXT_BORDER_MAX_OFFSETS);
+
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < line_count; i++) {
+            int text_width = measure_line_width(lines[i]);
+            int x = (usable_width - text_width) / 2;
+            if (x < CAPTION_LINE_PADDING) {
+                x = CAPTION_LINE_PADDING;
+            }
+            int y = block_top + CAPTION_LINE_PADDING + i * (Font24.Height + CAPTION_LINE_PADDING);
+            if (pass == 0) {
+                for (int k = 0; k < offset_count; k++) {
+                    draw_line_pass(rgb_buffer, width, height, x + offsets[k][0], y + offsets[k][1],
+                                   lines[i], border, true);
+                }
+            } else {
+                draw_line_pass(rgb_buffer, width, height, x, y, lines[i], ink, false);
+            }
+        }
+    }
+}
+
+// The look of the overlay lines: what the Web UI chose
+static text_look_t overlay_text_look(void)
+{
+    text_look_t look = {.style = text_style_clamp(config_manager_get_overlay_text_style()),
+                        .border_px = text_border_clamp(config_manager_get_overlay_text_border())};
+    return look;
+}
+
+// The look of a caption (EXIF date, Telegram): the style of the overlay lines only where the
+// captions also follow the overlay's colours ("also apply to captions"), the bar otherwise
+static text_look_t caption_text_look(void)
+{
+    if (!config_manager_get_caption_invert_colors_enabled()) {
+        text_look_t bar = {.style = TEXT_STYLE_BAR, .border_px = TEXT_BORDER_DEFAULT};
+        return bar;
+    }
+    return overlay_text_look();
+}
+#endif
+
 // Greedy word-wraps already-ASCII-sanitized `text` into up to `max_lines`
 // lines that fit within `width` pixels, truncating the last line with a
 // single "~" if there's leftover text. Returns the number of lines produced
@@ -4089,8 +4202,9 @@ static int wrap_ascii_text(const char *text, int width, int max_lines,
     return line_count;
 }
 
-void image_processor_draw_caption(uint8_t *rgb_buffer, int width, int height, const char *caption,
-                                  bool invert_colors)
+// `look` is NULL for the plain bar; a look of the text-outline option draws the border text instead
+static void draw_caption_impl(uint8_t *rgb_buffer, int width, int height, const char *caption,
+                              bool invert_colors, const text_look_t *look)
 {
     if (!rgb_buffer || !caption || caption[0] == '\0') {
         return;
@@ -4115,8 +4229,31 @@ void image_processor_draw_caption(uint8_t *rgb_buffer, int width, int height, co
     // setting, though callers typically pass the same value through).
     rgb_t bg = invert_colors ? palette[1] : palette[0];
     rgb_t fg = invert_colors ? palette[0] : palette[1];
+#if FEATURE_TEXT_OUTLINE
+    if (look && look->style != TEXT_STYLE_BAR) {
+        render_text_outlined(rgb_buffer, width, height, lines, line_count, false, width, look);
+        return;
+    }
+#else
+    (void) look;
+#endif
     render_text_bar(rgb_buffer, width, height, lines, line_count, false, width, bg, fg);
 }
+
+void image_processor_draw_caption(uint8_t *rgb_buffer, int width, int height, const char *caption,
+                                  bool invert_colors)
+{
+    draw_caption_impl(rgb_buffer, width, height, caption, invert_colors, NULL);
+}
+
+#if FEATURE_TEXT_OUTLINE
+void image_processor_draw_caption_look(uint8_t *rgb_buffer, int width, int height,
+                                       const char *caption, bool invert_colors)
+{
+    text_look_t look = caption_text_look();
+    draw_caption_impl(rgb_buffer, width, height, caption, invert_colors, &look);
+}
+#endif
 
 int image_processor_wrap_text(const char *text, int width, int max_lines,
                               char out_lines[][OVERLAY_LINE_MAX_CHARS])
@@ -4132,9 +4269,10 @@ int image_processor_wrap_text(const char *text, int width, int max_lines,
     return wrap_ascii_text(ascii, width, max_lines, out_lines);
 }
 
-void image_processor_draw_overlay_bar(uint8_t *rgb_buffer, int width, int height,
-                                      const char *const *lines, int line_count, bool invert_colors,
-                                      int right_margin_px)
+// `look` is NULL for the plain bar, see draw_caption_impl()
+static void draw_overlay_bar_impl(uint8_t *rgb_buffer, int width, int height,
+                                  const char *const *lines, int line_count, bool invert_colors,
+                                  int right_margin_px, const text_look_t *look)
 {
     if (!rgb_buffer || !lines || line_count <= 0) {
         return;
@@ -4200,8 +4338,25 @@ void image_processor_draw_overlay_bar(uint8_t *rgb_buffer, int width, int height
     // way, so the result stays a valid "processed" buffer.
     rgb_t bg = invert_colors ? palette[1] : palette[0];
     rgb_t fg = invert_colors ? palette[0] : palette[1];
+#if FEATURE_TEXT_OUTLINE
+    if (look && look->style != TEXT_STYLE_BAR) {
+        render_text_outlined(rgb_buffer, width, height, built_lines, built_count, true,
+                             usable_width, look);
+        return;
+    }
+#else
+    (void) look;
+#endif
     render_text_bar(rgb_buffer, width, height, built_lines, built_count, true, usable_width, bg,
                     fg);
+}
+
+void image_processor_draw_overlay_bar(uint8_t *rgb_buffer, int width, int height,
+                                      const char *const *lines, int line_count, bool invert_colors,
+                                      int right_margin_px)
+{
+    draw_overlay_bar_impl(rgb_buffer, width, height, lines, line_count, invert_colors,
+                          right_margin_px, NULL);
 }
 
 void image_processor_draw_battery_badge(uint8_t *rgb_buffer, int width, int height,
@@ -4428,6 +4583,28 @@ esp_err_t image_processor_add_caption_to_file(const char *png_path, const char *
     return apply_text_overlay_to_file(png_path, caption_draw_trampoline, &arg);
 }
 
+#if FEATURE_TEXT_OUTLINE
+static void caption_look_draw_trampoline(uint8_t *rgb_buffer, int width, int height,
+                                         const void *arg)
+{
+    const caption_draw_arg_t *a = (const caption_draw_arg_t *) arg;
+    image_processor_draw_caption_look(rgb_buffer, width, height, a->caption, a->invert_colors);
+}
+
+esp_err_t image_processor_add_caption_look_to_file(const char *png_path, const char *caption,
+                                                   bool invert_colors)
+{
+    if (!caption || caption[0] == '\0') {
+        return ESP_OK;
+    }
+    if (!png_path) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    caption_draw_arg_t arg = {.caption = caption, .invert_colors = invert_colors};
+    return apply_text_overlay_to_file(png_path, caption_look_draw_trampoline, &arg);
+}
+#endif
+
 typedef struct {
     const char *const *lines;
     int line_count;
@@ -4438,8 +4615,14 @@ typedef struct {
 static void overlay_draw_trampoline(uint8_t *rgb_buffer, int width, int height, const void *arg)
 {
     const overlay_draw_arg_t *a = (const overlay_draw_arg_t *) arg;
+#if FEATURE_TEXT_OUTLINE
+    text_look_t look = overlay_text_look();
+    draw_overlay_bar_impl(rgb_buffer, width, height, a->lines, a->line_count, a->invert_colors,
+                          a->right_margin_px, &look);
+#else
     image_processor_draw_overlay_bar(rgb_buffer, width, height, a->lines, a->line_count,
                                      a->invert_colors, a->right_margin_px);
+#endif
 }
 
 esp_err_t image_processor_add_overlay_to_file(char *path, const char *const *lines, int line_count,
@@ -4536,7 +4719,7 @@ esp_err_t image_processor_add_overlay_to_file(char *path, const char *const *lin
         // inversion convention already used for a Telegram photo's own
         // caption (see telegram_bot.c's telegram_caption_invert_colors()).
         bool invert_caption = config_manager_get_caption_invert_colors_enabled() && invert_colors;
-        image_processor_draw_caption(rgb_buffer, width, height, exif_caption, invert_caption);
+        image_processor_draw_caption_look(rgb_buffer, width, height, exif_caption, invert_caption);
     }
 
     image_format_t actual_format = format;

@@ -170,6 +170,7 @@ class BundleTest(unittest.TestCase):
                 "artworks",
                 "schedule-pages",
                 "recipes",
+                "text-outline",
             },
         )
 

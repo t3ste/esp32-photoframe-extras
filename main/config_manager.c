@@ -24,6 +24,9 @@
 #if FEATURE_RECIPES
 #include "recipe_source.h"
 #endif
+#if FEATURE_TEXT_OUTLINE
+#include "text_outline.h"
+#endif
 #if FEATURE_ROUTE_TIME
 #include "route_time.h"
 #endif
@@ -133,6 +136,10 @@ static bool overlay_invert_colors = false;
 static bool overlay_epdgz_enabled = false;
 static char overlay_language[OVERLAY_LANGUAGE_MAX_LEN] = OVERLAY_LANGUAGE_DEFAULT;
 static bool caption_invert_colors_enabled = false;
+#if FEATURE_TEXT_OUTLINE
+static uint8_t overlay_text_style = TEXT_STYLE_BAR;
+static uint8_t overlay_text_border = TEXT_BORDER_DEFAULT;
+#endif
 static bool weather_multiline_enabled = false;
 static char weather_icon_set[WEATHER_ICON_SET_MAX_LEN] = WEATHER_ICON_SET_DEFAULT;
 static bool weather_icon_colored = false;
@@ -1272,6 +1279,16 @@ esp_err_t config_manager_init(void)
             ESP_OK) {
             caption_invert_colors_enabled = (stored_caption_invert != 0);
         }
+#if FEATURE_TEXT_OUTLINE
+        uint8_t stored_text_style = TEXT_STYLE_BAR;
+        if (nvs_get_u8(nvs_handle, NVS_OVERLAY_TEXT_STYLE_KEY, &stored_text_style) == ESP_OK) {
+            overlay_text_style = text_style_clamp(stored_text_style);
+        }
+        uint8_t stored_text_border = TEXT_BORDER_DEFAULT;
+        if (nvs_get_u8(nvs_handle, NVS_OVERLAY_TEXT_BORDER_KEY, &stored_text_border) == ESP_OK) {
+            overlay_text_border = text_border_clamp(stored_text_border);
+        }
+#endif
         uint8_t stored_weather_multiline = 0;
         if (nvs_get_u8(nvs_handle, NVS_WEATHER_MULTILINE_KEY, &stored_weather_multiline) ==
             ESP_OK) {
@@ -3474,6 +3491,42 @@ bool config_manager_get_caption_invert_colors_enabled(void)
 {
     return caption_invert_colors_enabled;
 }
+
+#if FEATURE_TEXT_OUTLINE
+void config_manager_set_overlay_text_style(int style)
+{
+    overlay_text_style = text_style_clamp(style);
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_OVERLAY_TEXT_STYLE_KEY, overlay_text_style);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+int config_manager_get_overlay_text_style(void)
+{
+    return overlay_text_style;
+}
+
+void config_manager_set_overlay_text_border(int px)
+{
+    overlay_text_border = text_border_clamp(px);
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_OVERLAY_TEXT_BORDER_KEY, overlay_text_border);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+}
+
+int config_manager_get_overlay_text_border(void)
+{
+    return overlay_text_border;
+}
+#endif
 
 void config_manager_set_weather_multiline_enabled(bool enabled)
 {

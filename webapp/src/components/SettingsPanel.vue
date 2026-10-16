@@ -4677,12 +4677,57 @@ async function performFactoryReset() {
             </div>
             <v-checkbox
               v-model="settingsStore.deviceSettings.captionInvertColorsEnabled"
+<!-- #if FEATURE_TEXT_OUTLINE -->
+              label="Also apply color inversion and text style to Telegram and photo-date captions"
+<!-- #else -->
               label="Also apply color inversion to Telegram photo captions"
+<!-- #endif -->
               color="primary"
               density="compact"
               hide-details
               class="mb-4"
             />
+
+<!-- #if FEATURE_TEXT_OUTLINE -->
+            <div class="text-subtitle-2 mb-2">Text style</div>
+            <v-row dense class="mb-1">
+              <v-col cols="12" sm="8">
+                <v-select
+                  v-model="settingsStore.deviceSettings.overlayTextStyle"
+                  :items="[
+                    { title: 'Bar across the picture (default)', value: 'bar' },
+                    { title: 'White text with a black border, no bar', value: 'white' },
+                    { title: 'Black text with a white border, no bar', value: 'black' },
+                  ]"
+                  label="Overlay text style"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+              <v-col cols="12" sm="4">
+                <v-select
+                  v-model="settingsStore.deviceSettings.overlayTextBorder"
+                  :items="[
+                    { title: '1 pixel', value: 1 },
+                    { title: '2 pixels', value: 2 },
+                  ]"
+                  :disabled="settingsStore.deviceSettings.overlayTextStyle === 'bar'"
+                  label="Border width"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                />
+              </v-col>
+            </v-row>
+            <div class="text-caption text-medium-emphasis mb-4">
+              Without a bar the weather and headline lines and, with the checkbox above, the
+              captions are drawn as text alone with a border, so the picture stays visible behind
+              them. Weather icons get the same border. With a text style the invert switch above
+              does not apply - the style chooses the colors. 2 pixels read better on a busy
+              picture.
+            </div>
+<!-- #endif -->
 
             <v-switch
               v-model="settingsStore.deviceSettings.overlayEpdgzEnabled"
