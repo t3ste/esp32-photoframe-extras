@@ -614,6 +614,12 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  // Whether the Image URL in the form is the one the frame has; the
+  // trust-certificate action acts on the saved one.
+  function isImageUrlSaved() {
+    return (deviceSettings.value.imageUrl || "") === (originalConfig.image_url || "");
+  }
+
   async function loadDeviceSettings() {
     try {
       const response = await fetch(`${API_BASE}/api/config`);
@@ -1601,6 +1607,7 @@ export const useSettingsStore = defineStore("settings", () => {
     applyGrayscaleDefaultIfUntouched,
     loadSettings,
     loadDeviceSettings,
+    isImageUrlSaved,
     saveDeviceSettings,
 
     loadPalette,
