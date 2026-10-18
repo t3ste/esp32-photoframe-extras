@@ -74,7 +74,7 @@ const hasStartOrEnd = props.start || props.end || props.left || props.right;
     <!-- SVG Icon -->
     <svg
       v-if="iconName"
-      :class="['v-icon-svg', { 'size--' + normalizedSize: typeof props.size === 'number' }]"
+      :class="['v-icon-svg', { [ 'size--' + normalizedSize ]: typeof props.size === 'number' }]"
       :style="{ width: normalizedSize, height: normalizedSize, fill: props.color }"
       aria-hidden="true"
       focusable="false"
