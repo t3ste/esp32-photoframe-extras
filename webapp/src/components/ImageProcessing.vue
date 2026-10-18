@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import ToneCurve from "./ToneCurve.vue";
 import { useAppStore, useSettingsStore } from "../stores";
+import { IDENTITY, rotated, mirrored, orientCanvas } from "../utils/orientation";
 
 const props = defineProps({
   imageFile: {
@@ -75,6 +76,10 @@ let panStartX = 0;
 let panStartY = 0;
 let panStartImgX = 0;
 let panStartImgY = 0;
+// Rotate / mirror chosen for this picture; reset when a new one is loaded
+const transform = ref({ ...IDENTITY });
+// Source canvas for reprocessing: the decoded picture with `transform` applied
+let decodedCanvas = null;
 
 // Source canvas for reprocessing
 let sourceCanvas = null;
@@ -297,6 +302,36 @@ watch(scaleMode, async (newMode) => {
   }
 });
 
+// #if FORK_FIXES
+// Rotate (quarter turns, positive = clockwise) or mirror the picture, then
+// lay it out again. A turn may swap the picture's width and height, so the
+// custom pan/zoom starts over; a mirror keeps it and swaps the side margins.
+async function rotate(quarterTurns) {
+  transform.value = rotated(transform.value, quarterTurns);
+  await applyTransform(initCustomMode);
+}
+
+async function mirror() {
+  transform.value = mirrored(transform.value);
+  await applyTransform(() => {
+    const { frameWidth } = getFrameDimensions();
+    customPanX.value = frameWidth - (customPanX.value + sourceCanvas.width * customZoom.value);
+  });
+}
+// #else
+// Rotate (quarter turns, positive = clockwise) or mirror the picture, then
+// lay it out again. A turn may swap the picture's width and height, so the
+// custom pan/zoom starts over; a mirror keeps it and swaps the side margins.
+// Not implemented in upstream.
+// #endif
+
+async function applyTransform(relayoutCustom) {
+  if (!decodedCanvas) return;
+  sourceCanvas = orientCanvas(decodedCanvas, transform.value);
+  if (scaleMode.value === "custom") relayoutCustom();
+  if (isReady.value) await updatePreview();
+}
+
 async function loadAndProcessImage(file) {
   if (!originalCanvasRef.value || !processedCanvasRef.value) return;
 
@@ -305,11 +340,12 @@ async function loadAndProcessImage(file) {
   try {
     const img = await loadImage(file);
 
-    sourceCanvas = document.createElement("canvas");
-    sourceCanvas.width = img.width;
-    sourceCanvas.height = img.height;
-    const sourceCtx = sourceCanvas.getContext("2d");
-    sourceCtx.drawImage(img, 0, 0);
+    decodedCanvas = document.createElement("canvas");
+    decodedCanvas.width = img.width;
+    decodedCanvas.height = img.height;
+    decodedCanvas.getContext("2d").drawImage(img, 0, 0);
+    transform.value = { ...IDENTITY };
+    sourceCanvas = decodedCanvas;
 
     // Default to the configured scale mode and background from the shared
     // processing params (the device settings, or the page-local params on
@@ -557,6 +593,26 @@ onUnmounted(() => {
             Custom
           </v-btn>
         </v-btn-toggle>
+
+        <!-- #if FORK_FIXES -->
+        <!-- Rotate/Mirror Controls -->
+        <div v-if="scaleMode === 'custom'" class="d-flex gap-2 mb-3">
+          <v-btn
+            size="small"
+            color="primary"
+            variant="outlined"
+            density="compact"
+            @click="rotate(1)"
+          >
+            <v-icon start size="small">mdi-rotate-right</v-icon>
+            Rotate →
+          </v-btn>
+          <v-btn size="small" color="primary" variant="outlined" density="compact" @click="mirror">
+            <v-icon start size="small">mdi-flip-horizontal</v-icon>
+            Mirror
+          </v-btn>
+        </div>
+        <!-- #endif -->
 
         <!-- Background color selector (only for fit/custom modes) -->
         <div v-if="scaleMode !== 'cover'" class="d-flex align-center mb-3">

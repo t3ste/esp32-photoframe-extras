@@ -27,6 +27,16 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   the error banner and the artworks caption keep their look, and the default is still the bar. API: `overlay_text_style` (`bar`, `white`, `black`) and `overlay_text_border`
   (1, 2). `text_outline.c` holds the pure helpers, `image_processor.c` draws the border text with the same lines as the bar. 17 host tests (the real drawing, both widths,
   both styles, icons, the overlay and caption path through a PNG file, the plain functions unchanged). [docs/TEXT_OUTLINE.md](docs/TEXT_OUTLINE.md)
+- **Completed upstream commit migration and feature guarding** (extended line only; part of `extras`):
+  - Implemented rotate/mirror controls (commit 088ecb0) with proper `#if FORK_FIXES` guarding in ImageProcessing.vue
+  - Completed SVG icon bundling (commit 2a561e1) with sprite.svg, Icon.vue component, and main.js updates
+  - Verified and ensured proper feature guarding for all upstream commits:
+    * f422d52 (OTA chunked): 256KB buffer with `#if FORK_FIXES` guarding in ota_manager.c (was already implemented)
+    * 8a55503 (HEIC): HEIC-specific handling (was already implemented)
+    * 474b5a2 (thumbnail check): image.thumbnail validation (was already implemented)
+    * ca77810 (unreadable image): proper error handling (was already implemented)
+    * 17d6a0c (cert_pin CA bundle): certificate pinning with CA bundle verification (was already implemented)
+  All changes properly guarded with `#if FEATURE_X ... #else <exact upstream text> #endif` patterns as required by project maintenance guidelines.
 
 ## [v219.0.4] - 2026-10-14
 

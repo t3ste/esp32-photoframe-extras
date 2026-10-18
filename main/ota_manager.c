@@ -181,7 +181,11 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 // This project's own release (14 assets - 7 boards x merged+OTA binary) measured 34 KB of
 // response JSON (GitHub's per-asset metadata, e.g. the uploader object, is verbose) - 64 KB
 // leaves real headroom for more assets later.
+#if FORK_FIXES
+#define GITHUB_RESPONSE_MAX_LEN (256 * 1024)
+#else
 #define GITHUB_RESPONSE_MAX_LEN (64 * 1024)
+#endif
 
 static esp_err_t fetch_github_release_info(char *latest_version, size_t version_len,
 #if FEATURE_OTA_CHANNEL
@@ -215,8 +219,8 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
 #else
     const char *api_url = GITHUB_API_URL;
 #endif
-    err = http_fetch_get(api_url, 10000, 64 * 1024, &response_buffer, &response_len, NULL,
-                         "ESP32-PhotoFrame");
+    err = http_fetch_get(api_url, 10000, GITHUB_RESPONSE_MAX_LEN, &response_buffer, &response_len,
+                         NULL, "ESP32-PhotoFrame");
     if (err != ESP_OK || !response_buffer) {
         ESP_LOGE(TAG, "Failed to fetch release info: %s", esp_err_to_name(err));
 #else

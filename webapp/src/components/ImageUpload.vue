@@ -685,7 +685,13 @@ const snackbarColor = ref("info");
 // The chosen file could not be read as an image (damaged, or a format this browser cannot decode):
 // say so and drop it, instead of a blank preview with buttons that do nothing.
 function onImageUnreadable() {
-  showMessage("This file could not be read as an image", "error");
+  const name = selectedFile.value?.name ?? "";
+  showMessage(
+    /\.hei[cf]$/i.test(name)
+      ? "This browser cannot read HEIC photos; export it as JPEG, or use Safari"
+      : "This file could not be read as an image",
+    "error"
+  );
   resetUpload();
 }
 
@@ -898,7 +904,7 @@ async function generateAiImage() {
       <input
         ref="fileInput"
         type="file"
-        accept=".jpg,.jpeg,.png,.heic,.heif,.webp,.gif,.bmp,.epdgz"
+        accept="#if FORK_FIXES .jpg,.jpeg,.png,.webp,.gif,.bmp,.epdgz,image/* #else .jpg,.jpeg,.png,.webp,.gif,.bmp #endif"
         multiple
         style="display: none"
         @change="onFileSelected"
@@ -907,7 +913,7 @@ async function generateAiImage() {
       <input
         ref="fileInput"
         type="file"
-        accept=".jpg,.jpeg,.png,.heic,.heif,.webp,.gif,.bmp"
+        accept="#if FORK_FIXES image/* #else .jpg,.jpeg,.png,.gif,.bmp #endif"
         style="display: none"
         @change="onFileSelected"
       />
@@ -927,12 +933,15 @@ async function generateAiImage() {
         <!-- #if FEATURE_MULTI_UPLOAD -->
         <p class="text-h6 mt-4">Click or drag images to upload</p>
         <p class="text-body-2 text-grey">
-          Supports: JPG, PNG, HEIC, WebP, GIF, BMP - select several files to upload them in one go,
-          or EPDGZ files rendered for this panel (for instance with process-cli)
+          Supports: JPG, PNG, WebP, GIF, BMP #if FORK_FIXES ; HEIC only in Safari #endif - select
+          several files to upload them in one go, or EPDGZ files rendered for this panel (for
+          instance with process-cli)
         </p>
         <!-- #else -->
         <p class="text-h6 mt-4">Click or drag image to upload</p>
-        <p class="text-body-2 text-grey">Supports: JPG, PNG, HEIC, WebP, GIF, BMP</p>
+        <p class="text-body-2 text-grey">
+          Supports: JPG, PNG, WebP, GIF, BMP #if FORK_FIXES ; HEIC only in Safari #endif
+        </p>
         <!-- #endif -->
         <div class="my-3 d-flex align-center" style="width: 100%">
           <v-divider />
