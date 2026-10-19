@@ -2418,6 +2418,7 @@ const uint8_t *config_manager_get_ca_cert_der(size_t *out_len)
     }
     return ca_cert_der;
 }
+#if CONFIG_FEATURE_HTTPS
 bool config_manager_has_ca_cert(void)
 {
     return ca_cert_der != NULL;
@@ -2461,6 +2462,7 @@ bool config_manager_clear_ca_cert_der_if_unchanged(uint32_t generation)
     ESP_LOGI(TAG, "CA certificate cleared");
     return true;
 }
+#endif
 
 void config_manager_set_access_token(const char *token)
 {

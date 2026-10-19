@@ -96,6 +96,7 @@ void config_manager_set_image_url(const char *url);
 const char *config_manager_get_image_url(void);
 
 void config_manager_set_ca_cert_der(const uint8_t *der, size_t len);
+#if CONFIG_FEATURE_HTTPS
 bool config_manager_has_ca_cert(void);
 // A private copy of the pin for a request, with the pin's generation at the
 // time. *out_len is the pin's length whether or not the copy succeeded:
@@ -103,7 +104,8 @@ bool config_manager_has_ca_cert(void);
 // memory. Caller frees.
 uint8_t *config_manager_copy_ca_cert_der(size_t *out_len, uint32_t *generation);
 // Clears the pin only if it is still the one `generation` was taken from.
-bool config_manager_clear_ca_cert_der_if_unchanged(uint32_t generation);
+bool config_manager_clear_ca_cert_der_if_unchanged(uint32_t generation)
+#endif
 const uint8_t *config_manager_get_ca_cert_der(size_t *out_len);
 
 void config_manager_set_access_token(const char *token);
