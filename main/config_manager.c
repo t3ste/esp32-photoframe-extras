@@ -1,6 +1,7 @@
 #include "config_manager.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -68,6 +69,7 @@ static int32_t last_index = -1;
 static char image_url[IMAGE_URL_MAX_LEN] = {0};
 static uint8_t *ca_cert_der = NULL;  // Heap-allocated DER certificate
 static size_t ca_cert_der_len = 0;
+static uint32_t ca_cert_generation = 0;
 static char access_token[ACCESS_TOKEN_MAX_LEN] = {0};
 static char http_password[HTTP_PASSWORD_MAX_LEN] = {0};
 static char http_header_key[HTTP_HEADER_KEY_MAX_LEN] = {0};
@@ -2391,6 +2393,9 @@ void config_manager_set_ca_cert_der(const uint8_t *der, size_t len)
         }
     }
 
+    // Increment generation to mark that the certificate has been changed
+    ca_cert_generation++;
+
     nvs_handle_t nvs_handle;
     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
         if (ca_cert_der) {
@@ -2412,6 +2417,49 @@ const uint8_t *config_manager_get_ca_cert_der(size_t *out_len)
         *out_len = ca_cert_der_len;
     }
     return ca_cert_der;
+}
+bool config_manager_has_ca_cert(void)
+{
+    return ca_cert_der != NULL;
+}
+
+uint8_t *config_manager_copy_ca_cert_der(size_t *out_len, uint32_t *generation)
+{
+    if (out_len) {
+        *out_len = ca_cert_der_len;
+    }
+    if (generation) {
+        *generation = ca_cert_generation;
+    }
+    if (ca_cert_der && ca_cert_der_len > 0) {
+        uint8_t *copy = malloc(ca_cert_der_len);
+        if (copy) {
+            memcpy(copy, ca_cert_der, ca_cert_der_len);
+        }
+        return copy;
+    }
+    return NULL;
+}
+bool config_manager_clear_ca_cert_der_if_unchanged(uint32_t generation)
+{
+    if (ca_cert_generation != generation) {
+        return false;  // Generation mismatch, certificate has changed
+    }
+    free(ca_cert_der);
+    ca_cert_der = NULL;
+    ca_cert_der_len = 0;
+    // Increment generation to mark that the certificate has been cleared
+    ca_cert_generation++;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_erase_key(nvs_handle, NVS_CA_CERT_KEY);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "CA certificate cleared");
+    return true;
 }
 
 void config_manager_set_access_token(const char *token)

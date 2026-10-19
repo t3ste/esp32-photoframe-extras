@@ -104,6 +104,7 @@ bool config_manager_has_ca_cert(void);
 uint8_t *config_manager_copy_ca_cert_der(size_t *out_len, uint32_t *generation);
 // Clears the pin only if it is still the one `generation` was taken from.
 bool config_manager_clear_ca_cert_der_if_unchanged(uint32_t generation);
+const uint8_t *config_manager_get_ca_cert_der(size_t *out_len);
 
 void config_manager_set_access_token(const char *token);
 const char *config_manager_get_access_token(void);
