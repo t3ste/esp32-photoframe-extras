@@ -901,10 +901,11 @@ async function generateAiImage() {
     <v-card-text>
       <!-- Hidden file input -->
       <!-- #if FEATURE_MULTI_UPLOAD -->
+      <!-- #if FORK_FIXES -->
       <input
         ref="fileInput"
         type="file"
-        accept="#if FORK_FIXES .jpg,.jpeg,.png,.webp,.gif,.bmp,.epdgz,image/* #else .jpg,.jpeg,.png,.webp,.gif,.bmp #endif"
+        accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.epdgz,image/*"
         multiple
         style="display: none"
         @change="onFileSelected"
@@ -913,10 +914,30 @@ async function generateAiImage() {
       <input
         ref="fileInput"
         type="file"
-        accept="#if FORK_FIXES image/* #else .jpg,.jpeg,.png,.gif,.bmp #endif"
+        accept=".jpg,.jpeg,.png,.heic,.heif,.webp,.gif,.bmp"
+        multiple
         style="display: none"
         @change="onFileSelected"
       />
+      <!-- #endif -->
+      <!-- #else -->
+      <!-- #if FORK_FIXES -->
+      <input
+        ref="fileInput"
+        type="file"
+        accept="image/*"
+        style="display: none"
+        @change="onFileSelected"
+      />
+      <!-- #else -->
+      <input
+        ref="fileInput"
+        type="file"
+        accept=".jpg,.jpeg,.png,.heic,.heif,.webp,.gif,.bmp"
+        style="display: none"
+        @change="onFileSelected"
+      />
+      <!-- #endif -->
       <!-- #endif -->
 
       <!-- Upload Area -->
@@ -932,16 +953,24 @@ async function generateAiImage() {
         <v-icon icon="mdi-cloud-upload" size="64" color="grey" />
         <!-- #if FEATURE_MULTI_UPLOAD -->
         <p class="text-h6 mt-4">Click or drag images to upload</p>
+        <!-- #if FORK_FIXES -->
         <p class="text-body-2 text-grey">
-          Supports: JPG, PNG, WebP, GIF, BMP #if FORK_FIXES ; HEIC only in Safari #endif - select
-          several files to upload them in one go, or EPDGZ files rendered for this panel (for
-          instance with process-cli)
+          Supports: JPG, PNG, HEIC, WebP, GIF, BMP; HEIC only in Safari
         </p>
         <!-- #else -->
+        <p class="text-body-2 text-grey">Supports: JPG, PNG, HEIC, WebP, GIF, BMP</p>
+        <!-- #endif -->
+        - select several files to upload them in one go, or EPDGZ files rendered for this panel (for
+        instance with process-cli)
+        <!-- #else -->
         <p class="text-h6 mt-4">Click or drag image to upload</p>
+        <!-- #if FORK_FIXES -->
         <p class="text-body-2 text-grey">
-          Supports: JPG, PNG, WebP, GIF, BMP #if FORK_FIXES ; HEIC only in Safari #endif
+          Supports: JPG, PNG, HEIC, WebP, GIF, BMP; HEIC only in Safari
         </p>
+        <!-- #else -->
+        <p class="text-body-2 text-grey">Supports: JPG, PNG, HEIC, WebP, GIF, BMP</p>
+        <!-- #endif -->
         <!-- #endif -->
         <div class="my-3 d-flex align-center" style="width: 100%">
           <v-divider />

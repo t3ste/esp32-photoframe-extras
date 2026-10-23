@@ -138,6 +138,7 @@ const scheduleValid = computed(() => {
 const browserZone = browserTimeZone();
 const browserZoneKnown = ruleForZone(browserZone) !== null;
 const showAdvancedTz = ref(false);
+// #if FORK_FIXES
 const trustingCert = ref(false);
 const trustCertResult = ref(null); // { ok, text }
 
@@ -165,6 +166,7 @@ async function trustCertificate() {
     trustingCert.value = false;
   }
 }
+// #endif
 
 const timezoneRule = computed(() => settingsStore.deviceSettings.timezone);
 // Only an edited rule is checked: a value an older firmware let through must
@@ -2540,13 +2542,19 @@ async function performFactoryReset() {
                         Certificate Pinned
                       </v-chip>
                       <div class="text-caption text-medium-emphasis">
+                        <!-- #if FORK_FIXES -->
                         No public CA vouches for this server, so its own certificate is pinned. If
                         the server moves to a publicly trusted certificate the pin is dropped by
                         itself; after a self-signed certificate changes, use Trust certificate below
                         to accept the new one.
+                        <!-- #else -->
+                        The TLS certificate for this HTTPS URL is pinned. It will re-pin
+                        automatically when you change the URL.
+                        <!-- #endif -->
                       </div>
                     </div>
 
+                    <!-- #if FORK_FIXES -->
                     <div
                       v-if="settingsStore.deviceSettings.imageUrl?.startsWith('https://')"
                       class="mb-4 d-flex flex-wrap align-center ga-2"
@@ -2575,6 +2583,7 @@ async function performFactoryReset() {
                         {{ trustCertResult.text }}
                       </span>
                     </div>
+                    <!-- #endif -->
 
                     <v-alert
                       v-if="settingsStore.deviceSettings.lastFetchError"

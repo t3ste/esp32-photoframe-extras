@@ -3,7 +3,9 @@ import { createPinia } from "pinia";
 import vuetify from "./plugins/vuetify";
 import router from "./router";
 import App from "./App.vue";
+// #if FORK_FIXES
 import Icon from "./components/Icon.vue";
+// #endif
 // #if FORK_FIXES
 // The icons and the font ship with the firmware (a frame has no internet access in its own hotspot, on a
 // LAN without outbound access, ...): the page used to load them from cdn.jsdelivr.net and fonts.googleapis.com.
@@ -21,5 +23,7 @@ const pinia = createPinia();
 app.use(pinia);
 app.use(router);
 app.use(vuetify);
+// #if FORK_FIXES
 app.component("v-icon", Icon); // Register as global component to replace v-icon usage
+// #endif
 app.mount("#app");

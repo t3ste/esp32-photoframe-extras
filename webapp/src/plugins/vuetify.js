@@ -1,6 +1,7 @@
 import "vuetify/styles";
-import { h } from "vue";
 import { createVuetify } from "vuetify";
+// #if FORK_FIXES
+import { h } from "vue";
 import { VSvgIcon } from "vuetify/components/VIcon";
 import { aliases } from "vuetify/iconsets/mdi-svg";
 import { icons } from "./icons";
@@ -19,13 +20,16 @@ function MdiIcon(props) {
   return h(VSvgIcon, { icon: path, tag: props.tag });
 }
 MdiIcon.props = { icon: String, tag: String };
+// #endif
 
 export default createVuetify({
+  // #if FORK_FIXES
   icons: {
     defaultSet: "mdi",
     aliases,
     sets: { mdi: { component: MdiIcon } },
   },
+  // #endif
   theme: {
     defaultTheme: "light",
     themes: {
