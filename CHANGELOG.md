@@ -15,7 +15,9 @@ two releases were published there). With no build option chosen, this firmware *
 version; the last two numbers count this repository's own releases (`v218.0.0`, `v218.0.1`, ...; when upstream
 has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
 
-## [Unreleased]
+## [v219.0.5] - 2026-10-23
+
+CA certificate functions wrapped with `#if CONFIG_FEATURE_HTTPS ... #else` so every feature off restores upstream's exact text; missing semicolon in `config_manager_clear_ca_cert_der_if_unchanged`; all web sources wrapped with `FORK_FIXES` guards so `alloff_web.py` passes; `Icon.vue` formatted with prettier so the code formatting check passes. CI: format-check, host-tests and feature-tooling all green.
 
 ### Added
 
@@ -37,6 +39,8 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
     * ca77810 (unreadable image): proper error handling (was already implemented)
     * 17d6a0c (cert_pin CA bundle): certificate pinning with CA bundle verification (was already implemented)
   All changes properly guarded with `#if FEATURE_X ... #else <exact upstream text> #endif` patterns as required by project maintenance guidelines.
+
+## [Unreleased]
 
 ## [v219.0.4] - 2026-10-14
 
