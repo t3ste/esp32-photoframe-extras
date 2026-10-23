@@ -1985,7 +1985,11 @@ static esp_err_t fetch_perform_download(const char *url, bool *not_modified, ima
     // a fetch.
     enum { TRUST_PIN, TRUST_BUNDLE } trust;
     size_t pinned_cert_len = 0;
+#if CONFIG_FEATURE_HTTPS
     bool had_pin = config_manager_has_ca_cert();
+#else
+    bool had_pin = false;
+#endif
     bool pin_rejected = false;
     // Which pin was rejected: a config request can replace it while this
     // fetch is still running, and that one must survive.
@@ -2045,7 +2049,11 @@ static esp_err_t fetch_perform_download(const char *url, bool *not_modified, ima
         uint8_t *pinned_cert = NULL;
         uint32_t pin_generation = 0;
         if (trust == TRUST_PIN) {
+#if CONFIG_FEATURE_HTTPS
             pinned_cert = config_manager_copy_ca_cert_der(&pinned_cert_len, &pin_generation);
+#else
+            // HTTPS off: no certificate to copy
+#endif
             if (!pinned_cert && pinned_cert_len > 0) {
                 // Never fall through to an unverified request
                 ESP_LOGE(TAG, "Out of memory copying the pinned certificate");
@@ -2176,6 +2184,7 @@ static esp_err_t fetch_perform_download(const char *url, bool *not_modified, ima
         free(pinned_cert);
 
         if (err == ESP_OK && pin_rejected) {
+#if CONFIG_FEATURE_HTTPS
             if (config_manager_clear_ca_cert_der_if_unchanged(rejected_pin_generation)) {
                 ESP_LOGW(TAG, "The CA bundle verifies the server; dropped the pinned certificate");
                 config_manager_touch_config();
@@ -2183,6 +2192,10 @@ static esp_err_t fetch_perform_download(const char *url, bool *not_modified, ima
                 ESP_LOGW(TAG, "Pinned certificate was replaced during the fetch; keeping it");
             }
             pin_rejected = false;
+#else
+            // HTTPS off: no pinned certificate to drop
+            pin_rejected = false;
+#endif
         }
 
         // 304 Not Modified: server confirmed the cached image is still current.

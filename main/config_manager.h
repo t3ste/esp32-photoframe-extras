@@ -104,7 +104,7 @@ bool config_manager_has_ca_cert(void);
 // memory. Caller frees.
 uint8_t *config_manager_copy_ca_cert_der(size_t *out_len, uint32_t *generation);
 // Clears the pin only if it is still the one `generation` was taken from.
-bool config_manager_clear_ca_cert_der_if_unchanged(uint32_t generation)
+bool config_manager_clear_ca_cert_der_if_unchanged(uint32_t generation);
 #endif
 const uint8_t *config_manager_get_ca_cert_der(size_t *out_len);
 

@@ -162,9 +162,13 @@ esp_err_t cert_pin_fetch_and_store(const char *url, char *err_out, size_t err_ou
     esp_tls_t *tls = tls_connect(host, port, &bundle_cfg, probe_err, sizeof(probe_err));
     if (tls) {
         esp_tls_conn_destroy(tls);
+#if CONFIG_FEATURE_HTTPS
         if (config_manager_has_ca_cert()) {
             cert_pin_clear();
         }
+#else
+        // No CA cert feature: nothing to clear
+#endif
         ESP_LOGI(TAG, "%s:%d is verified by the CA bundle; nothing to pin", host, port);
         return ESP_OK;
     }

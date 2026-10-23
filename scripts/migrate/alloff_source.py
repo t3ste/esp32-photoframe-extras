@@ -36,6 +36,11 @@ EXPECTED = {
     "host_tests/CMakeLists.txt": "fork tests",
     # clang-format 18 writes the one-line initializer, upstream's file predates it
     "main/image_processor.c": "GRAY() macro layout",
+    # CA certificate / HTTPS feature: only present when CONFIG_FEATURE_HTTPS is on
+    "main/cert_pin.c": "CA certificate pinning feature",
+    "main/cert_pin.h": "CA certificate pinning header",
+    "main/config_manager.c": "CA cert generation and touch-config",
+    "main/utils.c": "TLS certificate verification and pinning",
 }
 
 
