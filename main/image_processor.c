@@ -272,7 +272,7 @@ static void cdr_init(cdr_state_t *cdr)
 // Per-row white-pixel mask, set by the row-streaming callers before each row
 // is processed. Read by cdr_apply_row() and dither_row() to preserve solid
 // white areas during on-device dithering (FORK_FIXES only).
-static const uint8_t *s_white_mask = NULL;
+static uint8_t *s_white_mask = NULL;
 #endif
 
 static void cdr_apply_row(const cdr_state_t *cdr, uint8_t *row, int width)
