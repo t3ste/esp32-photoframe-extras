@@ -94,6 +94,15 @@ included), the 8 KiB cap of the settings POSTs, the lock around the enabled-albu
 - **Kconfig-level tuning** (`features/sdkconfig.defaults.fixes`): a larger lwIP socket pool (24 vs the default 16 -
   the default ran dry under several concurrent Web UI connections) and mbedTLS allocating its TLS buffers from
   PSRAM instead of failing once internal RAM is fragmented.
+- **Solid white areas during on-device dithering** (`main/image_processor.c`): pixels
+  that are exactly white (255,255,255) after resize/rotate are marked in a per-row mask
+  before CDR brightness compression and error-diffusion dithering. Marked pixels output
+  the exact panel white directly, so the ditherer never sees a color error on them and
+  no colored Sprenkel appear in large white areas. Near-white pixels and all other
+  colors are processed normally; GC16 mode is unaffected. Only exact white (not
+  „near-white“) is protected, so mid-tones stay unchanged (unlike a previous, more
+  general change that washed them out). Costs one extra byte per pixel of the processed
+  row.
 
 None of this changes behavior with the flag off - `fixes` exists because upstream's own review cadence is slow,
 and holding every one of these behind a single flag keeps them easy to build (or skip) as one unit while the
