@@ -23,7 +23,10 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   white (255,255,255) after resize/rotate are marked in a per-row mask before CDR brightness compression and
   error-diffusion dithering. Marked pixels output the exact panel white directly, so no colored Sprenkel appear in
   large white areas. Near-white pixels and all other colors are processed normally; GC16 mode is unaffected. Only
-  exact white (not "near-white") is protected, so mid-tones stay unchanged.
+  exact white (not "near-white") is protected, so mid-tones stay unchanged. Fork of upstream
+  [PR #140](https://github.com/aitjcize/esp32-photoframe/pull/140) ("Preserve solid white areas during on-device
+  dithering"), not yet merged upstream; gated behind `FORK_FIXES` / `CONFIG_FORK_FIXES` so the code is upstream's
+  exactly with every feature off.
 
 ## [v219.0.5] - 2026-10-23
 
