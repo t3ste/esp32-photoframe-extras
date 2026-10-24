@@ -483,6 +483,12 @@ Do it when the maintainer asks, never on your own initiative. Experience from th
 
   `0xf000 ota_data_initial.bin` is mandatory (otherwise a previously OTA-updated device silently boots the old
   slot). **Never** flash `...-merged.bin` at `0x0` for tests: it erases settings.
+
+  **Important distinction:** The multi-part command above (and `idf.py flash`, which `build.py --step firmware flash` uses)
+  flashes each partition at its own offset and leaves the NVS partition (0x9000-0xF000: WiFi credentials and every
+  runtime setting) untouched. Only writing the single `...-merged.bin` at offset 0 overwrites NVS with 0xFF and
+  erases all settings. `build_flash_waveshare.bat` uses the multi-part path via `idf.py flash`, so WiFi and settings
+  survive a flash with that script.
 - If the device does not answer: check **once** (HTTP, then serial), then stop and ask the maintainer to press
   RESET/BOOT or replug USB or check the SD card. No retry loops, no ping sweeps, no serial resets of your own.
 - A test that waits (an Agenda render takes a minute or more) has to keep the frame awake: its auto-sleep timer (120 s) is reset by `POST /api/keep_alive`, which the Web UI sends too; send it every 25 s. Settings a test changes (`PATCH /api/config`) are saved first and put back afterwards, in a `finally`. Pictures of what the panel shows (`GET /api/current_image`) contain the frame's real calendar: look, then delete them.
