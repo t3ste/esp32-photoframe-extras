@@ -36,7 +36,7 @@ EXPECTED = {
     "main/config.h": "OTA feed built from the FORK_OTA_REPO option (upstream by default)",
     "host_tests/CMakeLists.txt": "fork tests",
     # clang-format 18 writes the one-line initializer, upstream's file predates it
-    "main/image_processor.c": "GRAY() macro layout",
+    "main/image_processor.c": "GRAY() macro layout; FORK_FIXES solid-white preservation during dithering",
     # CA certificate / HTTPS feature: only present when CONFIG_FEATURE_HTTPS is on
     "main/cert_pin.c": "CA certificate pinning feature",
     "main/cert_pin.h": "CA certificate pinning header",
