@@ -28,6 +28,18 @@ has a 2.19 and it is merged in: `v219.0.0`, then `v219.0.1`, ...).
   dithering"), not yet merged upstream; gated behind `FORK_FIXES` / `CONFIG_FORK_FIXES` so the code is upstream's
   exactly with every feature off.
 
+### Added
+
+- **Climate sensor readings in HTTP headers** (`main/utils.c`, `climate` option): the image fetch that rotates the URL
+  now also sends `X-Temperature` and `X-Humidity` headers alongside the existing `X-Battery-Percentage`, so a server
+  collecting the frame's telemetry can also track temperature and humidity. Only boards that report a climate sensor
+  (`board_hal_get_temperature()` / `board_hal_get_humidity()` return `ESP_OK`) send the headers; boards without one
+  omit them entirely. Gated behind `FEATURE_CLIMATE` / `CONFIG_FEATURE_CLIMATE`, which itself depends on
+  `FORK_HW_CLIMATE_SENSOR` (SHTC3 / SHT40 / SHT3X). Fork of upstream
+  [Issue #157](https://github.com/aitjcize/esp32-photoframe/issues/157) ("include the e-paper device's sensor readings
+  in the HTTP request headers"). **Not tested with a Home Assistant installation yet** (none available to receive and
+  display the headers); the Waveshare PhotoPainter 7.3" does have an SHTC3 climate sensor.
+
 ## [v219.0.5] - 2026-10-23
 
 CA certificate functions wrapped with `#if CONFIG_FEATURE_HTTPS ... #else` so every feature off restores upstream's exact text; missing semicolon in `config_manager_clear_ca_cert_der_if_unchanged`; all web sources wrapped with `FORK_FIXES` guards so `alloff_web.py` passes; `Icon.vue` formatted with prettier so the code formatting check passes. CI: format-check, host-tests and feature-tooling all green.

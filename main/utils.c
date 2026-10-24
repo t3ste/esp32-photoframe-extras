@@ -2172,6 +2172,28 @@ static esp_err_t fetch_perform_download(const char *url, bool *not_modified, ima
             esp_http_client_set_header(client, "X-Battery-Percentage", batt_str);
         }
 
+#if CONFIG_FEATURE_CLIMATE
+        // Report the climate sensor readings alongside the battery level,
+        // so a server collecting the frame's telemetry can also track
+        // temperature and humidity.  board_hal_get_temperature() /
+        // board_hal_get_humidity() answer ESP_ERR_NOT_SUPPORTED on boards
+        // without a sensor, in which case the header is simply omitted.
+        // Not tested with a Home Assistant installation yet (none available);
+        // the Waveshare PhotoPainter 7.3" does have an SHTC3 climate sensor
+        // (see https://github.com/aitjcize/esp32-photoframe/issues/157).
+        float temp_c, humidity;
+        if (board_hal_get_temperature(&temp_c) == ESP_OK) {
+            char temp_str[8];
+            snprintf(temp_str, sizeof(temp_str), "%.1f", temp_c);
+            esp_http_client_set_header(client, "X-Temperature", temp_str);
+        }
+        if (board_hal_get_humidity(&humidity) == ESP_OK) {
+            char hum_str[8];
+            snprintf(hum_str, sizeof(hum_str), "%.1f", humidity);
+            esp_http_client_set_header(client, "X-Humidity", hum_str);
+        }
+#endif
+
         err = esp_http_client_perform(client);
 
         status_code = esp_http_client_get_status_code(client);

@@ -103,6 +103,20 @@ included), the 8 KiB cap of the settings POSTs, the lock around the enabled-albu
   „near-white“) is protected, so mid-tones stay unchanged (unlike a previous, more
   general change that washed them out). Costs one extra byte per pixel of the processed
   row.
+- **Climate sensor readings in HTTP headers** (`main/utils.c`, `climate` option): the
+  image fetch that rotates the URL now also sends `X-Temperature` and `X-Humidity`
+  headers alongside the existing `X-Battery-Percentage`, so a server collecting the
+  frame's telemetry can also track temperature and humidity. Only boards that report a
+  climate sensor (`board_hal_get_temperature()` /
+  `board_hal_get_humidity()` return `ESP_OK`) send the headers; boards without one omit
+  them entirely. Gated behind `FEATURE_CLIMATE` /
+  `CONFIG_FEATURE_CLIMATE`, which itself depends on
+  `FORK_HW_CLIMATE_SENSOR` (SHTC3 / SHT40 / SHT3X). Fork of upstream
+  [Issue #157](https://github.com/aitjcize/esp32-photoframe/issues/157)
+  ("include the e-paper device's sensor readings in the HTTP request headers").
+  **Not tested with a Home Assistant installation yet** (none available to receive and
+  display the headers); the Waveshare PhotoPainter 7.3" does have an SHTC3 climate
+  sensor, so the feature is exercised by the board's own hardware.
 
 None of this changes behavior with the flag off - `fixes` exists because upstream's own review cadence is slow,
 and holding every one of these behind a single flag keeps them easy to build (or skip) as one unit while the
