@@ -268,10 +268,28 @@ static void cdr_init(cdr_state_t *cdr)
              white_Y, cdr->range);
 }
 
+#if CONFIG_FORK_FIXES
+// Per-row white-pixel mask, set by the row-streaming callers before each row
+// is processed. Read by cdr_apply_row() and dither_row() to preserve solid
+// white areas during on-device dithering (FORK_FIXES only).
+static const uint8_t *s_white_mask = NULL;
+#endif
+
 static void cdr_apply_row(const cdr_state_t *cdr, uint8_t *row, int width)
 {
     for (int x = 0; x < width; x++) {
         int idx = x * 3;
+
+#if CONFIG_FORK_FIXES
+        // Preserve solid white: output exact panel white, skip CDR compression
+        // so the ditherer never sees a color error on white pixels.
+        if (s_white_mask && s_white_mask[x]) {
+            row[idx] = palette[1].r;
+            row[idx + 1] = palette[1].g;
+            row[idx + 2] = palette[1].b;
+            continue;
+        }
+#endif
 
         float lr = srgb_to_linear(row[idx]);
         float lg = srgb_to_linear(row[idx + 1]);
@@ -457,6 +475,17 @@ static void dither_row(dither_state_t *st, uint8_t *row)
 {
     for (int x = 0; x < st->width; x++) {
         int idx = x * 3;
+
+#if CONFIG_FORK_FIXES
+        // Preserve solid white: output exact panel white, ignore incoming
+        // dither error, don't distribute outgoing error.
+        if (s_white_mask && s_white_mask[x]) {
+            row[idx] = palette[1].r;
+            row[idx + 1] = palette[1].g;
+            row[idx + 2] = palette[1].b;
+            continue;
+        }
+#endif
 
         // Working value = decoded pixel + accumulated error, in the working
         // domain (linear light on grayscale, sRGB on Spectra)
@@ -856,6 +885,17 @@ static esp_err_t run_stream_row(geometry_t *geo, cdr_state_t *cdr, dither_state_
                                 uint8_t *row, int y, row_sink_fn sink, void *sink_ctx)
 {
     geometry_fill_row(geo, y, row);
+#if CONFIG_FORK_FIXES
+    if (s_white_mask) {
+        // Mark pixels that are exactly white (255,255,255) after resize/rotate,
+        // before CDR + dither can introduce color error on them.
+        for (int x = 0; x < geo->out_w; x++) {
+            int idx = x * 3;
+            if (row[idx] == 255 && row[idx + 1] == 255 && row[idx + 2] == 255) {
+                s_white_mask[x] = 1;
+            }
+        }
+#endif
     cdr_apply_row(cdr, row, geo->out_w);
     dither_row(dither, row);
     geometry_repaint_background(geo, y, row);
@@ -876,17 +916,44 @@ static esp_err_t run_stream(geometry_t *geo, dither_algorithm_t dither_algorithm
     }
 
     uint8_t *row = (uint8_t *) heap_caps_malloc(geo->out_w * 3, MALLOC_CAP_SPIRAM);
+    uint8_t *white_mask = NULL;
+#if CONFIG_FORK_FIXES
+    white_mask = (uint8_t *) heap_caps_calloc(geo->out_w, sizeof(uint8_t), MALLOC_CAP_SPIRAM);
+    if (!white_mask) {
+        ESP_LOGE(TAG, "Failed to allocate white mask buffer");
+        heap_caps_free(row);
+        dither_free(&dither);
+        return ESP_ERR_NO_MEM;
+    }
+#endif
     if (!row) {
         ESP_LOGE(TAG, "Failed to allocate row buffer");
+#if CONFIG_FORK_FIXES
+        heap_caps_free(white_mask);
+#endif
         dither_free(&dither);
         return ESP_ERR_NO_MEM;
     }
 
     for (int y = 0; y < geo->out_h && err == ESP_OK; y++) {
+#if CONFIG_FORK_FIXES
+        memset(white_mask, 0, geo->out_w);
+        s_white_mask = white_mask;
+#endif
 #if FORK_IMAGE_PIPELINE
         err = run_stream_row(geo, &cdr, &dither, row, y, sink, sink_ctx);
 #else
         geometry_fill_row(geo, y, row);
+#if CONFIG_FORK_FIXES
+        if (white_mask) {
+            for (int x = 0; x < geo->out_w; x++) {
+                int idx = x * 3;
+                if (row[idx] == 255 && row[idx + 1] == 255 && row[idx + 2] == 255) {
+                    s_white_mask[x] = 1;
+                }
+            }
+        }
+#endif
         cdr_apply_row(&cdr, row, geo->out_w);
         dither_row(&dither, row);
         geometry_repaint_background(geo, y, row);
@@ -903,6 +970,10 @@ static esp_err_t run_stream(geometry_t *geo, dither_algorithm_t dither_algorithm
     }
 
     heap_caps_free(row);
+#if CONFIG_FORK_FIXES
+    heap_caps_free(white_mask);
+    s_white_mask = NULL;
+#endif
     dither_free(&dither);
     return err;
 }
@@ -1591,6 +1662,9 @@ typedef struct {
     cdr_state_t cdr;
     dither_state_t dither;
     uint8_t *out_row;  // one output row scratch buffer, geo.out_w * 3 bytes
+#if CONFIG_FORK_FIXES
+    uint8_t *white_mask;  // one byte per output row pixel, marks exact-white pixels
+#endif
     int next_out_row;
     row_sink_fn sink;
     void *sink_ctx;
@@ -1661,6 +1735,12 @@ static void jpg_stream_produce_ready_rows(jpg_stream_ring_ctx_t *ctx)
             break;  // not enough source data yet - wait for the next row-band
         }
 
+#if CONFIG_FORK_FIXES
+        if (ctx->white_mask) {
+            memset(ctx->white_mask, 0, ctx->geo.out_w);
+            s_white_mask = ctx->white_mask;
+        }
+#endif
         if (run_stream_row(&ctx->geo, &ctx->cdr, &ctx->dither, ctx->out_row, ctx->next_out_row,
                            ctx->sink, ctx->sink_ctx) != ESP_OK) {
             ctx->error = true;
@@ -1811,10 +1891,25 @@ static esp_err_t jpg_stream_run(const char *path, dither_algorithm_t dither_algo
     ctx.ring = (uint8_t *) heap_caps_malloc((size_t) ctx.ring_rows * ctx.width * 3,
                                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     ctx.out_row = (uint8_t *) heap_caps_malloc((size_t) ctx.geo.out_w * 3, MALLOC_CAP_SPIRAM);
+#if CONFIG_FORK_FIXES
+    ctx.white_mask = (uint8_t *) heap_caps_calloc(ctx.geo.out_w, sizeof(uint8_t), MALLOC_CAP_SPIRAM);
+    if (!ctx.white_mask) {
+        ESP_LOGE(TAG, "Failed to allocate JPG white mask buffer");
+        heap_caps_free(ctx.ring);
+        heap_caps_free(ctx.out_row);
+        dither_free(&ctx.dither);
+        heap_caps_free(pool);
+        fclose(fp);
+        return ESP_ERR_NO_MEM;
+    }
+#endif
     if (!ctx.ring || !ctx.out_row) {
         ESP_LOGE(TAG, "Failed to allocate JPG streaming ring/row buffer");
         heap_caps_free(ctx.ring);
         heap_caps_free(ctx.out_row);
+#if CONFIG_FORK_FIXES
+        heap_caps_free(ctx.white_mask);
+#endif
         dither_free(&ctx.dither);
         heap_caps_free(pool);
         fclose(fp);
@@ -1842,6 +1937,9 @@ static esp_err_t jpg_stream_run(const char *path, dither_algorithm_t dither_algo
 
     heap_caps_free(ctx.ring);
     heap_caps_free(ctx.out_row);
+#if CONFIG_FORK_FIXES
+    heap_caps_free(ctx.white_mask);
+#endif
     dither_free(&ctx.dither);
     heap_caps_free(pool);
     fclose(fp);
