@@ -32,6 +32,7 @@ EXPECTED = {
     "components/board_hal/CMakeLists.txt": "audio HAL source, optional requirements",
     "components/board_hal/include/board_hal.h": "capability macros, audio declarations",
     "components/board_hal/include/board_waveshare_photopainter_73.h": "capability macros",
+    "components/board_hal/src/battery_adc.c": "battery ADC enable pin kept driven through light sleep",
     "main/config.h": "OTA feed built from the FORK_OTA_REPO option (upstream by default)",
     "host_tests/CMakeLists.txt": "fork tests",
     # clang-format 18 writes the one-line initializer, upstream's file predates it
